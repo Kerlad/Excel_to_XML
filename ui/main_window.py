@@ -784,9 +784,6 @@ class MainWindow(QMainWindow):
         """Обновление данных во вкладке просмотра"""
         self.data_view_tab.refresh_table()
 
-+++ ui/main_window.py (修改后)
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Основное окно приложения с вкладками
 """
