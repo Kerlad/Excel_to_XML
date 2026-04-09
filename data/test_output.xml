@@ -1,7 +1,3 @@
---- data/test_output.xml (原始)
-
-
-+++ data/test_output.xml (修改后)
 <?xml version="1.0" encoding="utf-8"?>
 <RegistrySet>
   <RegistryRecord>

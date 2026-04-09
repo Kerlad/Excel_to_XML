@@ -1,9 +1,3 @@
---- main.py (原始)
-
-
-+++ main.py (修改后)
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Основной файл запуска приложения Excel-XML для Минтруда
 """

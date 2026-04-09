@@ -1,7 +1,3 @@
---- core/data_model.py (原始)
-
-
-+++ core/data_model.py (修改后)
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """

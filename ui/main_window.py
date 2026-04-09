@@ -1,21 +1,16 @@
---- ui/main_window.py (原始)
-
-
-+++ ui/main_window.py (修改后)
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Основное окно приложения с вкладками
 """
 
-from PyQt6.QtWidgets import (QMainWindow, QTabWidget, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                             QTextEdit, QFileDialog, QMessageBox, QDialog,
-                             QDialogButtonBox, QListWidget, QListWidgetItem,
-                             QTableWidget, QTableWidgetItem, QHeaderView,
-                             QComboBox, QGroupBox, QFormLayout, QSplitter,
-                             QToolBar, QStatusBar, QMenu, QMenuBar,
-                             QScrollArea, QFrame)
+from PyQt6.QtWidgets import (QMainWindow, QTabWidget, QWidget, QVBoxLayout,QHBoxLayout, QLabel, QLineEdit, QPushButton,
+QTextEdit, QFileDialog, QMessageBox, QDialog,
+QDialogButtonBox, QListWidget, QListWidgetItem,
+QTableWidget, QTableWidgetItem, QHeaderView,
+QComboBox, QGroupBox, QFormLayout, QSplitter,
+QToolBar, QStatusBar, QMenu, QMenuBar,
+QScrollArea, QFrame)
 from PyQt6.QtGui import QFont, QIcon, QAction
 from PyQt6.QtCore import Qt, QCoreApplication
 
