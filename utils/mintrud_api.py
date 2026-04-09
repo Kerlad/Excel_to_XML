@@ -1,9 +1,3 @@
---- utils/mintrud_api.py (原始)
-
-
-+++ utils/mintrud_api.py (修改后)
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 API для взаимодействия с сервером Минтруда
 """

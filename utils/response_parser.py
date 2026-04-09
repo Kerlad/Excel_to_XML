@@ -1,9 +1,3 @@
---- utils/response_parser.py (原始)
-
-
-+++ utils/response_parser.py (修改后)
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Парсер ответов от сервера Минтруда
 """

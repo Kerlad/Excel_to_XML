@@ -1,9 +1,3 @@
---- utils/xml_converter.py (原始)
-
-
-+++ utils/xml_converter.py (修改后)
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Конвертер данных в XML формат согласно XSD схеме Минтруда
 """

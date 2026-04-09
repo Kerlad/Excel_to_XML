@@ -1,9 +1,3 @@
---- utils/excel_handler.py (原始)
-
-
-+++ utils/excel_handler.py (修改后)
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Обработчик Excel файлов - создание шаблонов и импорт данных
 """
