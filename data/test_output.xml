@@ -1,0 +1,49 @@
+--- data/test_output.xml (原始)
+
+
++++ data/test_output.xml (修改后)
+<?xml version="1.0" encoding="utf-8"?>
+<RegistrySet>
+  <RegistryRecord>
+    <Worker>
+      <LastName>Иванов</LastName>
+      <FirstName>Иван</FirstName>
+      <MiddleName>Иванович</MiddleName>
+      <Snils>12345678901</Snils>
+      <IsForeignSnils>false</IsForeignSnils>
+      <Position>Менеджер</Position>
+      <EmployerInn>1234567890</EmployerInn>
+      <EmployerTitle>ООО Ромашка</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7709876543</Inn>
+      <Title>Учебный центр Профи</Title>
+    </Organization>
+    <Test isPassed="true" learnProgramId="1">
+      <Date>2024-01-01</Date>
+      <ProtocolNumber>123</ProtocolNumber>
+      <LearnProgramTitle>Оказание первой помощи пострадавшим</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+  <RegistryRecord>
+    <Worker>
+      <LastName>Петров</LastName>
+      <FirstName>Петр</FirstName>
+      <MiddleName>Петрович</MiddleName>
+      <Snils>23456789012</Snils>
+      <IsForeignSnils>false</IsForeignSnils>
+      <Position>Инженер</Position>
+      <EmployerInn>1234567890</EmployerInn>
+      <EmployerTitle>ООО Ромашка</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7709876543</Inn>
+      <Title>Учебный центр Профи</Title>
+    </Organization>
+    <Test isPassed="false" learnProgramId="2">
+      <Date>2024-01-02</Date>
+      <ProtocolNumber>124</ProtocolNumber>
+      <LearnProgramTitle>Использование (применение) средств индивидуальной защиты</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+</RegistrySet>
