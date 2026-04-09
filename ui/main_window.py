@@ -783,6 +783,7 @@ class MainWindow(QMainWindow):
     def on_data_updated(self):
         """Обновление данных во вкладке просмотра"""
         self.data_view_tab.refresh_table()
+
 """
 Основное окно приложения с вкладками
 """
@@ -1079,9 +1080,10 @@ class DataEntryTab(QWidget):
 
         main_layout.addWidget(scroll)
 
-        # Кнопки управления
+        # Кнопки управления - выравнивание по низу
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(15)
+        btn_layout.setContentsMargins(0, 10, 0, 0)
 
         self.save_btn = QPushButton("Сохранить данные")
         self.save_btn.clicked.connect(self.save_data)
@@ -1111,9 +1113,9 @@ class DataEntryTab(QWidget):
         btn_layout.addWidget(self.import_xsd_btn)
         btn_layout.addWidget(self.xsd_link_btn)
         btn_layout.addWidget(self.template_btn)
+        btn_layout.addStretch()
 
         main_layout.addLayout(btn_layout)
-        main_layout.addStretch()
 
         self.setLayout(main_layout)
 
@@ -1696,6 +1698,7 @@ class MainWindow(QMainWindow):
                 color: #000000;
                 font-size: 14px;
                 min-width: 50px;
+                qproperty-alignment: AlignLeft;
             }
             QMessageBox QPushButton {
                 color: #000000;
@@ -1706,6 +1709,28 @@ class MainWindow(QMainWindow):
                 min-height: 35px;
             }
             QMessageBox QPushButton:hover {
+                background-color: #d0d0d0;
+            }
+            QMenu {
+                background-color: #ffffff;
+                color: #000000;
+                border: 1px solid #cccccc;
+            }
+            QMenu::item {
+                color: #000000;
+                padding: 8px 30px 8px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #e0e0e0;
+            }
+            QMenuBar {
+                background-color: #f0f0f0;
+                color: #000000;
+            }
+            QMenuBar::item:selected {
+                background-color: #e0e0e0;
+            }
+            QMenuBar::item:pressed {
                 background-color: #d0d0d0;
             }
         """)
