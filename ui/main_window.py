@@ -783,7 +783,6 @@ class MainWindow(QMainWindow):
     def on_data_updated(self):
         """Обновление данных во вкладке просмотра"""
         self.data_view_tab.refresh_table()
-
 """
 Основное окно приложения с вкладками
 """
@@ -987,10 +986,23 @@ class DataEntryTab(QWidget):
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)
 
+        # Scroll area for form fields
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        scroll_content = QWidget()
+        scroll_widget_layout = QVBoxLayout()
+        scroll_widget_layout.setSpacing(15)
+        scroll_widget_layout.setContentsMargins(0, 0, 0, 0)
+
         # Раздел данных работника
         worker_group = QGroupBox("Данные работника")
         worker_layout = QFormLayout()
-        worker_layout.setSpacing(10)
+        worker_layout.setSpacing(12)
+        worker_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        worker_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        worker_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         self.last_name_edit = QLineEdit()
         self.first_name_edit = QLineEdit()
@@ -998,18 +1010,30 @@ class DataEntryTab(QWidget):
         self.snils_edit = QLineEdit()
         self.position_edit = QLineEdit()
 
+        # Set minimum width for input fields
+        min_field_width = 300
+        self.last_name_edit.setMinimumWidth(min_field_width)
+        self.first_name_edit.setMinimumWidth(min_field_width)
+        self.middle_name_edit.setMinimumWidth(min_field_width)
+        self.snils_edit.setMinimumWidth(min_field_width)
+        self.position_edit.setMinimumWidth(min_field_width)
+
         # Номер программы с кнопкой справки
         program_layout = QHBoxLayout()
         self.program_edit = QLineEdit()
+        self.program_edit.setMinimumWidth(min_field_width)
         self.program_help_btn = QPushButton("Справка")
         self.program_help_btn.clicked.connect(self.show_program_help)
         program_layout.addWidget(self.program_edit)
         program_layout.addWidget(self.program_help_btn)
 
         self.result_combo = QComboBox()
+        self.result_combo.setMinimumWidth(min_field_width)
         self.result_combo.addItems(["Удовлетворительно", "Неудовлетворительно"])
         self.date_edit = QLineEdit()
+        self.date_edit.setMinimumWidth(min_field_width)
         self.protocol_edit = QLineEdit()
+        self.protocol_edit.setMinimumWidth(min_field_width)
 
         worker_layout.addRow("Фамилия:", self.last_name_edit)
         worker_layout.addRow("Имя:", self.first_name_edit)
@@ -1022,17 +1046,24 @@ class DataEntryTab(QWidget):
         worker_layout.addRow("№ протокола:", self.protocol_edit)
 
         worker_group.setLayout(worker_layout)
-        main_layout.addWidget(worker_group)
+        scroll_widget_layout.addWidget(worker_group)
 
         # Раздел данных УЦ и Заказчика
         org_group = QGroupBox("Данные Учебного центра и Заказчика")
         org_layout = QFormLayout()
-        org_layout.setSpacing(10)
+        org_layout.setSpacing(12)
+        org_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        org_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        org_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         self.tc_inn_edit = QLineEdit()
+        self.tc_inn_edit.setMinimumWidth(min_field_width)
         self.tc_title_edit = QLineEdit()
+        self.tc_title_edit.setMinimumWidth(min_field_width)
         self.employer_inn_edit = QLineEdit()
+        self.employer_inn_edit.setMinimumWidth(min_field_width)
         self.employer_title_edit = QLineEdit()
+        self.employer_title_edit.setMinimumWidth(min_field_width)
 
         org_layout.addRow("ИНН УЦ:", self.tc_inn_edit)
         org_layout.addRow("Название УЦ:", self.tc_title_edit)
@@ -1040,7 +1071,13 @@ class DataEntryTab(QWidget):
         org_layout.addRow("Название Заказчика:", self.employer_title_edit)
 
         org_group.setLayout(org_layout)
-        main_layout.addWidget(org_group)
+        scroll_widget_layout.addWidget(org_group)
+        scroll_widget_layout.addStretch()
+
+        scroll_content.setLayout(scroll_widget_layout)
+        scroll.setWidget(scroll_content)
+
+        main_layout.addWidget(scroll)
 
         # Кнопки управления
         btn_layout = QHBoxLayout()
@@ -1637,6 +1674,7 @@ class MainWindow(QMainWindow):
             }
             QTabBar::tab {
                 background-color: #e0e0e0;
+                color: #000000;
                 padding: 10px 20px;
                 margin-right: 2px;
                 border-top-left-radius: 5px;
@@ -1644,9 +1682,31 @@ class MainWindow(QMainWindow):
             }
             QTabBar::tab:selected {
                 background-color: #ffffff;
+                color: #000000;
             }
             QTabBar::tab:hover {
                 background-color: #f0f0f0;
+                color: #000000;
+            }
+            QMessageBox {
+                background-color: #ffffff;
+                color: #000000;
+            }
+            QMessageBox QLabel {
+                color: #000000;
+                font-size: 14px;
+                min-width: 50px;
+            }
+            QMessageBox QPushButton {
+                color: #000000;
+                background-color: #e0e0e0;
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+                padding: 8px 16px;
+                min-height: 35px;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #d0d0d0;
             }
         """)
 

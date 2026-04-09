@@ -50,41 +50,49 @@ __pycache__/
 # Dependencies
 .venv/
 venv/
-node_modules/
-
-# Build/dist directories
-dist/
-build/
-target/
+env/
+pip-log.txt
+pip-selfcheck.json
 
 # Logs
 *.log
 
-# Environment files
+# Environment variables
 .env
 .env.local
-*.env.*
+*.env*
 
-# Editors/IDE
+# Coverage reports
+.coverage
+htmlcov/
+.coverage.*
+.cache
+
+# Pytest
+.pytest_cache/
+pytest_debug.log
+
+# MyPy
+.mypy_cache/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE specific
 .vscode/
 .idea/
 *.swp
 *.swo
-*.tmp
 
-# OS
+# OS generated
 .DS_Store
 Thumbs.db
 
-# Testing/coverage
-.coverage
-coverage/
-htmlcov/
-
-# Python specific
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg-info/
+# Temporary files
+*.tmp
+*~
 ```
