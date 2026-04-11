@@ -1,3 +1,4 @@
+--- .gitignore (原始)
 ```
 # Python
 __pycache__/
@@ -41,7 +42,7 @@ coverage/
 Thumbs.db
 ```
 
-
++++ .gitignore (修改后)
 ```
 # Compiled Python files
 *.pyc
@@ -97,4 +98,51 @@ Thumbs.db
 *~
 ```
 
-Nothing needs to be added to .gitignore since only a Python source file (`ui/main_window.py`) was modified and no build artifacts, dependencies, or temporary files were detected in the changes.
++++ .gitignore (修改后)
+```gitignore
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# Build artifacts
+dist/
+build/
+*.o
+*.obj
+*.out
+
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+```
