@@ -1,7 +1,3 @@
---- data/org_settings.json (原始)
-
-
-+++ data/org_settings.json (修改后)
 {
     "tc_inn": "7701234567",
     "tc_title": "ООО \"Учебный Центр Профи\"",
