@@ -15,11 +15,18 @@ from PyQt6.QtCore import Qt, QCoreApplication
 from typing import Optional
 import sys
 import os
+import json
 
 # Добавляем корневую директорию в путь
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.data_model import DataManager, WorkerRecord
+
+
+# Путь к файлу настроек организации
+# Используем абсолютный путь относительно корневого каталога проекта
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ORG_SETTINGS_FILE = os.path.join(PROJECT_ROOT, 'data', 'org_settings.json')
 
 
 class ProgramListDialog(QDialog):
@@ -94,7 +101,7 @@ class DataEntryTab(QWidget):
     def __init__(self, data_manager: DataManager, parent=None):
         super().__init__(parent)
         self.data_manager = data_manager
-
+        
         # Настройка HiDPI
         self.setStyleSheet("""
             QWidget {
@@ -210,6 +217,9 @@ class DataEntryTab(QWidget):
         main_layout.addStretch()
 
         self.setLayout(main_layout)
+        
+        # Загрузка сохраненных данных УЦ/Заказчика из JSON файла
+        self.load_organization_data()
 
     def show_program_help(self):
         dialog = ProgramListDialog(self)
@@ -293,6 +303,8 @@ class DataEntryTab(QWidget):
         success, result_msg = self.data_manager.add_record(record)
         if success:
             QMessageBox.information(self, "Успех", "Запись сохранена")
+            # Сохраняем данные УЦ/Заказчика для будущих сессий
+            self.save_organization_data()
             # Очищаем поля кроме программ
             self.clear_form(clear_programs=False)
             # Сигнал об обновлении данных
@@ -301,6 +313,7 @@ class DataEntryTab(QWidget):
         else:
             QMessageBox.warning(self, "Ошибка", result_msg)
 
+    
     def clear_form(self, clear_programs=True):
         self.last_name_edit.clear()
         self.first_name_edit.clear()
@@ -311,6 +324,69 @@ class DataEntryTab(QWidget):
             self.program_edit.clear()
         self.date_edit.clear()
         self.protocol_edit.clear()
+
+    def load_organization_data(self):
+        """Загрузка сохраненных данных об УЦ и Заказчике из JSON файла"""
+        try:
+            if os.path.exists(ORG_SETTINGS_FILE):
+                with open(ORG_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.tc_inn_edit.setText(data.get("tc_inn", ""))
+                self.tc_title_edit.setText(data.get("tc_title", ""))
+                self.employer_inn_edit.setText(data.get("employer_inn", ""))
+                self.employer_title_edit.setText(data.get("employer_title", ""))
+            else:
+                # Файл не существует - создаем с пустыми значениями
+                self._save_organization_data_to_file({})
+        except (json.JSONDecodeError, IOError) as e:
+            QMessageBox.warning(
+                self, 
+                "Ошибка", 
+                f"Ошибка чтения файла настроек: {str(e)}\nБудут использованы пустые значения."
+            )
+            self.tc_inn_edit.clear()
+            self.tc_title_edit.clear()
+            self.employer_inn_edit.clear()
+            self.employer_title_edit.clear()
+
+    def save_organization_data(self):
+        """Сохранение данных об УЦ и Заказчике в JSON файл"""
+        data = {
+            "tc_inn": self.tc_inn_edit.text().strip(),
+            "tc_title": self.tc_title_edit.text().strip(),
+            "employer_inn": self.employer_inn_edit.text().strip(),
+            "employer_title": self.employer_title_edit.text().strip()
+        }
+        
+        if self._save_organization_data_to_file(data):
+            pass  # Успешно сохранено
+        else:
+            QMessageBox.warning(
+                self,
+                "Ошибка",
+                "Не удалось сохранить данные организации в файл.\nПроверьте права доступа к папке /data/"
+            )
+
+    def _save_organization_data_to_file(self, data: dict) -> bool:
+        """Внутренний метод сохранения данных в JSON файл
+        
+        Args:
+            data: Словарь с данными организации
+            
+        Returns:
+            True если успешно, False иначе
+        """
+        try:
+            # Создаем директорию data если не существует
+            data_dir = os.path.dirname(ORG_SETTINGS_FILE)
+            os.makedirs(data_dir, exist_ok=True)
+            
+            with open(ORG_SETTINGS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            return True
+        except IOError as e:
+            print(f"Ошибка записи файла настроек: {e}")
+            return False
 
     def import_xlsx(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -1118,6 +1194,9 @@ class DataEntryTab(QWidget):
         main_layout.addLayout(btn_layout)
 
         self.setLayout(main_layout)
+        
+        # Загрузка сохраненных данных УЦ/Заказчика из JSON файла
+        self.load_organization_data()
 
     def show_program_help(self):
         dialog = ProgramListDialog(self)
