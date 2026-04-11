@@ -41,7 +41,7 @@ coverage/
 Thumbs.db
 ```
 
-+++ .gitignore (修改后)
+
 ```
 # Compiled Python files
 *.pyc
@@ -96,3 +96,5 @@ Thumbs.db
 *.tmp
 *~
 ```
+
+Nothing needs to be added to .gitignore since only a Python source file (`ui/main_window.py`) was modified and no build artifacts, dependencies, or temporary files were detected in the changes.
