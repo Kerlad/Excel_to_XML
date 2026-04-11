@@ -2991,6 +2991,9 @@ class DataEntryTab(QWidget):
 
         self.setLayout(main_layout)
 
+        # Загрузка сохраненных данных УЦ/Заказчика из JSON файла
+        self.load_organization_data()
+
     def show_program_help(self):
         dialog = ProgramListDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
