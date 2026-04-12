@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RegistrySet>
+  <RegistryRecord outerId="93a3ff36-e0ec-419b-b9a6-2198a90adaf9">
+    <Worker>
+      <LastName>Форо</LastName>
+      <FirstName>Рарр</FirstName>
+      <MiddleName>Ррваи</MiddleName>
+      <Snils>123-123-123 11</Snils>
+      <Position>пипим</Position>
+      <EmployerInn>7708503727</EmployerInn>
+      <EmployerTitle>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7708503727</Inn>
+      <Title>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</Title>
+    </Organization>
+    <Test isPassed="true" learnProgramId="1">
+      <Date>2021-11-11</Date>
+      <ProtocolNumber>1</ProtocolNumber>
+      <LearnProgramTitle>Оказание первой помощи пострадавшим</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+  <RegistryRecord outerId="ffb409e8-ca93-4611-bf51-910aca92cd4f">
+    <Worker>
+      <LastName>Форо</LastName>
+      <FirstName>Рарр</FirstName>
+      <MiddleName>Ррваи</MiddleName>
+      <Snils>123-123-123 11</Snils>
+      <Position>пипим</Position>
+      <EmployerInn>7708503727</EmployerInn>
+      <EmployerTitle>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7708503727</Inn>
+      <Title>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</Title>
+    </Organization>
+    <Test isPassed="true" learnProgramId="2">
+      <Date>2021-11-11</Date>
+      <ProtocolNumber>1</ProtocolNumber>
+      <LearnProgramTitle>Использование (применение) средств индивидуальной защиты</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+  <RegistryRecord outerId="9152285b-054b-40f8-8f5b-ed3488824442">
+    <Worker>
+      <LastName>Форо</LastName>
+      <FirstName>Рарр</FirstName>
+      <MiddleName>Ррваи</MiddleName>
+      <Snils>123-123-123 11</Snils>
+      <Position>пипим</Position>
+      <EmployerInn>7708503727</EmployerInn>
+      <EmployerTitle>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7708503727</Inn>
+      <Title>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</Title>
+    </Organization>
+    <Test isPassed="true" learnProgramId="3">
+      <Date>2021-11-11</Date>
+      <ProtocolNumber>1</ProtocolNumber>
+      <LearnProgramTitle>Общие вопросы охраны труда и функционирования системы управления охраной труда</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+  <RegistryRecord outerId="b3e9cd72-aaf1-48fd-b776-a553bd7e630a">
+    <Worker>
+      <LastName>Форо</LastName>
+      <FirstName>Рарр</FirstName>
+      <MiddleName>Ррваи</MiddleName>
+      <Snils>123-123-123 11</Snils>
+      <Position>пипим</Position>
+      <EmployerInn>7708503727</EmployerInn>
+      <EmployerTitle>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7708503727</Inn>
+      <Title>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</Title>
+    </Organization>
+    <Test isPassed="true" learnProgramId="4">
+      <Date>2021-11-11</Date>
+      <ProtocolNumber>1</ProtocolNumber>
+      <LearnProgramTitle>Безопасные методы и приемы выполнения работ при воздействии вредных и (или) опасных производственных факторов, источников опасности, идентифицированных в рамках специальной оценки условий труда и оценки профессиональных рисков</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+  <RegistryRecord outerId="87676b7f-d9b3-408a-9aa0-da3ac6fea875">
+    <Worker>
+      <LastName>Форо</LastName>
+      <FirstName>Рарр</FirstName>
+      <MiddleName>Ррваи</MiddleName>
+      <Snils>123-123-123 11</Snils>
+      <Position>пипим</Position>
+      <EmployerInn>7708503727</EmployerInn>
+      <EmployerTitle>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7708503727</Inn>
+      <Title>ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО &quot;РОССИЙСКИЕ ЖЕЛЕЗНЫЕ ДОРОГИ&quot;</Title>
+    </Organization>
+    <Test isPassed="true" learnProgramId="13">
+      <Date>2021-11-11</Date>
+      <ProtocolNumber>1</ProtocolNumber>
+      <LearnProgramTitle>Безопасные методы и приемы выполнения работ, связанных с опасностью воздействия сильнодействующих и ядовитых веществ</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+</RegistrySet>

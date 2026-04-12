@@ -357,6 +357,7 @@ class EditDialog(QDialog):
         # ФИО — только текст (колонки 0,1,2)
         for col_idx in [0, 1, 2]:
             val = values.get(col_idx, '')
+            info = self.field_widgets.get(col_idx)
             if val and not val.replace(' ', '').replace('-', '').isalpha():
                 self._set_error(col_idx)
                 QMessageBox.warning(self, "Ошибка", f"{info['label']} — только текст")

@@ -3,7 +3,7 @@
 """
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logging.basicConfig(filename='import_errors.log', level=logging.ERROR, encoding='utf-8')
 
@@ -73,7 +73,7 @@ def validate_row(row_dict, row_num):
     elif isinstance(date_val, (int, float)):
         # Excel serial date
         try:
-            delta = datetime(1899, 12, 30) + __import__('datetime').timedelta(days=date_val)
+            delta = datetime(1899, 12, 30) + timedelta(days=date_val)
             date_str = delta.strftime('%d.%m.%Y')
         except Exception:
             errors.append(f"Строка {row_num}: ошибка парсинга даты")

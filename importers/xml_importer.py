@@ -178,20 +178,18 @@ def _load_legacy_xml(root, xsd_errors):
             # Альтернативные имена
             tag_lower = child.tag.lower()
             if tag_lower == 'inn':
-                # Определяем контекст — УЦ или работодатель
-                parent = elem
-                for sub in parent:
-                    if sub.tag in ['Worker', 'worker']:
-                        data['employer_inn'] = child.text or ''
-                    elif sub.tag in ['Organization', 'organization']:
-                        data['tc_inn'] = child.text or ''
+                # Определяем контекст по родительскому элементу
+                parent_tag = elem.tag.lower() if elem is not None else ''
+                if 'worker' in parent_tag or 'работник' in parent_tag:
+                    data['employer_inn'] = child.text or ''
+                elif 'organization' in parent_tag or 'организация' in parent_tag:
+                    data['tc_inn'] = child.text or ''
             elif tag_lower == 'title':
-                parent = elem
-                for sub in parent:
-                    if sub.tag in ['Worker', 'worker']:
-                        data['employer_title'] = child.text or ''
-                    elif sub.tag in ['Organization', 'organization']:
-                        data['tc_title'] = child.text or ''
+                parent_tag = elem.tag.lower() if elem is not None else ''
+                if 'worker' in parent_tag or 'работник' in parent_tag:
+                    data['employer_title'] = child.text or ''
+                elif 'organization' in parent_tag or 'организация' in parent_tag:
+                    data['tc_title'] = child.text or ''
             elif tag_lower in ['lastname', 'фамилия']:
                 data['last_name'] = child.text or ''
             elif tag_lower in ['firstname', 'имя']:
@@ -206,7 +204,7 @@ def _load_legacy_xml(root, xsd_errors):
                 data['employer_inn'] = child.text or ''
             elif tag_lower in ['employertitle', 'наименование юл заказчика']:
                 data['employer_title'] = child.text or ''
-            elif tag_lower in ['inn', 'инн_уц', 'инн уц']:
+            elif tag_lower in ['инн_уц', 'инн уц']:
                 data['tc_inn'] = child.text or ''
             elif tag_lower in ['наименование уц', 'наименование_уц']:
                 data['tc_title'] = child.text or ''
