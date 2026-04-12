@@ -507,7 +507,6 @@ class DataEntryTab(QWidget):
         )
         if file_path:
             try:
-                import shutil
                 dest_path = os.path.join(self.schema_dir, os.path.basename(file_path))
                 shutil.copy(file_path, dest_path)
                 self.xsd_file_input.setText(dest_path)
@@ -687,7 +686,8 @@ class DataEntryTab(QWidget):
             "25": "Безопасные методы и приемы работ по валке леса в особо опасных условиях",
             "26": "Безопасные методы и приемы работ по перемещению тяжеловесных и крупногабаритных грузов",
             "27": "Безопасные методы и приемы работ с радиоактивными веществами и источниками ионизирующих излучений",
-            "28": "Безопасные методы и приемы работ с ручным инструментом, в том числе с пиротехническим"
+            "28": "Безопасные методы и приемы работ с ручным инструментом, в том числе с пиротехническим",
+            "29": "Безопасные методы и приемы работ в театрах"
         }
 
         blue_programs = {"1", "2", "3", "4", "18", "23"}
@@ -759,46 +759,21 @@ class DataEntryTab(QWidget):
 
     def _format_snils_input(self, text):
         """Автоформатирование СНИЛС при вводе: 123-456-789 00"""
-        # Отключаем сигнал на время изменения
-        self.snils_input.textChanged.disconnect(self._format_snils_input)
-
-        # Сохраняем позицию курсора
-        cursor_pos = self.snils_input.cursorPosition()
-
-        # Извлекаем только цифры
-        digits = ''.join(c for c in text if c.isdigit())
-
-        # Ограничиваем 11 цифрами
-        if len(digits) > 11:
-            digits = digits[:11]
-
-        # Форматируем
-        formatted = ''
-        for i, d in enumerate(digits):
-            if i == 3:
-                formatted += '-'
-            elif i == 6:
-                formatted += '-'
-            elif i == 9:
-                formatted += ' '
-            formatted += d
-
-        # Восстанавливаем текст
-        old_text = self.snils_input.text()
-        self.snils_input.setText(formatted)
-
-        # Корректируем позицию курсора
-        new_cursor = cursor_pos
-        # Если пользователь удалил символ, корректируем
-        if len(formatted) < len(old_text):
-            new_cursor = min(cursor_pos, len(formatted))
-        else:
-            new_cursor = len(formatted)
-
-        self.snils_input.setCursorPosition(new_cursor)
-
-        # Переподключаем сигнал
-        self.snils_input.textChanged.connect(self._format_snils_input)
+        self.snils_input.blockSignals(True)
+        try:
+            digits = ''.join(c for c in text if c.isdigit())[:11]
+            formatted = ''
+            for i, d in enumerate(digits):
+                if i == 3:
+                    formatted += '-'
+                elif i == 6:
+                    formatted += '-'
+                elif i == 9:
+                    formatted += ' '
+                formatted += d
+            self.snils_input.setText(formatted)
+        finally:
+            self.snils_input.blockSignals(False)
 
     def _set_field_error(self, widget, is_error):
         """Подсветка поля красной рамкой при ошибке валидации."""

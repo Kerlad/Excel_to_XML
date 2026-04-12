@@ -6,6 +6,11 @@ from PyQt6.QtGui import QIcon, QFont
 from tabs.data_entry_tab import DataEntryTab
 from tabs.data_view_tab import DataViewTab
 from tabs.data_transfer_tab import DataTransferTab
+from tabs.exam_journal_tab import ExamJournalTab
+from tabs.protocol_tab import ProtocolTab
+from journal.journal_manager import JournalManager
+from protocol.commission_manager import CommissionManager
+from protocol.programs_manager import ProgramsManager
 
 
 class MainWindow(QMainWindow):
@@ -28,14 +33,30 @@ class MainWindow(QMainWindow):
         self.data_entry_tab = DataEntryTab()
         self.data_view_tab = DataViewTab()
         self.data_transfer_tab = DataTransferTab()
+
+        # Журнал проверки знаний
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        self.journal_manager = JournalManager(data_dir)
+        self.exam_journal_tab = ExamJournalTab(self.journal_manager)
+
+        # Менеджеры для протокола
+        self.commission_manager = CommissionManager(data_dir)
+        self.programs_manager = ProgramsManager(data_dir)
+        self.protocol_tab = ProtocolTab(self.commission_manager, self.programs_manager, data_dir)
+
         self.tabs.addTab(self.data_entry_tab, "Внесение данных")
         self.tabs.addTab(self.data_view_tab, "Просмотр данных")
         self.tabs.addTab(self.data_transfer_tab, "Передача данных")
+        self.tabs.addTab(self.exam_journal_tab, "Журнал проверки знаний")
+        self.tabs.addTab(self.protocol_tab, "Протокол")
 
         # Подключение сигнала передачи данных
         self.data_entry_tab.data_loaded.connect(self.data_view_tab.add_data)
         # Подключение callback для проверки дублей
         self.data_entry_tab.get_existing_keys_callback = self.data_view_tab.get_existing_keys
+
+        # Подключение журнала к вкладке передачи данных
+        self.data_transfer_tab.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
 
         self.setCentralWidget(self.tabs)
 

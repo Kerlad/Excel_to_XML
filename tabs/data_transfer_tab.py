@@ -55,6 +55,15 @@ class DataTransferTab(QWidget):
         # Загрузка API-ключа
         self.load_api_key()
 
+        # Callback-функции для журнала (устанавливаются из main.py)
+        self._journal_add_callback = None    # add_records_to_journal
+        self._journal_update_callback = None # update_base_no
+
+    def set_journal_callback(self, add_callback, update_callback):
+        """Установка callback-функций для журнала проверки знаний."""
+        self._journal_add_callback = add_callback
+        self._journal_update_callback = update_callback
+
     def _group_style(self):
         return """
             QGroupBox {
@@ -288,6 +297,9 @@ class DataTransferTab(QWidget):
             QMessageBox.warning(self, "Ошибка", "Выберите XML файл")
             return
 
+        # Парсим XML для получения данных работников (для журнала)
+        xml_records_data = self._parse_xml_for_journal(xml_file)
+
         QMessageBox.information(self, "Информация", "Отправка данных...")
         QApplication.processEvents()
 
@@ -296,6 +308,10 @@ class DataTransferTab(QWidget):
         if result["success"]:
             set_id = result.get("set_id", "")
             self.last_setid_display.setText(set_id)
+
+            # Сохраняем в журнал
+            if self._journal_add_callback and xml_records_data:
+                count = self._journal_add_callback(xml_records_data, set_id, xml_file)
 
             # Диалог с SetId красным полужирным
             msg = QMessageBox()
@@ -342,6 +358,20 @@ class DataTransferTab(QWidget):
             QMessageBox.information(self, "Информация", "Записей не найдено")
             return
 
+        # Обновляем baseNo в журнале
+        if self._journal_update_callback:
+            # Строим карту {snils_clean: baseNo}
+            base_no_map = {}
+            for rec in records:
+                snils_raw = rec.get('Snils', '')
+                base_no = rec.get('baseNo', '')
+                snils_clean = snils_raw.replace('-', '').replace(' ', '')
+                if snils_clean:
+                    base_no_map[snils_clean] = base_no
+
+            if base_no_map:
+                updated = self._journal_update_callback(set_id, base_no_map)
+
         # Сохранение XLSX
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить XLSX", f"{set_id}.xlsx", "Excel Files (*.xlsx)"
@@ -352,6 +382,49 @@ class DataTransferTab(QWidget):
                 QMessageBox.information(self, "Успех", f"Сохранено {len(records)} записей\n{msg}")
             else:
                 QMessageBox.warning(self, "Ошибка", msg)
+
+    def _parse_xml_for_journal(self, xml_file_path):
+        """
+        Парсинг XML файла для получения данных работников (для журнала).
+
+        Возвращает список словарей с полями:
+            last_name, first_name, middle_name, snils, position,
+            program, date, protocol
+        """
+        import xml.etree.ElementTree as ET
+
+        records = []
+        try:
+            tree = ET.parse(xml_file_path)
+            root = tree.getroot()
+
+            for record in root.findall('RegistryRecord'):
+                worker = record.find('Worker')
+                test = record.find('Test')
+
+                if worker is None or test is None:
+                    continue
+
+                def get_text(elem, tag):
+                    child = elem.find(tag)
+                    return child.text.strip() if child is not None and child.text else ''
+
+                rec = {
+                    'last_name': get_text(worker, 'LastName'),
+                    'first_name': get_text(worker, 'FirstName'),
+                    'middle_name': get_text(worker, 'MiddleName'),
+                    'snils': get_text(worker, 'Snils'),
+                    'position': get_text(worker, 'Position'),
+                    'program': test.get('learnProgramId', ''),
+                    'date': get_text(test, 'Date'),
+                    'protocol': get_text(test, 'ProtocolNumber')
+                }
+                records.append(rec)
+        except Exception as e:
+            # При ошибке парсинга — журнал просто не обновится
+            pass
+
+        return records
 
     def query_by_snils(self):
         """Запрос по СНИЛС."""

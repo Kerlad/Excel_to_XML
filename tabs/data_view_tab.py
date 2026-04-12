@@ -235,6 +235,7 @@ class DataViewTab(QWidget):
 
         # Проверка наличия XSD
         schema_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "schema")
+        os.makedirs(schema_dir, exist_ok=True)
         xsd_files = [f for f in os.listdir(schema_dir) if f.endswith('.xsd')]
 
         if not xsd_files:

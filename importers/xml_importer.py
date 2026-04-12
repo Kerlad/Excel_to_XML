@@ -121,7 +121,9 @@ def _load_registry_set(root, xsd_errors):
         if not all([last_name, first_name, position, employer_inn, employer_title]):
             errors.append(f"Запись {rec_idx}: заполнены не все обязательные поля")
 
-        if snils and (not snils.isdigit() or len(snils) != 11):
+        if not snils:
+            errors.append(f"Запись {rec_idx}: СНИЛС обязателен")
+        elif not snils.isdigit() or len(snils) != 11:
             errors.append(f"Запись {rec_idx}: СНИЛС должен содержать 11 цифр")
 
         if program_id not in VALID_PROGRAMS:

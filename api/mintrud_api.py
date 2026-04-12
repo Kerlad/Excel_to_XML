@@ -43,7 +43,6 @@ def save_api_key(api_key, data_dir):
     """Сохранение API-ключа в зашифрованном виде (AES через Fernet)."""
     try:
         from cryptography.fernet import Fernet
-        import base64
 
         key = _get_derive_key()
         fernet_key = base64.urlsafe_b64encode(key)
@@ -93,11 +92,9 @@ def load_api_key(data_dir):
 
 def _save_api_key_xor(api_key, data_dir):
     """Резервный метод шифрования — XOR с хешем."""
-    import hashlib
     key = hashlib.sha256(os.environ.get('USERNAME', 'default_user').encode()).digest()
     key_bytes = api_key.encode('utf-8')
     encrypted = bytes([key_bytes[i] ^ key[i % len(key)] for i in range(len(key_bytes))])
-    import base64
     encoded = base64.b64encode(encrypted).decode('utf-8')
     key_file = os.path.join(data_dir, "api_key.json")
     with open(key_file, 'w', encoding='utf-8') as f:
@@ -107,7 +104,6 @@ def _save_api_key_xor(api_key, data_dir):
 
 def _load_api_key_xor(data_dir):
     """Расшифровка XOR."""
-    import hashlib, base64, json
     key_file = os.path.join(data_dir, "api_key.json")
     with open(key_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -308,7 +304,7 @@ def get_by_set_id(api_key, set_id, page_size=5000):
     <SetId>{set_id}</SetId>
 </EducatedPersonFilter>'''
 
-        result = _fetch_page(xml_content, f"стр. {page_no}")
+        result = _fetch_page(xml_content, f"стр. {page_no}", page_size)
         if result is None:
             break
 
@@ -329,10 +325,10 @@ def get_by_set_id(api_key, set_id, page_size=5000):
 def get_by_snils(api_key, snils, page_size=100):
     """
     Запрос регистрационных номеров по СНИЛС.
-    
+
     POST на GET_URL с фильтром Snils.
     Поддерживает пагинацию.
-    
+
     Возвращает:
         {"success": bool, "records": list, "error": str}
     """
@@ -355,7 +351,7 @@ def get_by_snils(api_key, snils, page_size=100):
     <Snils>{snils}</Snils>
 </EducatedPersonFilter>'''
 
-        result = _fetch_page(xml_content, f"стр. {page_no}")
+        result = _fetch_page(xml_content, f"стр. {page_no}", page_size)
         if result is None:
             break
 
@@ -371,7 +367,7 @@ def get_by_snils(api_key, snils, page_size=100):
     return {"success": True, "records": all_records}
 
 
-def _fetch_page(xml_content, page_label=""):
+def _fetch_page(xml_content, page_label="", page_size=100):
     """
     Выполнение одного POST-запроса к GetEducatedPersonXML.
     Возвращает {"records": [...], "has_more": bool} или None при ошибке.
@@ -412,7 +408,7 @@ def _fetch_page(xml_content, page_label=""):
         # Парсинг записей
         records = _parse_registry_records(response_text)
 
-        return {"records": records, "has_more": len(records) > 0}
+        return {"records": records, "has_more": len(records) == page_size}
 
     except Exception as e:
         logging.error(f"Критическая ошибка запроса {page_label}: {e}")
