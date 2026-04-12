@@ -120,7 +120,9 @@ class ExamJournalTab(QWidget):
         self.date_from = QDateEdit()
         self.date_from.setCalendarPopup(True)
         self.date_from.setDisplayFormat("dd.MM.yyyy")
-        self.date_from.setDate(QDateEdit().minimumDate())
+        self.date_from.blockSignals(True)
+        self.date_from.setDate(self.date_from.minimumDate())
+        self.date_from.blockSignals(False)
         self.date_from.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
         self.date_from.dateChanged.connect(self._apply_filters)
         row2.addWidget(date_from_label)
@@ -134,7 +136,9 @@ class ExamJournalTab(QWidget):
         self.date_to = QDateEdit()
         self.date_to.setCalendarPopup(True)
         self.date_to.setDisplayFormat("dd.MM.yyyy")
+        self.date_to.blockSignals(True)
         self.date_to.setDate(self.date_to.maximumDate())
+        self.date_to.blockSignals(False)
         self.date_to.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
         self.date_to.dateChanged.connect(self._apply_filters)
         row2.addWidget(date_to_label)
@@ -353,10 +357,16 @@ class ExamJournalTab(QWidget):
         date_from = ""
         date_to = ""
 
-        if self.date_from.date() > self.date_from.minimumDate():
-            date_from = self.date_from.date().toString("dd.MM.yyyy")
-        if self.date_to.date() < self.date_to.maximumDate():
-            date_to = self.date_to.date().toString("dd.MM.yyyy")
+        self.date_from.blockSignals(True)
+        self.date_to.blockSignals(True)
+        try:
+            if self.date_from.date() > self.date_from.minimumDate():
+                date_from = self.date_from.date().toString("dd.MM.yyyy")
+            if self.date_to.date() < self.date_to.maximumDate():
+                date_to = self.date_to.date().toString("dd.MM.yyyy")
+        finally:
+            self.date_from.blockSignals(False)
+            self.date_to.blockSignals(False)
 
         return self.journal.search(
             query=query, set_id=set_id,
@@ -366,18 +376,24 @@ class ExamJournalTab(QWidget):
     def _update_setid_combo(self):
         """Обновление combo-бокса SetId."""
         current = self.setid_combo.currentText()
-        self.setid_combo.clear()
-        self.setid_combo.addItem("Все")
+        self.setid_combo.blockSignals(True)
+        try:
+            self.setid_combo.clear()
+            self.setid_combo.addItem("Все")
 
-        set_ids = self.journal.get_unique_set_ids()
-        for sid in set_ids:
-            short = sid[:20] + "..." if len(sid) > 20 else sid
-            self.setid_combo.addItem(short, sid)
+            set_ids = self.journal.get_unique_set_ids()
+            for sid in set_ids:
+                short = sid[:20] + "..." if len(sid) > 20 else sid
+                self.setid_combo.addItem(short, sid)
 
-        # Восстановить выбор
-        idx = self.setid_combo.findData(current)
-        if idx >= 0:
-            self.setid_combo.setCurrentIndex(idx)
+            # Восстановить выбор
+            idx = self.setid_combo.findData(current)
+            if idx >= 0:
+                self.setid_combo.setCurrentIndex(idx)
+            else:
+                self.setid_combo.setCurrentIndex(0)
+        finally:
+            self.setid_combo.blockSignals(False)
 
     # ============ Фильтры ============
 
@@ -390,8 +406,14 @@ class ExamJournalTab(QWidget):
         self.search_input.clear()
         self.setid_combo.setCurrentIndex(0)
         self.status_combo.setCurrentIndex(0)
-        self.date_from.setDate(self.date_from.minimumDate())
-        self.date_to.setDate(self.date_to.maximumDate())
+        self.date_from.blockSignals(True)
+        self.date_to.blockSignals(True)
+        try:
+            self.date_from.setDate(self.date_from.minimumDate())
+            self.date_to.setDate(self.date_to.maximumDate())
+        finally:
+            self.date_from.blockSignals(False)
+            self.date_to.blockSignals(False)
         self.refresh_journal()
 
     # ============ Действия ============

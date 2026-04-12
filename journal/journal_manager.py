@@ -1,6 +1,7 @@
 """
 Менеджер журнала проверок знаний
 CRUD операции + поиск/фильтрация + обновление baseNo
+Данные шифруются (AES/Fernet) — аналогично API-ключу
 """
 import os
 import json
@@ -9,6 +10,8 @@ import logging
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict
+
+from utils.crypto import encrypt_data, decrypt_data
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +49,12 @@ class JournalManager:
     # ============ CRUD ============
 
     def _load(self):
-        """Загрузка журнала из файла."""
+        """Загрузка журнала из зашифрованного файла."""
         if os.path.exists(self.journal_file):
             try:
                 with open(self.journal_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                    encrypted = f.read()
+                data = decrypt_data(encrypted)
                 self.records = []
                 for item in data:
                     record = JournalRecord(
@@ -76,11 +80,12 @@ class JournalManager:
                 self.records = []
 
     def _save(self):
-        """Сохранение журнала в файл."""
+        """Сохранение журнала в зашифрованном виде."""
         try:
             data = [asdict(r) for r in self.records]
+            encrypted = encrypt_data(data)
             with open(self.journal_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.write(encrypted)
         except Exception as e:
             logger.error(f"Ошибка сохранения журнала: {e}")
 
