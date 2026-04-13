@@ -1,2 +1,0 @@
-2026-04-13 09:39:30 | exporters.protocol_exporter | ERROR | Ошибка экспорта протокола: 'MergedCell' object attribute 'value' is read-only
-2026-04-13 09:39:44 | exporters.protocol_exporter | ERROR | Ошибка генерации протокола: 'MergedCell' object attribute 'value' is read-only

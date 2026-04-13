@@ -1,2 +1,0 @@
-ERROR:root:Ошибка: 401 - Не найдена информация по ключу abcdefghijklmnop1234567890abcdef
-ERROR:exporters.protocol_exporter:Ошибка генерации протокола: 'MergedCell' object attribute 'value' is read-only
