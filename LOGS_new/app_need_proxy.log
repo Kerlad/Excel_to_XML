@@ -1,0 +1,10 @@
+2026-04-13 08:55:56 | __main__ | INFO | === Приложение запущено ===
+2026-04-13 08:55:58 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-13 09:15:41 | root | INFO | Отправка XML на https://edu.rosmintrud.ru/api/set/push
+2026-04-13 09:15:41 | urllib3.connectionpool | DEBUG | Starting new HTTPS connection (1): edu.rosmintrud.ru:443
+2026-04-13 09:16:02 | root | INFO | Отправка XML на https://edu.rosmintrud.ru/api/set/push
+2026-04-13 09:16:02 | urllib3.connectionpool | DEBUG | Starting new HTTPS connection (1): edu.rosmintrud.ru:443
+2026-04-13 09:16:21 | urllib3.connectionpool | DEBUG | Starting new HTTPS connection (1): edu.rosmintrud.ru:443
+2026-04-13 09:16:21 | root | ERROR | Критическая ошибка запроса стр. 1: HTTPSConnectionPool(host='edu.rosmintrud.ru', port=443): Max retries exceeded with url: /api/GetEducatedPersonXML (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 407 Proxy Authentication Required')))
+2026-04-13 09:16:29 | urllib3.connectionpool | DEBUG | Starting new HTTPS connection (1): edu.rosmintrud.ru:443
+2026-04-13 09:16:29 | root | ERROR | Критическая ошибка запроса стр. 1: HTTPSConnectionPool(host='edu.rosmintrud.ru', port=443): Max retries exceeded with url: /api/GetEducatedPersonXML (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 407 Proxy Authentication Required')))

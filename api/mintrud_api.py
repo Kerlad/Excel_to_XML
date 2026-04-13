@@ -17,7 +17,8 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-logging.basicConfig(filename='api_requests.log', level=logging.INFO, encoding='utf-8')
+logger = logging.getLogger(__name__)
+
 error_log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "log")
 os.makedirs(error_log_path, exist_ok=True)
 error_log_file = os.path.join(error_log_path, "error_response.txt")
@@ -28,6 +29,9 @@ GET_URL = "https://edu.rosmintrud.ru/api/GetEducatedPersonXML"
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 }
+
+# Импортируем функцию прокси из utils.proxy_manager
+from utils.proxy_manager import build_proxies_for_requests
 
 
 # ============ Сохранение API-ключа ============
@@ -125,7 +129,7 @@ def validate_api_key(api_key):
 
 # ============ Отправка XML на сервер ============
 
-def push_xml(api_key, xml_file_path, xsd_path=None):
+def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
     """
     Отправка XML файла на сервер Минтруда.
 
@@ -133,6 +137,8 @@ def push_xml(api_key, xml_file_path, xsd_path=None):
     1. Создаётся Request.xml с ApiKey и NeedSend=false
     2. Файл данных упаковывается в .olot архив
     3. Отправляются два файла: Request.xml и .olot через multipart/form-data
+
+    proxy_settings — dict с полями: enabled, url, username, password
 
     Возвращает dict:
         success: bool
@@ -147,6 +153,8 @@ def push_xml(api_key, xml_file_path, xsd_path=None):
 
     if not os.path.exists(xml_file_path):
         return {"success": False, "error": "Файл XML не найден"}
+
+    proxies = build_proxies_for_requests(proxy_settings)
 
     try:
         # Читаем XML данных
@@ -168,7 +176,9 @@ def push_xml(api_key, xml_file_path, xsd_path=None):
 
         # Формируем multipart/form-data с двумя файлами
         # Вариант: разные имена полей — xml и olot
-        logging.info(f"Отправка XML на {API_URL}")
+        logger.info(f"Отправка XML на {API_URL}")
+        if proxies:
+            logger.info(f"Используется прокси: {proxies.get('https', 'N/A')}")
         response = requests.post(
             API_URL,
             files={
@@ -176,8 +186,9 @@ def push_xml(api_key, xml_file_path, xsd_path=None):
                 'olot': ('data.olot', olot_data, 'application/octet-stream'),
             },
             headers=HEADERS,
+            proxies=proxies,
             verify=False,
-            timeout=30
+            timeout=60
         )
 
         response_text = response.text
@@ -188,9 +199,9 @@ def push_xml(api_key, xml_file_path, xsd_path=None):
         except Exception:
             pass
 
-        logging.info(f"Ответ сервера: HTTP {response.status_code}")
-        logging.info(f"Полный ответ: {response_text}")
-        logging.info(f"Response headers: {dict(response.headers)}")
+        logger.info(f"Ответ сервера: HTTP {response.status_code}")
+        logger.info(f"Полный ответ: {response_text}")
+        logger.info(f"Response headers: {dict(response.headers)}")
 
         # Парсим ответ
         try:
@@ -214,7 +225,7 @@ def push_xml(api_key, xml_file_path, xsd_path=None):
             send_edu = send_elem.text if send_elem is not None else "false"
             msg = msg_elem.text if msg_elem is not None else ""
 
-            logging.info(f"Успех: SetId={set_id}, SendEducatedPerson={send_edu}")
+            logger.info(f"Успех: SetId={set_id}, SendEducatedPerson={send_edu}")
 
             return {
                 "success": True,
@@ -231,7 +242,7 @@ def push_xml(api_key, xml_file_path, xsd_path=None):
             msg = msg_elem.text if msg_elem is not None else ""
 
             error_msg = _format_error(status_code, msg)
-            logging.error(f"Ошибка: {status_code} - {msg}")
+            logger.error(f"Ошибка: {status_code} - {msg}")
             _save_error_log(response_text)
 
             return {"success": False, "error": error_msg, "raw_response": response_text[:1000]}
@@ -245,7 +256,7 @@ def push_xml(api_key, xml_file_path, xsd_path=None):
     except requests.exceptions.ConnectionError:
         return {"success": False, "error": "Нет соединения с сервером Минтруда"}
     except Exception as e:
-        logging.error(f"Критическая ошибка отправки: {e}")
+        logger.error(f"Критическая ошибка отправки: {e}")
         return {"success": False, "error": f"Ошибка: {e}"}
 
 
@@ -255,7 +266,7 @@ def _save_error_log(text):
         with open(error_log_file, 'w', encoding='utf-8-sig') as f:
             f.write(text)
     except Exception as e:
-        logging.error(f"Ошибка записи лога: {e}")
+        logger.error(f"Ошибка записи лога: {e}")
 
 
 def _format_error(status_code, message):
@@ -274,13 +285,15 @@ def _format_error(status_code, message):
 
 # ============ Запрос данных по SetId ============
 
-def get_by_set_id(api_key, set_id, page_size=5000):
+def get_by_set_id(api_key, set_id, page_size=5000, proxy_settings=None):
     """
     Запрос регистрационных номеров по SetId.
-    
+
     POST на GET_URL с фильтром SetId.
     Поддерживает пагинацию — собирает все страницы.
-    
+
+    proxy_settings — dict с полями: enabled, url, username, password
+
     Возвращает:
         {"success": bool, "records": list, "error": str}
     """
@@ -304,7 +317,7 @@ def get_by_set_id(api_key, set_id, page_size=5000):
     <SetId>{set_id}</SetId>
 </EducatedPersonFilter>'''
 
-        result = _fetch_page(xml_content, f"стр. {page_no}", page_size)
+        result = _fetch_page(xml_content, f"стр. {page_no}", page_size, proxy_settings)
         if result is None:
             break
 
@@ -322,12 +335,14 @@ def get_by_set_id(api_key, set_id, page_size=5000):
 
 # ============ Запрос данных по СНИЛС ============
 
-def get_by_snils(api_key, snils, page_size=100):
+def get_by_snils(api_key, snils, page_size=100, proxy_settings=None):
     """
     Запрос регистрационных номеров по СНИЛС.
 
     POST на GET_URL с фильтром Snils.
     Поддерживает пагинацию.
+
+    proxy_settings — dict с полями: enabled, url, username, password
 
     Возвращает:
         {"success": bool, "records": list, "error": str}
@@ -351,7 +366,7 @@ def get_by_snils(api_key, snils, page_size=100):
     <Snils>{snils}</Snils>
 </EducatedPersonFilter>'''
 
-        result = _fetch_page(xml_content, f"стр. {page_no}", page_size)
+        result = _fetch_page(xml_content, f"стр. {page_no}", page_size, proxy_settings)
         if result is None:
             break
 
@@ -367,24 +382,28 @@ def get_by_snils(api_key, snils, page_size=100):
     return {"success": True, "records": all_records}
 
 
-def _fetch_page(xml_content, page_label="", page_size=100):
+def _fetch_page(xml_content, page_label="", page_size=100, proxy_settings=None):
     """
     Выполнение одного POST-запроса к GetEducatedPersonXML.
     Возвращает {"records": [...], "has_more": bool} или None при ошибке.
     """
     files = {'file': ('request.xml', xml_content, 'text/xml')}
+    proxies = build_proxies_for_requests(proxy_settings)
 
     try:
-        response = requests.post(GET_URL, files=files, headers=HEADERS, verify=False, timeout=30)
+        if proxies:
+            logger.info(f"Запрос {page_label} через прокси: {proxies.get('https', 'N/A')}")
+        response = requests.post(GET_URL, files=files, headers=HEADERS,
+                                 proxies=proxies, verify=False, timeout=60)
         response.encoding = 'utf-8'
         response_text = response.text
 
         if response.status_code == 500:
-            logging.error(f"Ошибка 500 при запросе {page_label}: {response_text[:300]}")
+            logger.error(f"Ошибка 500 при запросе {page_label}: {response_text[:300]}")
             return None
 
         if response.status_code != 200:
-            logging.error(f"Ошибка HTTP {response.status_code} при запросе {page_label}")
+            logger.error(f"Ошибка HTTP {response.status_code} при запросе {page_label}")
             return None
 
         # Проверка на <Error> в теле
@@ -396,7 +415,7 @@ def _fetch_page(xml_content, page_label="", page_size=100):
                     msg = root.find("Message")
                     sc_text = sc.text if sc is not None else ""
                     msg_text = msg.text if msg is not None else ""
-                    logging.error(f"Логическая ошибка: {sc_text} - {msg_text}")
+                    logger.error(f"Логическая ошибка: {sc_text} - {msg_text}")
                     return None
             except ET.ParseError:
                 pass
@@ -411,7 +430,7 @@ def _fetch_page(xml_content, page_label="", page_size=100):
         return {"records": records, "has_more": len(records) == page_size}
 
     except Exception as e:
-        logging.error(f"Критическая ошибка запроса {page_label}: {e}")
+        logger.error(f"Критическая ошибка запроса {page_label}: {e}")
         return None
 
 
@@ -449,7 +468,7 @@ def _parse_registry_records(response_text):
 
             records.append(rec)
     except ET.ParseError as e:
-        logging.error(f"Ошибка парсинга записей: {e}")
+        logger.error(f"Ошибка парсинга записей: {e}")
 
     return records
 
@@ -522,5 +541,5 @@ def export_records_to_xlsx(records, file_path):
         return True, f"Файл сохранён: {file_path}"
 
     except Exception as e:
-        logging.error(f"Ошибка экспорта XLSX: {e}")
+        logger.error(f"Ошибка экспорта XLSX: {e}")
         return False, f"Ошибка экспорта: {e}"

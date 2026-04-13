@@ -14,7 +14,7 @@ from exporters.xml_exporter import export_to_xml
 class DataViewTab(QWidget):
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("background-color: white;")
+        self.setStyleSheet("background-color: transparent;")
         
         # Хранилище данных
         self.data = []

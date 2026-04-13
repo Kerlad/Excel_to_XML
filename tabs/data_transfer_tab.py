@@ -1,7 +1,8 @@
 import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit,
-    QPushButton, QFileDialog, QMessageBox, QScrollArea, QApplication
+    QPushButton, QFileDialog, QMessageBox, QScrollArea, QApplication,
+    QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -10,12 +11,16 @@ from api.mintrud_api import (
     load_api_key, save_api_key, push_xml,
     get_by_set_id, get_by_snils, export_records_to_xlsx
 )
+from utils.proxy_manager import (
+    load_proxy_settings, save_proxy_settings, test_proxy_connection,
+    detect_windows_proxy
+)
 
 
 class DataTransferTab(QWidget):
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("background-color: white;")
+        self.setStyleSheet("background-color: transparent;")
 
         # Пути
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,7 +35,7 @@ class DataTransferTab(QWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("background-color: white; border: none;")
+        scroll.setStyleSheet("background-color: transparent; border: none;")
 
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
@@ -38,6 +43,9 @@ class DataTransferTab(QWidget):
 
         # Группа 1: API ключ
         scroll_layout.addWidget(self._create_api_key_group())
+
+        # Группа 1.5: Настройки прокси
+        scroll_layout.addWidget(self._create_proxy_group())
 
         # Группа 2: Отправка XML
         scroll_layout.addWidget(self._create_send_xml_group())
@@ -54,6 +62,9 @@ class DataTransferTab(QWidget):
 
         # Загрузка API-ключа
         self.load_api_key()
+
+        # Загрузка настроек прокси
+        self.load_proxy_settings()
 
         # Callback-функции для журнала (устанавливаются из main.py)
         self._journal_add_callback = None    # add_records_to_journal
@@ -132,6 +143,137 @@ class DataTransferTab(QWidget):
         layout.addLayout(row)
 
         return group
+
+    # ============ Группа Настройки прокси ============
+
+    def _create_proxy_group(self):
+        group = QGroupBox()
+        group.setStyleSheet(self._group_style())
+        group.setTitle("Настройки прокси")
+
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
+
+        # Радиокнопки выбора режима
+        mode_layout = QHBoxLayout()
+
+        self.proxy_off_rb = QRadioButton("Без прокси")
+        self.proxy_off_rb.setStyleSheet("color: black;")
+        self.proxy_off_rb.setChecked(True)
+
+        self.proxy_auto_rb = QRadioButton("Авто (системные)")
+        self.proxy_auto_rb.setStyleSheet("color: black;")
+
+        self.proxy_manual_rb = QRadioButton("Вручную")
+        self.proxy_manual_rb.setStyleSheet("color: black;")
+
+        self.proxy_mode_group = QButtonGroup(self)
+        self.proxy_mode_group.addButton(self.proxy_off_rb, 0)
+        self.proxy_mode_group.addButton(self.proxy_auto_rb, 1)
+        self.proxy_mode_group.addButton(self.proxy_manual_rb, 2)
+        self.proxy_mode_group.buttonClicked.connect(self._on_proxy_mode_changed)
+
+        mode_layout.addWidget(self.proxy_off_rb)
+        mode_layout.addWidget(self.proxy_auto_rb)
+        mode_layout.addWidget(self.proxy_manual_rb)
+        mode_layout.addStretch()
+        layout.addLayout(mode_layout)
+
+        # Инфо об авто-режиме (показывается только при "Авто")
+        self.proxy_auto_info = QLabel()
+        self.proxy_auto_info.setStyleSheet("color: #666; font-style: italic; padding: 4px;")
+        self.proxy_auto_info.setWordWrap(True)
+        self.proxy_auto_info.setVisible(False)
+        layout.addWidget(self.proxy_auto_info)
+
+        # Поля для ручного режима
+        # Адрес прокси
+        row1 = QHBoxLayout()
+        self.proxy_url_label = QLabel("Адрес прокси:")
+        self.proxy_url_label.setStyleSheet("color: black;")
+        self.proxy_url_input = QLineEdit()
+        self.proxy_url_input.setFixedWidth(400)
+        self.proxy_url_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_url_input.setPlaceholderText("http://proxy.example.com:3128")
+        row1.addWidget(self.proxy_url_label)
+        row1.addWidget(self.proxy_url_input)
+        row1.addStretch()
+        layout.addLayout(row1)
+
+        # Логин и пароль
+        row2 = QHBoxLayout()
+        self.proxy_user_label = QLabel("Логин:")
+        self.proxy_user_label.setStyleSheet("color: black;")
+        self.proxy_user_input = QLineEdit()
+        self.proxy_user_input.setFixedWidth(150)
+        self.proxy_user_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_user_input.setPlaceholderText("Если прокси требует авторизацию")
+        row2.addWidget(self.proxy_user_label)
+        row2.addWidget(self.proxy_user_input)
+
+        row2.addSpacing(20)
+
+        self.proxy_pass_label = QLabel("Пароль:")
+        self.proxy_pass_label.setStyleSheet("color: black;")
+        self.proxy_pass_input = QLineEdit()
+        self.proxy_pass_input.setFixedWidth(150)
+        self.proxy_pass_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_pass_input.setPlaceholderText("Если прокси требует авторизацию")
+        self.proxy_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
+        row2.addWidget(self.proxy_pass_label)
+        row2.addWidget(self.proxy_pass_input)
+        row2.addStretch()
+        layout.addLayout(row2)
+
+        # Кнопки
+        btn_row = QHBoxLayout()
+        self.proxy_save_btn = QPushButton("Сохранить настройки")
+        self.proxy_save_btn.setStyleSheet(self._btn_style())
+        self.proxy_save_btn.clicked.connect(self.save_proxy_settings_ui)
+
+        self.proxy_test_btn = QPushButton("Тест подключения")
+        self.proxy_test_btn.setStyleSheet(self._btn_style())
+        self.proxy_test_btn.clicked.connect(self.test_proxy)
+
+        btn_row.addWidget(self.proxy_save_btn)
+        btn_row.addWidget(self.proxy_test_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        # Инициальное состояние — скрыть ручные поля
+        self._on_proxy_mode_changed(self.proxy_off_rb)
+
+        return group
+
+    def _on_proxy_mode_changed(self, button):
+        """Обработка смены режима прокси."""
+        mode = self.proxy_mode_group.id(button)
+        # 0 = off, 1 = auto, 2 = manual
+
+        manual_fields = [
+            self.proxy_url_label, self.proxy_url_input,
+            self.proxy_user_label, self.proxy_user_input,
+            self.proxy_pass_label, self.proxy_pass_input
+        ]
+
+        if mode == 0:  # off
+            for w in manual_fields:
+                w.setVisible(False)
+            self.proxy_auto_info.setVisible(False)
+        elif mode == 1:  # auto
+            for w in manual_fields:
+                w.setVisible(False)
+            # Покажем текущий системный прокси
+            sys_proxy = detect_windows_proxy()
+            if sys_proxy:
+                self.proxy_auto_info.setText(f"Обнаружен системный прокси: {sys_proxy}")
+            else:
+                self.proxy_auto_info.setText("Системный прокси не обнаружен в настройках Windows")
+            self.proxy_auto_info.setVisible(True)
+        else:  # manual
+            for w in manual_fields:
+                w.setVisible(True)
+            self.proxy_auto_info.setVisible(False)
 
     def _create_send_xml_group(self):
         group = QGroupBox()
@@ -258,6 +400,98 @@ class DataTransferTab(QWidget):
         else:
             QMessageBox.warning(self, "Ошибка", msg)
 
+    # ============ Логика настроек прокси ============
+
+    def load_proxy_settings(self):
+        """Загрузка настроек прокси из файла."""
+        settings = load_proxy_settings(self.data_dir)
+        mode = settings.get('mode', 'off')
+
+        # Установить радиокнопку
+        if mode == 'auto':
+            self.proxy_auto_rb.setChecked(True)
+        elif mode == 'manual':
+            self.proxy_manual_rb.setChecked(True)
+        else:
+            self.proxy_off_rb.setChecked(True)
+
+        self.proxy_url_input.setText(settings.get('url', ''))
+        self.proxy_user_input.setText(settings.get('username', ''))
+        self.proxy_pass_input.setText(settings.get('password', ''))
+
+        # Обновить видимость полей
+        if mode == 'auto':
+            self._on_proxy_mode_changed(self.proxy_auto_rb)
+        elif mode == 'manual':
+            self._on_proxy_mode_changed(self.proxy_manual_rb)
+        else:
+            self._on_proxy_mode_changed(self.proxy_off_rb)
+
+    def save_proxy_settings_ui(self):
+        """Сохранение настроек прокси из UI."""
+        mode_id = self.proxy_mode_group.checkedId()
+        mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
+        mode = mode_map.get(mode_id, 'off')
+
+        settings = {
+            'mode': mode,
+            'url': self.proxy_url_input.text().strip(),
+            'username': self.proxy_user_input.text().strip(),
+            'password': self.proxy_pass_input.text().strip()
+        }
+
+        ok, msg = save_proxy_settings(self.data_dir, settings)
+        if ok:
+            mode_text = {'off': 'Без прокси', 'auto': 'Авто (системный)', 'manual': 'Ручной'}
+            QMessageBox.information(self, "Успех", f"Режим: {mode_text.get(mode, mode)}\n{msg}")
+        else:
+            QMessageBox.warning(self, "Ошибка", msg)
+
+    def test_proxy(self):
+        """Тестирование подключения через прокси."""
+        mode_id = self.proxy_mode_group.checkedId()
+        mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
+        mode = mode_map.get(mode_id, 'off')
+
+        settings = {
+            'mode': mode,
+            'url': self.proxy_url_input.text().strip(),
+            'username': self.proxy_user_input.text().strip(),
+            'password': self.proxy_pass_input.text().strip()
+        }
+
+        if mode == 'off':
+            QMessageBox.information(self, "Информация", "Режим 'Без прокси' — будет использовано прямое подключение.")
+            return
+
+        if mode == 'auto':
+            sys_proxy = detect_windows_proxy()
+            if not sys_proxy:
+                QMessageBox.warning(self, "Ошибка", "Системный прокси не обнаружен.\nПроверьте настройки прокси в Windows (Параметры → Сеть → Прокси-сервер).")
+                return
+
+        QMessageBox.information(self, "Информация", "Тестирование подключения...")
+        QApplication.processEvents()
+
+        ok, msg = test_proxy_connection(settings)
+        if ok:
+            QMessageBox.information(self, "Успех", msg)
+        else:
+            QMessageBox.critical(self, "Ошибка", msg)
+
+    def _get_proxy_settings(self):
+        """Получение текущих настроек прокси для передачи в API."""
+        mode_id = self.proxy_mode_group.checkedId()
+        mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
+        mode = mode_map.get(mode_id, 'off')
+
+        return {
+            'mode': mode,
+            'url': self.proxy_url_input.text().strip(),
+            'username': self.proxy_user_input.text().strip(),
+            'password': self.proxy_pass_input.text().strip()
+        }
+
     # ============ Логика отправки XML ============
 
     def select_xml_file(self):
@@ -300,10 +534,12 @@ class DataTransferTab(QWidget):
         # Парсим XML для получения данных работников (для журнала)
         xml_records_data = self._parse_xml_for_journal(xml_file)
 
+        proxy_settings = self._get_proxy_settings()
+
         QMessageBox.information(self, "Информация", "Отправка данных...")
         QApplication.processEvents()
 
-        result = push_xml(api_key, xml_file)
+        result = push_xml(api_key, xml_file, proxy_settings=proxy_settings)
 
         if result["success"]:
             set_id = result.get("set_id", "")
@@ -347,7 +583,8 @@ class DataTransferTab(QWidget):
         QMessageBox.information(self, "Информация", f"Запрос данных по SetId: {set_id}...")
         QApplication.processEvents()
 
-        result = get_by_set_id(api_key, set_id)
+        proxy_settings = self._get_proxy_settings()
+        result = get_by_set_id(api_key, set_id, proxy_settings=proxy_settings)
 
         if not result["success"]:
             QMessageBox.critical(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
@@ -449,7 +686,8 @@ class DataTransferTab(QWidget):
         QMessageBox.information(self, "Информация", f"Запрос данных по СНИЛС: {snils}...")
         QApplication.processEvents()
 
-        result = get_by_snils(api_key, snils)
+        proxy_settings = self._get_proxy_settings()
+        result = get_by_snils(api_key, snils, proxy_settings=proxy_settings)
 
         if not result["success"]:
             QMessageBox.critical(self, "Ошибка", result.get("error", "Неизвестная ошибка"))

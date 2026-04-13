@@ -5,7 +5,7 @@ import os
 import logging
 from datetime import datetime, timedelta
 
-logging.basicConfig(filename='import_errors.log', level=logging.ERROR, encoding='utf-8')
+logger = logging.getLogger(__name__)
 
 COLUMNS = [
     "Фамилия", "Имя", "Отчество", "СНИЛС", "Должность",
@@ -162,7 +162,7 @@ def load_xlsx(file_path):
     except ImportError as e:
         return None, 0, [f"Не установлен модуль: {e}. pip install openpyxl xlrd"]
     except Exception as e:
-        logging.error(f"Ошибка загрузки файла {file_path}: {e}")
+        logger.error(f"Ошибка загрузки файла {file_path}: {e}")
         return None, 0, [f"Ошибка открытия файла: {e}"]
 
 

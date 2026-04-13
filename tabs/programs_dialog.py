@@ -18,6 +18,7 @@ class ProgramsDialog(QDialog):
         self.manager = programs_manager
         self.setWindowTitle("Программы обучения")
         self.setMinimumSize(900, 600)
+        self.setStyleSheet("background-color: rgba(240, 240, 250, 0.95);")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -182,53 +183,87 @@ class ProgramsDialog(QDialog):
 
     def _show_input_dialog(self, title: str, current_value: str, digits_only: bool = False) -> str:
         """Диалог ввода значения."""
+        from PyQt6.QtGui import QPalette, QColor
+
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
         dialog.setMinimumWidth(400)
 
+        # Принудительно светлая палитра + QSS для гарантии белого фона
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: rgb(240, 240, 250);
+            }
+            QLineEdit {
+                background-color: rgb(255, 255, 255);
+                color: #1A1A2E;
+                padding: 8px 14px;
+                border-radius: 12px;
+                border: 1px solid rgba(124, 77, 255, 0.15);
+            }
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.7);
+                color: #1A1A2E;
+                border: 1px solid rgba(124, 77, 255, 0.15);
+                border-radius: 9999px;
+                padding: 8px 20px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(124, 77, 255, 0.15);
+            }
+            QLabel {
+                background-color: transparent;
+                color: #1A1A2E;
+            }
+        """)
+
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 250))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(26, 26, 46))
+        palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+        palette.setColor(QPalette.ColorRole.Text, QColor(26, 26, 46))
+        palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 250))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(26, 26, 46))
+        dialog.setPalette(palette)
+
         layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
 
         input_field = QLineEdit()
         input_field.setText(current_value)
-        input_field.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 6px;")
         input_field.setPlaceholderText(f"Введите {title.lower()}")
         layout.addWidget(input_field)
 
-        # Кнопки
         btn_layout = QHBoxLayout()
         ok_btn = QPushButton("ОК")
         ok_btn.setStyleSheet("""
             QPushButton {
-                background-color: #4169E1;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #B39DDB, stop:1 #FF8A65);
                 color: white;
                 border: none;
-                padding: 6px 16px;
-                border-radius: 5px;
+                border-radius: 9999px;
+                padding: 8px 20px;
+                font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
+            QPushButton:hover { opacity: 0.85; }
         """)
-
         cancel_btn = QPushButton("Отмена")
         cancel_btn.setStyleSheet("""
             QPushButton {
-                color: red;
-                border: 2px solid red;
-                padding: 6px 16px;
-                border-radius: 5px;
+                color: #F44336;
+                border: 1.5px solid #F44336;
+                background-color: transparent;
+                border-radius: 9999px;
+                padding: 8px 20px;
                 font-weight: bold;
-                background-color: white;
             }
-            QPushButton:hover {
-                background-color: #FFE0E0;
-            }
+            QPushButton:hover { background-color: rgba(244, 67, 54, 0.1); }
         """)
 
         def on_ok():
             value = input_field.text().strip()
             if digits_only and value:
-                # Разрешаем целые и дробные числа
                 try:
                     float(value)
                 except ValueError:
@@ -238,7 +273,6 @@ class ProgramsDialog(QDialog):
 
         ok_btn.clicked.connect(on_ok)
         cancel_btn.clicked.connect(dialog.reject)
-
         btn_layout.addWidget(ok_btn)
         btn_layout.addWidget(cancel_btn)
         btn_layout.addStretch()

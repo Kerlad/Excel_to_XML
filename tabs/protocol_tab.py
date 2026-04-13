@@ -20,7 +20,7 @@ class ProtocolTab(QWidget):
     def __init__(self, commission_manager: CommissionManager, programs_manager: ProgramsManager,
                  data_dir: str):
         super().__init__()
-        self.setStyleSheet("background-color: white;")
+        self.setStyleSheet("background-color: transparent;")
         self.commission = commission_manager
         self.programs = programs_manager
         self.data_dir = data_dir
@@ -32,7 +32,7 @@ class ProtocolTab(QWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("background-color: white; border: none;")
+        scroll.setStyleSheet("background-color: transparent; border: none;")
 
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)

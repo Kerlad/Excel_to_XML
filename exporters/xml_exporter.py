@@ -9,7 +9,7 @@ from xml.etree.ElementTree import Element, SubElement, ElementTree
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
 
-logging.basicConfig(filename='export_errors.log', level=logging.ERROR, encoding='utf-8')
+logger = logging.getLogger(__name__)
 
 # Названия программ согласно XSD (learnProgram: название)
 PROGRAM_TITLES = {
@@ -162,7 +162,7 @@ def build_xml(records, org_settings=None):
             lines[0] = '<?xml version="1.0" encoding="UTF-8"?>'
         return '\n'.join(lines).encode('utf-8')
     except Exception as e:
-        logging.error(f"Ошибка форматирования XML: {e}")
+        logger.error(f"Ошибка форматирования XML: {e}")
         xml_declaration = b'<?xml version="1.0" encoding="UTF-8"?>\n'
         return xml_declaration + rough_string
 
@@ -198,5 +198,5 @@ def export_to_xml(records, file_path, org_settings=None):
     except PermissionError:
         return False, "Нет прав на запись файла"
     except Exception as e:
-        logging.error(f"Ошибка экспорта в XML: {e}")
+        logger.error(f"Ошибка экспорта в XML: {e}")
         return False, f"Ошибка экспорта: {e}"

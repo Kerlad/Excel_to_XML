@@ -81,6 +81,9 @@ class ProtocolExporter:
             wb = load_workbook(output_path)
             ws = wb.active
 
+            # Разъединяем merged cells, чтобы можно было записывать данные
+            ProtocolExporter._unmerge_cells(ws)
+
             # Заполняем данные организации (ячейки зависят от шаблона)
             # По protocol_create.md: данные организации берутся из GUI
             ProtocolExporter._fill_org_data(ws, org_settings)
@@ -112,15 +115,15 @@ class ProtocolExporter:
                 # Колонки согласно protocol_create.md:
                 # A=Фамилия, B=Имя, C=Отчество, D=СНИЛС, E=Должность,
                 # F=Номер программы, G=Результат, H=Дата проверки, I=Номер протокола
-                ws[f'A{row}'] = rec.last_name
-                ws[f'B{row}'] = rec.first_name
-                ws[f'C{row}'] = rec.middle_name
-                ws[f'D{row}'] = rec.snils
-                ws[f'E{row}'] = rec.position
-                ws[f'F{row}'] = rec.program_id
-                ws[f'G{row}'] = "Удовлетворительно" if rec.result == "Удовлетворительно" or rec.status == "received" else "Неудовлетворительно"
-                ws[f'H{row}'] = rec.exam_date
-                ws[f'I{row}'] = rec.protocol
+                ws.cell(row=row, column=1).value = rec.last_name
+                ws.cell(row=row, column=2).value = rec.first_name
+                ws.cell(row=row, column=3).value = rec.middle_name
+                ws.cell(row=row, column=4).value = rec.snils
+                ws.cell(row=row, column=5).value = rec.position
+                ws.cell(row=row, column=6).value = rec.program_id
+                ws.cell(row=row, column=7).value = "Удовлетворительно" if rec.result == "Удовлетворительно" or rec.status == "received" else "Неудовлетворительно"
+                ws.cell(row=row, column=8).value = rec.exam_date
+                ws.cell(row=row, column=9).value = rec.protocol
 
             wb.save(output_path)
 
@@ -129,6 +132,17 @@ class ProtocolExporter:
         except Exception as e:
             logger.error(f"Ошибка экспорта протокола: {e}")
             return False, f"Ошибка формирования протокола: {e}"
+
+    @staticmethod
+    def _unmerge_cells(ws):
+        """
+        Разъединяет все merged cells на листе.
+        Нужно для того, чтобы можно было записывать данные в ячейки,
+        которые были объединены в шаблоне.
+        """
+        merged_ranges = list(ws.merged_cells.ranges)
+        for merged_range in merged_ranges:
+            ws.unmerge_cells(str(merged_range))
 
     @staticmethod
     def _fill_org_data(ws, org_settings):
@@ -156,7 +170,7 @@ class ProtocolExporter:
                     cell_val = cell.value.strip()
                     for keyword, value in mappings.items():
                         if keyword.lower() in cell_val.lower() and value:
-                            # Записываем в соседнюю ячейку справа
+                            # Записываем в соседнюю ячейку справа через ws.cell() — безопасно даже после unmerge
                             target = ws.cell(row=cell.row, column=cell.column + 1)
                             target.value = value
 
@@ -212,6 +226,9 @@ class ProtocolExporter:
             wb = load_workbook(output_path)
             ws = wb.active
 
+            # Разъединяем merged cells
+            ProtocolExporter._unmerge_cells(ws)
+
             # Заполняем шаблон данными комиссии (эвристика по ключевым словам)
             ProtocolExporter._fill_commission_data(ws, commission_data, protocol_number)
 
@@ -259,6 +276,7 @@ class ProtocolExporter:
                     cell_val = cell.value.strip().lower()
                     for keyword, value in mappings.items():
                         if keyword in cell_val and value and keyword not in filled_keys:
+                            # Записываем через ws.cell() — безопасно после unmerge
                             target = ws.cell(row=cell.row, column=cell.column + 1)
                             if not target.value:
                                 target.value = value

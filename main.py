@@ -1,9 +1,9 @@
 import sys
 import os
 import logging
-from PyQt6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel
+from PyQt6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QFont
+from PyQt6.QtGui import QIcon, QFont, QPalette, QColor
 from tabs.data_entry_tab import DataEntryTab
 from tabs.data_view_tab import DataViewTab
 from tabs.data_transfer_tab import DataTransferTab
@@ -13,11 +13,15 @@ from journal.journal_manager import JournalManager
 from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from utils.logger import setup_logging
+from utils.tahoe_style import get_global_stylesheet, apply_mica, load_theme, save_theme
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, app=None):
         super().__init__()
+        self.app = app
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.current_theme = load_theme(self.base_dir)
         self.setWindowTitle("Excel-XML для передачи данных в Минтруд")
         self.setMinimumSize(1000, 700)
         self.resize(1200, 800)
@@ -62,9 +66,58 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self.tabs)
 
+    def _apply_theme(self, theme: str):
+        """Применение темы (light/dark) ко всему приложению."""
+        self.current_theme = theme
+        save_theme(self.base_dir, theme)
+
+        if self.app:
+            # Обновляем палитру
+            if theme == "dark":
+                palette = QPalette()
+                palette.setColor(QPalette.ColorRole.Window, QColor(30, 30, 42))
+                palette.setColor(QPalette.ColorRole.WindowText, QColor(232, 232, 240))
+                palette.setColor(QPalette.ColorRole.Base, QColor(40, 40, 55))
+                palette.setColor(QPalette.ColorRole.AlternateBase, QColor(35, 35, 50))
+                palette.setColor(QPalette.ColorRole.Text, QColor(232, 232, 240))
+                palette.setColor(QPalette.ColorRole.Button, QColor(40, 40, 55))
+                palette.setColor(QPalette.ColorRole.ButtonText, QColor(232, 232, 240))
+                palette.setColor(QPalette.ColorRole.Highlight, QColor(179, 136, 255))
+                palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+            else:
+                palette = QPalette()
+                palette.setColor(QPalette.ColorRole.Window, QColor(245, 245, 250))
+                palette.setColor(QPalette.ColorRole.WindowText, QColor(26, 26, 46))
+                palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+                palette.setColor(QPalette.ColorRole.AlternateBase, QColor(240, 240, 250))
+                palette.setColor(QPalette.ColorRole.Text, QColor(26, 26, 46))
+                palette.setColor(QPalette.ColorRole.Button, QColor(245, 245, 250))
+                palette.setColor(QPalette.ColorRole.ButtonText, QColor(26, 26, 46))
+                palette.setColor(QPalette.ColorRole.Highlight, QColor(124, 77, 255))
+                palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+            self.app.setPalette(palette)
+            self.app.setStyleSheet(get_global_stylesheet(theme))
+
+            # Обновляем стили всех виджетов
+            self._refresh_styles()
+
+    def _refresh_styles(self):
+        """Обновление стилей всех виджетов при смене темы."""
+        # unpolish/polish для MainWindow и всех дочерних
+        for w in self.findChildren(QWidget):
+            w.style().unpolish(w)
+            w.style().polish(w)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
     def _create_menu_bar(self):
         """Создание главного меню."""
         menubar = self.menuBar()
+
+        # Меню "Настройки"
+        settings_menu = menubar.addMenu("Настройки")
+        theme_action = settings_menu.addAction("Светлая тема" if self.current_theme == "dark" else "Тёмная тема")
+        theme_action.triggered.connect(self._toggle_theme)
 
         # Меню "Справка"
         help_menu = menubar.addMenu("Справка")
@@ -75,6 +128,15 @@ class MainWindow(QMainWindow):
         about_menu = menubar.addMenu("О программе")
         about_action = about_menu.addAction("О программе")
         about_action.triggered.connect(self.show_about)
+
+    def _toggle_theme(self):
+        """Переключение темы."""
+        new_theme = "light" if self.current_theme == "dark" else "dark"
+        self._apply_theme(new_theme)
+        # Обновляем текст пункта меню
+        menubar = self.menuBar()
+        settings_menu = menubar.actions()[0].menu()  # первое меню = Настройки
+        settings_menu.actions()[0].setText("Светлая тема" if new_theme == "dark" else "Тёмная тема")
 
     def show_help(self):
         """Окно справки по работе с программой."""
@@ -243,7 +305,63 @@ if __name__ == "__main__":
     setup_logging(log_dir)
     logging.getLogger(__name__).info("=== Приложение запущено ===")
 
+    # Загрузка темы
+    theme = load_theme(base_dir)
+
     app = QApplication(sys.argv)
-    window = MainWindow()
+
+    # Палитра под выбранную тему (не зависит от системной темы)
+    if theme == "dark":
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(30, 30, 42))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(232, 232, 240))
+        palette.setColor(QPalette.ColorRole.Base, QColor(40, 40, 55))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(35, 35, 50))
+        palette.setColor(QPalette.ColorRole.Text, QColor(232, 232, 240))
+        palette.setColor(QPalette.ColorRole.Button, QColor(40, 40, 55))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(232, 232, 240))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(179, 136, 255))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+    else:
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(245, 245, 250))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(26, 26, 46))
+        palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(240, 240, 250))
+        palette.setColor(QPalette.ColorRole.Text, QColor(26, 26, 46))
+        palette.setColor(QPalette.ColorRole.Button, QColor(245, 245, 250))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(26, 26, 46))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(124, 77, 255))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+    app.setPalette(palette)
+
+    app.setStyle("Fusion")
+    app.setStyleSheet(get_global_stylesheet(theme))
+
+    # Авто-применение темы ко всем всплывающим окнам (QMessageBox, QFileDialog и т.д.)
+    from PyQt6.QtCore import QEvent, QObject
+
+    class DialogStyler(QObject):
+        """Применяет stylesheet ко всем новым QDialog."""
+        def __init__(self, style: str):
+            super().__init__()
+            self._style = style
+
+        def eventFilter(self, obj, event):
+            from PyQt6.QtWidgets import QDialog
+            if isinstance(obj, QDialog) and event.type() == QEvent.Type.Show:
+                current = obj.styleSheet()
+                if not current or self._style[:20] not in current:
+                    obj.setStyleSheet(self._style)
+            return False
+
+    dialog_styler = DialogStyler(get_global_stylesheet(theme))
+    app.installEventFilter(dialog_styler)
+
+    window = MainWindow(app=app)
     window.show()
+
+    # Mica backdrop (после show() для получения HWND)
+    apply_mica(window)
+    logging.getLogger(__name__).info(f"Окно отображено, тема: {theme}, Mica применён")
     sys.exit(app.exec())

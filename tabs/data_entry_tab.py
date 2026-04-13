@@ -21,7 +21,7 @@ class DataEntryTab(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("background-color: white;")
+        self.setStyleSheet("background-color: transparent;")
         # Callback для получения существующих ключей (СНИЛС, программа)
         self.get_existing_keys_callback = None
         
@@ -43,7 +43,7 @@ class DataEntryTab(QWidget):
         # Scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("background-color: white; border: none;")
+        scroll.setStyleSheet("background-color: transparent; border: none;")
         
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)

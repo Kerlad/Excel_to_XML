@@ -1,0 +1,15 @@
+{
+  "org_name": "ООО Моя оборона",
+  "order_number": "324",
+  "order_date": "11112011",
+  "chairman_fio": "Иванов Ч.Ч.",
+  "chairman_position": "Директор",
+  "member1_fio": "Первый А.А.",
+  "member1_position": "Первый зам директора",
+  "member2_fio": "Второй В.В.",
+  "member2_position": "Второй зам директора",
+  "member3_fio": "Третий Т.Т.",
+  "member3_position": "Человек дождя",
+  "union_fio": "",
+  "union_position": ""
+}

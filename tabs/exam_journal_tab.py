@@ -17,7 +17,7 @@ from journal.journal_manager import JournalRecord
 class ExamJournalTab(QWidget):
     def __init__(self, journal_manager):
         super().__init__()
-        self.setStyleSheet("background-color: white;")
+        self.setStyleSheet("background-color: transparent;")
         self.journal = journal_manager
 
         # Основной layout
