@@ -5,7 +5,7 @@ import subprocess
 import shutil
 from openpyxl import Workbook
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QComboBox, QScrollArea,
     QFileDialog, QMessageBox, QFrame
 )
@@ -88,59 +88,66 @@ class DataEntryTab(QWidget):
             }
         """)
         group.setTitle("Данные УЦ и работодателя")
-        
-        layout = QVBoxLayout(group)
-        
-        # Первая строка: ИНН УЦ и Название УЦ
-        row1 = QHBoxLayout()
-        
-        form1 = QFormLayout()
+
+        # QGridLayout для точного выравнивания:
+        # Строка 0: ИНН УЦ (label) | ИНН УЦ (field) | [75px spacer] | Название УЦ (label) | Название УЦ (field)
+        # Строка 1: ИНН Заказчика (label) | ИНН Заказчика (field) | [75px spacer] | Название Заказчика (label) | Название Заказчика (field)
+        grid = QGridLayout(group)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(12)
+
+        # === Строка 0: ИНН УЦ и Название УЦ ===
         self.tc_inn_label = QLabel("ИНН УЦ:")
-        self.tc_inn_label.setStyleSheet("color: black;")
+        self.tc_inn_label.setStyleSheet("color: black; font-weight: bold;")
+        self.tc_inn_label.setFixedWidth(110)
+        grid.addWidget(self.tc_inn_label, 0, 0)
+
         self.tc_inn_input = QLineEdit()
-        self.tc_inn_input.setFixedWidth(150)
+        self.tc_inn_input.setFixedWidth(160)
         self.tc_inn_input.setPlaceholderText("10 или 12 цифр")
-        self.tc_inn_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        form1.addRow(self.tc_inn_label, self.tc_inn_input)
-        row1.addLayout(form1)
-        row1.addSpacing(20)
-        
-        form2 = QFormLayout()
+        self.tc_inn_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        grid.addWidget(self.tc_inn_input, 0, 1)
+
+        # Фиксированный отступ 2 см (~75px)
+        grid.setColumnMinimumWidth(2, 75)
+
         self.tc_title_label = QLabel("Название УЦ:")
-        self.tc_title_label.setStyleSheet("color: black;")
+        self.tc_title_label.setStyleSheet("color: black; font-weight: bold;")
+        self.tc_title_label.setFixedWidth(120)
+        grid.addWidget(self.tc_title_label, 0, 3)
+
         self.tc_title_input = QLineEdit()
-        self.tc_title_input.setMinimumWidth(300)
-        self.tc_title_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        form2.addRow(self.tc_title_label, self.tc_title_input)
-        row1.addLayout(form2)
-        
-        layout.addLayout(row1)
-        
-        # Вторая строка: ИНН Заказчика и Название Заказчика
-        row2 = QHBoxLayout()
-        
-        form3 = QFormLayout()
+        self.tc_title_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        self.tc_title_input.setPlaceholderText("Полное наименование")
+        grid.addWidget(self.tc_title_input, 0, 4)
+
+        # === Строка 1: ИНН Заказчика и Название Заказчика ===
         self.employer_inn_label = QLabel("ИНН Заказчика:")
-        self.employer_inn_label.setStyleSheet("color: black;")
+        self.employer_inn_label.setStyleSheet("color: black; font-weight: bold;")
+        self.employer_inn_label.setFixedWidth(110)
+        grid.addWidget(self.employer_inn_label, 1, 0)
+
         self.employer_inn_input = QLineEdit()
-        self.employer_inn_input.setFixedWidth(150)
+        self.employer_inn_input.setFixedWidth(160)
         self.employer_inn_input.setPlaceholderText("10 или 12 цифр")
-        self.employer_inn_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        form3.addRow(self.employer_inn_label, self.employer_inn_input)
-        row2.addLayout(form3)
-        row2.addSpacing(20)
-        
-        form4 = QFormLayout()
+        self.employer_inn_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        grid.addWidget(self.employer_inn_input, 1, 1)
+
+        # Колонка-разделитель уже создана
+
         self.employer_title_label = QLabel("Название Заказчика:")
-        self.employer_title_label.setStyleSheet("color: black;")
+        self.employer_title_label.setStyleSheet("color: black; font-weight: bold;")
+        self.employer_title_label.setFixedWidth(120)
+        grid.addWidget(self.employer_title_label, 1, 3)
+
         self.employer_title_input = QLineEdit()
-        self.employer_title_input.setMinimumWidth(300)
-        self.employer_title_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        form4.addRow(self.employer_title_label, self.employer_title_input)
-        row2.addLayout(form4)
-        
-        layout.addLayout(row2)
-        
+        self.employer_title_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        self.employer_title_input.setPlaceholderText("Полное наименование")
+        grid.addWidget(self.employer_title_input, 1, 4)
+
+        # Растягивающаяся колонка для полей названий
+        grid.setColumnStretch(4, 1)
+
         # Кнопка Сохранить данные
         btn_layout = QHBoxLayout()
         self.save_org_btn = QPushButton("Сохранить данные")
@@ -149,9 +156,10 @@ class DataEntryTab(QWidget):
                 background-color: #4169E1;
                 color: white;
                 border: none;
-                padding: 8px 16px;
+                padding: 8px 20px;
                 border-radius: 5px;
                 font-weight: bold;
+                font-size: 13px;
             }
             QPushButton:hover {
                 background-color: #3151B1;
@@ -160,8 +168,8 @@ class DataEntryTab(QWidget):
         self.save_org_btn.clicked.connect(self.save_org_settings)
         btn_layout.addWidget(self.save_org_btn)
         btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-        
+        grid.addLayout(btn_layout, 2, 0, 1, 5)
+
         return group
 
     def _create_upload_group(self):

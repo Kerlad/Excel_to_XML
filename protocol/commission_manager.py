@@ -34,6 +34,7 @@ class CommissionManager:
             "org_name": "",
             "order_number": "",
             "order_date": "",
+            "exam_date": "",
             "chairman_fio": "",
             "chairman_position": "",
             "member1_fio": "",
@@ -51,7 +52,7 @@ class CommissionManager:
         Сохранение данных комиссии.
 
         data — словарь с полями:
-            org_name, order_number, order_date,
+            org_name, order_number, order_date, exam_date,
             chairman_fio, chairman_position,
             member1_fio, member1_position,
             member2_fio, member2_position,

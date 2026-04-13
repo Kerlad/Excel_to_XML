@@ -263,25 +263,25 @@ class ExamJournalTab(QWidget):
                 background-color: #4169E1;
                 color: white;
                 padding: 5px;
-                border: none;
+                border: 1px solid #3050C0;
                 font-weight: bold;
             }
         """)
 
-        # Ширина колонок
-        table.setColumnWidth(0, 140)   # Дата отправки
-        table.setColumnWidth(1, 280)   # SetId
-        table.setColumnWidth(2, 120)   # Фамилия
+        # Ширина колонок (10 символов ≈ 100px)
+        table.setColumnWidth(0, 120)   # Дата отправки
+        table.setColumnWidth(1, 120)   # SetId
+        table.setColumnWidth(2, 100)   # Фамилия
         table.setColumnWidth(3, 100)   # Имя
-        table.setColumnWidth(4, 120)   # Отчество
-        table.setColumnWidth(5, 130)   # СНИЛС
-        table.setColumnWidth(6, 150)   # Должность
-        table.setColumnWidth(7, 80)    # № программы
-        table.setColumnWidth(8, 350)   # Название программы
+        table.setColumnWidth(4, 100)   # Отчество
+        table.setColumnWidth(5, 120)   # СНИЛС
+        table.setColumnWidth(6, 100)   # Должность
+        table.setColumnWidth(7, 100)   # № программы
+        table.setColumnWidth(8, 300)   # Название программы
         table.setColumnWidth(9, 100)   # Дата экзамена
         table.setColumnWidth(10, 100)  # № протокола
-        table.setColumnWidth(11, 130)  # Рег. номер
-        table.setColumnWidth(12, 80)   # Статус
+        table.setColumnWidth(11, 100)  # Рег. номер
+        table.setColumnWidth(12, 100)  # Статус
         table.hideColumn(13)           # Скрытый UUID
 
         return table

@@ -2,7 +2,7 @@ import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit,
     QPushButton, QFileDialog, QMessageBox, QScrollArea, QApplication,
-    QRadioButton, QButtonGroup
+    QRadioButton, QButtonGroup, QFrame
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -157,15 +157,52 @@ class DataTransferTab(QWidget):
         # Радиокнопки выбора режима
         mode_layout = QHBoxLayout()
 
+        # Обёртка с серой границей
+        radio_frame = QFrame()
+        radio_frame.setStyleSheet("""
+            QFrame {
+                border: 1px solid #CCCCCC;
+                border-radius: 6px;
+                padding: 8px;
+                background-color: #F5F5F5;
+            }
+        """)
+        radio_inner = QHBoxLayout(radio_frame)
+        radio_inner.setSpacing(25)
+
+        # Стиль для радиокнопок — видимый кружок
+        rb_style = """
+            QRadioButton {
+                color: black;
+                spacing: 6px;
+                font-size: 13px;
+            }
+            QRadioButton::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #888;
+                border-radius: 9px;
+                background-color: white;
+            }
+            QRadioButton::indicator:hover {
+                border: 2px solid #4169E1;
+                background-color: #E8E8FF;
+            }
+            QRadioButton::indicator:checked {
+                border: 3px solid #4169E1;
+                background-color: #4169E1;
+            }
+        """
+
         self.proxy_off_rb = QRadioButton("Без прокси")
-        self.proxy_off_rb.setStyleSheet("color: black;")
+        self.proxy_off_rb.setStyleSheet(rb_style)
         self.proxy_off_rb.setChecked(True)
 
         self.proxy_auto_rb = QRadioButton("Авто (системные)")
-        self.proxy_auto_rb.setStyleSheet("color: black;")
+        self.proxy_auto_rb.setStyleSheet(rb_style)
 
         self.proxy_manual_rb = QRadioButton("Вручную")
-        self.proxy_manual_rb.setStyleSheet("color: black;")
+        self.proxy_manual_rb.setStyleSheet(rb_style)
 
         self.proxy_mode_group = QButtonGroup(self)
         self.proxy_mode_group.addButton(self.proxy_off_rb, 0)
@@ -173,9 +210,12 @@ class DataTransferTab(QWidget):
         self.proxy_mode_group.addButton(self.proxy_manual_rb, 2)
         self.proxy_mode_group.buttonClicked.connect(self._on_proxy_mode_changed)
 
-        mode_layout.addWidget(self.proxy_off_rb)
-        mode_layout.addWidget(self.proxy_auto_rb)
-        mode_layout.addWidget(self.proxy_manual_rb)
+        radio_inner.addWidget(self.proxy_off_rb)
+        radio_inner.addWidget(self.proxy_auto_rb)
+        radio_inner.addWidget(self.proxy_manual_rb)
+        radio_inner.addStretch()
+
+        mode_layout.addWidget(radio_frame)
         mode_layout.addStretch()
         layout.addLayout(mode_layout)
 

@@ -70,34 +70,38 @@ class DataViewTab(QWidget):
         self.table.setColumnCount(13)
         self.table.setHorizontalHeaderLabels([
             "Фамилия", "Имя", "Отчество", "СНИЛС", "Должность",
-            "ИНН Заказчика", "Наименование ЮЛ заказчика", "ИНН УЦ",
-            "Наименование УЦ", "Результат", "№ программы", "Дата", "№ протокола"
+            "ИНН\nзаказчика", "Наименование\nзаказчика", "ИНН\nУЦ",
+            "Наименование\nУЦ", "Результат", "№ программы", "Дата", "№ протокола"
         ])
-        
+
         # Настройка таблицы
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setDefaultSectionSize(25)
-        
+
+        # Разделители между заголовками столбцов
+        self.table.horizontalHeader().setStyleSheet("""
+            QHeaderView::section {
+                background-color: #4169E1;
+                color: white;
+                padding: 5px;
+                border: 1px solid #3050C0;
+                font-weight: bold;
+            }
+        """)
+
         # Стилизация
         self.table.setStyleSheet("""
             QTableWidget {
                 background-color: white;
                 border: 2px solid #4169E1;
                 border-radius: 5px;
-                gridline-color: #4169E1;
+                gridline-color: #CCCCCC;
             }
             QTableWidget::item {
                 padding: 5px;
-            }
-            QHeaderView::section {
-                background-color: #4169E1;
-                color: white;
-                padding: 5px;
-                border: none;
-                font-weight: bold;
             }
         """)
         
