@@ -169,8 +169,26 @@ class DataViewTab(QWidget):
     def show_context_menu(self, position):
         """Контекстное меню для строки"""
         from PyQt6.QtWidgets import QMenu
-        
+
         menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                color: black;
+                border: 1px solid #CCCCCC;
+                padding: 5px;
+            }
+            QMenu::item {
+                background-color: white;
+                color: black;
+                padding: 5px 25px 5px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #E8E8FF;
+                color: black;
+            }
+        """)
         edit_action = menu.addAction("Редактировать")
         delete_action = menu.addAction("Удалить")
         
@@ -288,6 +306,41 @@ class EditDialog(QDialog):
         self.setWindowTitle("Редактирование данных")
         self.setMinimumWidth(500)
 
+        # Белый фон — через атрибут и stylesheet
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet("""
+            EditDialog {
+                background-color: white;
+            }
+            EditDialog QLabel {
+                color: black;
+                background: transparent;
+            }
+            EditDialog QLineEdit {
+                color: black;
+                background-color: white;
+                border: 1px solid #CCCCCC;
+                padding: 4px;
+            }
+            EditDialog QComboBox {
+                color: black;
+                background-color: white;
+                border: 1px solid #CCCCCC;
+                padding: 4px;
+            }
+            EditDialog QPushButton {
+                background-color: #4169E1;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            EditDialog QPushButton:hover {
+                background-color: #3151B1;
+            }
+        """)
+
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
 
@@ -369,8 +422,12 @@ class EditDialog(QDialog):
                 return
 
         # СНИЛС — 11 цифр (колонка 3)
-        snils = values.get(3, '').replace('-', '').replace(' ', '')
-        if snils and (not snils.isdigit() or len(snils) != 11):
+        import unicodedata
+        snils_raw = values.get(3, '')
+        # Удаляем все Unicode-пробелы (категория Zs) включая \xa0
+        snils_clean = ''.join(c for c in snils_raw if unicodedata.category(c) != 'Zs')
+        snils_clean = snils_clean.replace('-', '')
+        if snils_clean and (not snils_clean.isdigit() or len(snils_clean) != 11):
             self._set_error(3)
             QMessageBox.warning(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
             return

@@ -24,7 +24,11 @@ class DataEntryTab(QWidget):
         self.setStyleSheet("background-color: transparent;")
         # Callback для получения существующих ключей (СНИЛС, программа)
         self.get_existing_keys_callback = None
-        
+
+        # Хранение ошибок последней загрузки для экспорта
+        self._last_error_details = []
+        self._last_duplicate_map = {}
+
         # Пути
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.data_dir = os.path.join(self.base_dir, "data")
@@ -544,9 +548,10 @@ class DataEntryTab(QWidget):
 
         # Проверяем, есть ли уже данные (через callback)
         has_existing = False
+        existing_keys = set()
         if self.get_existing_keys_callback:
-            existing = self.get_existing_keys_callback()
-            has_existing = len(existing) > 0
+            existing_keys = self.get_existing_keys_callback()
+            has_existing = len(existing_keys) > 0
 
         # Если есть данные — показываем диалог слияния
         merge_mode = False  # False = добавить, True = заменить
@@ -556,25 +561,28 @@ class DataEntryTab(QWidget):
                 return
             elif reply == "replace":
                 merge_mode = True
+                existing_keys = set()
             # "merge" — merge_mode = False
 
         records = None
-        error_count = 0
-        error_messages = []
+        error_details = []  # [{'row': int, 'type': str, 'field': str, 'message': str}]
+        error_rows_set = set()
+        duplicate_map = {}  # {(snils, program): [строка1, строка2, ...]}
+        xml_xsd_errors = []
 
         if file_path.endswith(('.xlsx', '.xls')):
-            records, error_count, error_messages = load_xlsx(file_path)
+            records, error_details, error_rows_set = load_xlsx(file_path)
         elif file_path.endswith('.xml'):
             # Находим XSD для валидации
             xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
             xsd_path = os.path.join(self.schema_dir, xsd_files[0]) if xsd_files else None
-            records, error_count, error_messages, xsd_errors = load_xml(file_path, xsd_path)
+            records, xml_error_count, xml_error_messages, xml_xsd_errors = load_xml(file_path, xsd_path)
 
             # Если есть XSD-ошибки — показываем
-            if xsd_errors:
+            if xml_xsd_errors:
                 QMessageBox.warning(
                     self, "XSD-валидация",
-                    "Файл не соответствует XSD-схеме:\n" + "\n".join(xsd_errors[:20])
+                    "Файл не соответствует XSD-схеме:\n" + "\n".join(xml_xsd_errors[:20])
                 )
         else:
             QMessageBox.warning(self, "Ошибка", "Неподдерживаемый формат файла")
@@ -582,8 +590,73 @@ class DataEntryTab(QWidget):
 
         if records is None:
             # Критическая ошибка
-            QMessageBox.warning(self, "Ошибка импорта", "\n".join(error_messages[:10]))
+            msg = "\n".join(xml_xsd_errors[:10]) if xml_xsd_errors else "Ошибка импорта"
+            QMessageBox.warning(self, "Ошибка импорта", msg)
             return
+
+        # Проверка дубликатов с существующими данными и внутри загруженных
+        validated_records = []
+        # Сначала соберём карту существующих данных: (snils, program) -> [номера строк]
+        existing_rows_map = {}
+        if not merge_mode and self.get_existing_keys_callback:
+            # Для режима "объединить" — найдём номера строк в существующей таблице
+            # Получаем строки из таблицы "Просмотр данных"
+            try:
+                table = None
+                # Ищем таблицу через родительский виджет
+                main_window = self.window()
+                if main_window:
+                    tabs_widget = main_window.findChild(type(self.data_view_tab.table))
+                    # Проще — получим через callback
+                    pass
+            except Exception:
+                pass
+
+            # Альтернативный подход: передаём таблицу через callback
+            # Но пока используем то, что есть — добавим callback get_existing_rows
+            if hasattr(self, 'get_existing_rows_callback') and self.get_existing_rows_callback:
+                for row_idx, snils, prog in self.get_existing_rows_callback():
+                    key = (snils, prog)
+                    if key not in existing_rows_map:
+                        existing_rows_map[key] = []
+                    existing_rows_map[key].append(f"система (стр. {row_idx})")
+
+        for rec in records:
+            key = (rec.get('snils', ''), rec.get('program', ''))
+            source_row = rec.get('source_row', '?')
+            if key in existing_keys:
+                # Дубликат с существующими данными
+                if key not in duplicate_map:
+                    duplicate_map[key] = []
+                # Добавляем строки из системы (если ещё не добавлены)
+                if key in existing_rows_map:
+                    for label in existing_rows_map[key]:
+                        if label not in duplicate_map[key]:
+                            duplicate_map[key].append(label)
+                # Добавляем текущую строку
+                row_label = f"стр. {source_row}"
+                if row_label not in duplicate_map[key]:
+                    duplicate_map[key].append(row_label)
+                continue
+
+            # Проверка дубликата внутри загруженного файла
+            is_internal_dup = False
+            for vr in validated_records:
+                if (vr.get('snils', ''), vr.get('program', '')) == key:
+                    is_internal_dup = True
+                    break
+
+            if is_internal_dup:
+                # Дубликат внутри загруженного файла
+                if key not in duplicate_map:
+                    duplicate_map[key] = []
+                row_label = f"стр. {source_row}"
+                if row_label not in duplicate_map[key]:
+                    duplicate_map[key].append(row_label)
+                continue
+
+            existing_keys.add(key)
+            validated_records.append(rec)
 
         # Подстановка настроек УЦ/Заказчика — значения из формы ВСЕГДА заменяют данные из файла
         tc_inn = self.tc_inn_input.text().strip()
@@ -591,7 +664,7 @@ class DataEntryTab(QWidget):
         employer_inn = self.employer_inn_input.text().strip()
         employer_title = self.employer_title_input.text().strip()
 
-        for rec in records:
+        for rec in validated_records:
             if tc_inn:
                 rec['tc_inn'] = tc_inn
             if tc_title:
@@ -600,19 +673,22 @@ class DataEntryTab(QWidget):
                 rec['employer_inn'] = employer_inn
             if employer_title:
                 rec['employer_title'] = employer_title
+            # Удаляем техническое поле source_row
+            rec.pop('source_row', None)
 
         # Передаём данные на вкладку Просмотр
-        self.data_loaded.emit(records, merge_mode)
+        self.data_loaded.emit(validated_records, merge_mode)
+
+        # Сохраняем ошибки и дубликаты для экспорта
+        self._last_error_details = error_details
+        self._last_duplicate_map = duplicate_map
 
         # Уведомление
-        if error_count > 0:
-            QMessageBox.warning(
-                self, "Загрузка завершена",
-                f"Успешно загружено: {len(records)} записей\n"
-                f"Количество строк с ошибками: {error_count}"
-            )
+        total_errors = len(error_rows_set) + len(duplicate_map)
+        if total_errors > 0:
+            self._show_upload_result_dialog(len(validated_records), len(error_rows_set), len(duplicate_map))
         else:
-            QMessageBox.information(self, "Успех", f"Успешно загружено: {len(records)} записей")
+            QMessageBox.information(self, "Успех", f"Успешно загружено: {len(validated_records)} записей")
 
     def _show_merge_dialog(self):
         """Диалог: что делать с существующими данными."""
@@ -633,6 +709,95 @@ class DataEntryTab(QWidget):
             return "replace"
         else:
             return "cancel"
+
+    def _show_upload_result_dialog(self, success_count, error_rows, duplicate_count):
+        """Диалог результата загрузки с кнопкой 'Показать ошибки'."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Загрузка завершена")
+        dialog.setMinimumSize(450, 200)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: white;
+            }
+            QLabel {
+                color: black;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #4169E1;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3151B1;
+            }
+            QPushButton#showErrorsBtn {
+                background-color: #FF8C00;
+            }
+            QPushButton#showErrorsBtn:hover {
+                background-color: #E07800;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+
+        # Информация
+        info_label = QLabel(
+            f"<b>Успешно загружено:</b> {success_count} записей<br><br>"
+            f"<b style='color:red;'>Строк с ошибками:</b> {error_rows}<br>"
+            f"<b style='color:orange;'>Дубликатов:</b> {duplicate_count}"
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("padding: 10px;")
+        layout.addWidget(info_label)
+
+        # Кнопки
+        btn_layout = QHBoxLayout()
+        
+        show_errors_btn = QPushButton("Показать ошибки")
+        show_errors_btn.setObjectName("showErrorsBtn")
+        show_errors_btn.clicked.connect(lambda: [self._export_error_report(dialog)])
+        
+        close_btn = QPushButton("Закрыть")
+        close_btn.clicked.connect(dialog.close)
+
+        btn_layout.addWidget(show_errors_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        dialog.exec()
+
+    def _export_error_report(self, parent_dialog):
+        """Экспорт отчёта об ошибках в XLSX."""
+        from importers.error_report import export_error_report
+        from datetime import datetime
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить отчёт об ошибках",
+            f"Ошибки_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            "Excel Files (*.xlsx)"
+        )
+
+        if file_path:
+            error_details = getattr(self, '_last_error_details', [])
+            duplicate_map = getattr(self, '_last_duplicate_map', {})
+
+            ok, msg = export_error_report(error_details, duplicate_map, file_path)
+            if ok:
+                QMessageBox.information(self, "Успех", msg)
+            else:
+                QMessageBox.warning(self, "Ошибка", msg)
+
+        # Закрываем родительский диалог
+        parent_dialog.close()
 
     def create_template(self):
         """Создание шаблона XLSX"""

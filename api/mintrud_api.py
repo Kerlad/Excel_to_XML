@@ -31,7 +31,7 @@ HEADERS = {
 }
 
 # Импортируем функцию прокси из utils.proxy_manager
-from utils.proxy_manager import build_proxies_for_requests
+from utils.proxy_manager import build_proxies_for_requests, build_proxy_headers
 
 
 # ============ Сохранение API-ключа ============
@@ -155,6 +155,7 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
         return {"success": False, "error": "Файл XML не найден"}
 
     proxies = build_proxies_for_requests(proxy_settings)
+    proxy_headers = build_proxy_headers(proxy_settings)
 
     try:
         # Читаем XML данных
@@ -175,21 +176,31 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
         olot_data = olot_buffer.getvalue()
 
         # Формируем multipart/form-data с двумя файлами
-        # Вариант: разные имена полей — xml и olot
+        # Используем requests.Session для корректной обработки proxy-аутентификации
         logger.info(f"Отправка XML на {API_URL}")
         if proxies:
             logger.info(f"Используется прокси: {proxies.get('https', 'N/A')}")
-        response = requests.post(
-            API_URL,
-            files={
-                'xml': ('Request.xml', request_xml.encode('utf-8'), 'text/xml'),
-                'olot': ('data.olot', olot_data, 'application/octet-stream'),
-            },
-            headers=HEADERS,
-            proxies=proxies,
-            verify=False,
-            timeout=60
-        )
+            if proxy_headers:
+                logger.info(f"Добавлены заголовки Proxy-Authorization")
+        
+        # Создаем сессию для корректной работы с прокси
+        with requests.Session() as session:
+            # Устанавливаем прокси и заголовки для сессии
+            if proxies:
+                session.proxies = proxies
+            if proxy_headers:
+                session.headers.update(proxy_headers)
+            
+            response = session.post(
+                API_URL,
+                files={
+                    'xml': ('Request.xml', request_xml.encode('utf-8'), 'text/xml'),
+                    'olot': ('data.olot', olot_data, 'application/octet-stream'),
+                },
+                headers=HEADERS,
+                verify=False,
+                timeout=60
+            )
 
         response_text = response.text
         # Если response.text содержит кракозябры — декодируем вручную
@@ -389,12 +400,29 @@ def _fetch_page(xml_content, page_label="", page_size=100, proxy_settings=None):
     """
     files = {'file': ('request.xml', xml_content, 'text/xml')}
     proxies = build_proxies_for_requests(proxy_settings)
+    proxy_headers = build_proxy_headers(proxy_settings)
 
     try:
         if proxies:
             logger.info(f"Запрос {page_label} через прокси: {proxies.get('https', 'N/A')}")
-        response = requests.post(GET_URL, files=files, headers=HEADERS,
-                                 proxies=proxies, verify=False, timeout=60)
+            if proxy_headers:
+                logger.info(f"Добавлены заголовки Proxy-Authorization для {page_label}")
+        
+        # Используем Session для корректной proxy-аутентификации
+        with requests.Session() as session:
+            if proxies:
+                session.proxies = proxies
+            if proxy_headers:
+                session.headers.update(proxy_headers)
+            
+            response = session.post(
+                GET_URL,
+                files=files,
+                headers=HEADERS,
+                verify=False,
+                timeout=60
+            )
+        
         response.encoding = 'utf-8'
         response_text = response.text
 

@@ -638,11 +638,14 @@ class DataTransferTab(QWidget):
         # Обновляем baseNo в журнале
         if self._journal_update_callback:
             # Строим карту {snils_clean: baseNo}
+            import unicodedata
             base_no_map = {}
             for rec in records:
                 snils_raw = rec.get('Snils', '')
                 base_no = rec.get('baseNo', '')
-                snils_clean = snils_raw.replace('-', '').replace(' ', '')
+                # Удаляем все Unicode-пробелы (категория Zs) включая \xa0
+                snils_clean = ''.join(c for c in snils_raw if unicodedata.category(c) != 'Zs')
+                snils_clean = snils_clean.replace('-', '')
                 if snils_clean:
                     base_no_map[snils_clean] = base_no
 
@@ -717,7 +720,8 @@ class DataTransferTab(QWidget):
             return
 
         # Форматирование СНИЛС в вид "123-456-789 00"
-        snils_clean = snils_raw.replace('-', '').replace(' ', '')
+        import unicodedata
+        snils_clean = ''.join(c for c in snils_raw if unicodedata.category(c) != 'Zs')
         if not snils_clean.isdigit() or len(snils_clean) != 11:
             QMessageBox.warning(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
             return

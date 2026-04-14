@@ -29,15 +29,25 @@ def format_snils(raw):
     Приведение СНИЛС к формату '123-456-789 00'.
     Принимает любой вид: '12345678900', '123-456-78900', '123-456-789 00' и т.д.
     Возвращает отформатированную строку или None при невалидном вводе.
+    Обрабатывает неразрывные пробелы (\xa0), табуляции и другие Unicode-пробелы.
     """
-    clean = str(raw).strip().replace('-', '').replace(' ', '')
+    clean = str(raw).strip()
+    # Заменяем все Unicode-пробельные символы (включая \xa0, \t, \u2000-\u200B и т.д.)
+    import unicodedata
+    clean = ''.join(c for c in clean if unicodedata.category(c) != 'Zs')
+    # Убираем дефисы
+    clean = clean.replace('-', '')
     if not clean.isdigit() or len(clean) != 11:
         return None
     return f"{clean[0:3]}-{clean[3:6]}-{clean[6:9]} {clean[9:11]}"
 
 
 def validate_row(row_dict, row_num):
-    """Валидация строки из Excel. Возвращает (True, data) или (False, error_msg)."""
+    """
+    Валидация строки из Excel.
+    Возвращает (True, data) или (False, error_details).
+    error_details — список словарей: {'row': int, 'type': str, 'field': str, 'message': str}
+    """
     errors = []
 
     # Проверка обязательных полей (ИНН/названия УЦ и Заказчика — необязательные)
@@ -45,29 +55,62 @@ def validate_row(row_dict, row_num):
     for col in required_cols:
         val = row_dict.get(col)
         if val is None or str(val).strip() == '':
-            errors.append(f"Строка {row_num}: поле '{col}' пустое")
+            errors.append({
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': col,
+                'message': f"Пустое обязательное поле '{col}'"
+            })
 
     if errors:
-        return False, "; ".join(errors)
+        return False, errors
 
     # СНИЛС
     snils = format_snils(str(row_dict['СНИЛС']))
     if snils is None:
-        errors.append(f"Строка {row_num}: СНИЛС должен содержать 11 цифр")
+        errors.append({
+            'row': row_num,
+            'type': 'Ошибка',
+            'field': 'СНИЛС',
+            'message': f"СНИЛС должен содержать 11 цифр (введено: {row_dict['СНИЛС']})"
+        })
 
     # Номер программы
     program_str = str(row_dict['№ программы']).strip()
     programs = [p.strip() for p in program_str.rstrip(',').split(',') if p.strip()]
-    if not all(p in VALID_PROGRAMS for p in programs):
-        errors.append(f"Строка {row_num}: некорректный номер программы")
+    invalid_programs = [p for p in programs if p not in VALID_PROGRAMS]
+    if invalid_programs:
+        errors.append({
+            'row': row_num,
+            'type': 'Ошибка',
+            'field': '№ программы',
+            'message': f"Некорректный номер программы: {', '.join(invalid_programs)}"
+        })
 
     # Результат
     result = str(row_dict['Результат']).strip()
     if result not in ['Удовлетворительно', 'Неудовлетворительно']:
-        errors.append(f"Строка {row_num}: результат должен быть 'Удовлетворительно' или 'Неудовлетворительно'")
+        errors.append({
+            'row': row_num,
+            'type': 'Ошибка',
+            'field': 'Результат',
+            'message': f"Результат должен быть 'Удовлетворительно' или 'Неудовлетворительно' (введено: {result})"
+        })
+
+    # ФИО — только текст
+    for field_name in ['Фамилия', 'Имя', 'Отчество']:
+        val = str(row_dict.get(field_name, '')).strip()
+        if val and not val.replace(' ', '').replace('-', '').replace("'", '').isalpha():
+            errors.append({
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': field_name,
+                'message': f"Поле '{field_name}' должно содержать только буквы"
+            })
 
     # Дата
     date_val = row_dict['Дата']
+    date_str = None
     if isinstance(date_val, datetime):
         date_str = date_val.strftime('%d.%m.%Y')
     elif isinstance(date_val, (int, float)):
@@ -76,8 +119,12 @@ def validate_row(row_dict, row_num):
             delta = datetime(1899, 12, 30) + timedelta(days=date_val)
             date_str = delta.strftime('%d.%m.%Y')
         except Exception:
-            errors.append(f"Строка {row_num}: ошибка парсинга даты")
-            date_str = None
+            errors.append({
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': 'Дата',
+                'message': f"Ошибка парсинга даты"
+            })
     else:
         date_str = str(date_val).strip()
         # Пробуем распарсить как дату
@@ -87,13 +134,28 @@ def validate_row(row_dict, row_num):
                 try:
                     d = datetime.strptime(clean_date, "%d%m%Y")
                     if d.date() > datetime.now().date():
-                        errors.append(f"Строка {row_num}: дата больше текущей")
+                        errors.append({
+                            'row': row_num,
+                            'type': 'Ошибка',
+                            'field': 'Дата',
+                            'message': f"Дата больше текущей"
+                        })
                     date_str = f"{clean_date[:2]}.{clean_date[2:4]}.{clean_date[4:]}"
                 except ValueError:
-                    errors.append(f"Строка {row_num}: дата некорректна")
+                    errors.append({
+                        'row': row_num,
+                        'type': 'Ошибка',
+                        'field': 'Дата',
+                        'message': f"Дата некорректна"
+                    })
                     date_str = None
             else:
-                errors.append(f"Строка {row_num}: дата некорректна")
+                errors.append({
+                    'row': row_num,
+                    'type': 'Ошибка',
+                    'field': 'Дата',
+                    'message': f"Дата некорректна"
+                })
                 date_str = None
         else:
             # Строка без разделителей — пробуем как 8 цифр
@@ -102,17 +164,32 @@ def validate_row(row_dict, row_num):
                 try:
                     d = datetime.strptime(clean_date, "%d%m%Y")
                     if d.date() > datetime.now().date():
-                        errors.append(f"Строка {row_num}: дата больше текущей")
+                        errors.append({
+                            'row': row_num,
+                            'type': 'Ошибка',
+                            'field': 'Дата',
+                            'message': f"Дата больше текущей"
+                        })
                     date_str = f"{clean_date[:2]}.{clean_date[2:4]}.{clean_date[4:]}"
                 except ValueError:
-                    errors.append(f"Строка {row_num}: дата некорректна")
+                    errors.append({
+                        'row': row_num,
+                        'type': 'Ошибка',
+                        'field': 'Дата',
+                        'message': f"Дата некорректна"
+                    })
                     date_str = None
             else:
-                errors.append(f"Строка {row_num}: дата некорректна")
+                errors.append({
+                    'row': row_num,
+                    'type': 'Ошибка',
+                    'field': 'Дата',
+                    'message': f"Дата некорректна"
+                })
                 date_str = None
 
     if errors:
-        return False, "; ".join(errors)
+        return False, errors
 
     # Формирование данных
     # Поддержка нескольких программ — разбиваем на N записей
@@ -136,7 +213,8 @@ def validate_row(row_dict, row_num):
             'result': result,
             'program': prog,
             'date': date_str,
-            'protocol': gv('№ протокола')
+            'protocol': gv('№ протокола'),
+            'source_row': row_num  # Номер строки в файле для отслеживания дубликатов
         }
         records.append(record)
 
@@ -175,8 +253,8 @@ def _load_xlsx_openpyxl(file_path):
     ws = wb.active
 
     records = []
-    error_count = 0
-    error_messages = []
+    error_details = []  # [{'row': int, 'type': str, 'field': str, 'message': str}]
+    error_rows_set = set()  # номера строк с ошибками
 
     # Читаем заголовки
     headers = [str(ws.cell(row=1, column=c).value).strip() for c in range(1, ws.max_column + 1)]
@@ -185,22 +263,29 @@ def _load_xlsx_openpyxl(file_path):
     required_fields = ['Фамилия', 'Имя', 'Отчество', 'СНИЛС', 'Должность', 'Результат', '№ программы', 'Дата', '№ протокола']
     for col in required_fields:
         if col not in headers:
-            return None, 0, [f"Отсутствует столбец: {col}"]
+            return None, [], [f"Отсутствует столбец: {col}"]
 
     for row_num in range(2, ws.max_row + 1):
         row_dict = {}
+        all_empty = True
         for c_idx, col_name in enumerate(headers):
             val = ws.cell(row=row_num, column=c_idx + 1).value
             row_dict[col_name] = val if val is not None else ''
+            if val is not None and str(val).strip() != '':
+                all_empty = False
+
+        # Пропускаем полностью пустые строки (после таблицы)
+        if all_empty:
+            continue
 
         is_valid, result = validate_row(row_dict, row_num)
         if is_valid:
             records.extend(result)
         else:
-            error_count += 1
-            error_messages.append(result)
+            error_details.extend(result)
+            error_rows_set.add(row_num)
 
-    return records, error_count, error_messages
+    return records, error_details, error_rows_set
 
 
 def _load_xls_xlrd(file_path):
@@ -213,8 +298,8 @@ def _load_xls_xlrd(file_path):
     ws = wb.sheet_by_index(0)
 
     records = []
-    error_count = 0
-    error_messages = []
+    error_details = []  # [{'row': int, 'type': str, 'field': str, 'message': str}]
+    error_rows_set = set()  # номера строк с ошибками
 
     # Читаем заголовки
     headers = [str(ws.cell_value(0, c)).strip() for c in range(ws.ncols)]
@@ -223,10 +308,11 @@ def _load_xls_xlrd(file_path):
     required_fields = ['Фамилия', 'Имя', 'Отчество', 'СНИЛС', 'Должность', 'Результат', '№ программы', 'Дата', '№ протокола']
     for col in required_fields:
         if col not in headers:
-            return None, 0, [f"Отсутствует столбец: {col}"]
+            return None, [], [f"Отсутствует столбец: {col}"]
 
     for row_num in range(1, ws.nrows):
         row_dict = {}
+        all_empty = True
         for c_idx, col_name in enumerate(headers):
             cell = ws.cell(row_num, c_idx)
             val = cell.value
@@ -237,12 +323,18 @@ def _load_xls_xlrd(file_path):
                 except Exception:
                     pass
             row_dict[col_name] = val if val is not None else ''
+            if val is not None and str(val).strip() != '':
+                all_empty = False
+
+        # Пропускаем полностью пустые строки (после таблицы)
+        if all_empty:
+            continue
 
         is_valid, result = validate_row(row_dict, row_num + 1)
         if is_valid:
             records.extend(result)
         else:
-            error_count += 1
-            error_messages.append(result)
+            error_details.extend(result)
+            error_rows_set.add(row_num + 1)
 
-    return records, error_count, error_messages
+    return records, error_details, error_rows_set
