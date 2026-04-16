@@ -39,6 +39,10 @@ class MainWindow(QMainWindow):
         self.data_entry_tab = DataEntryTab()
         self.data_view_tab = DataViewTab()
         self.data_transfer_tab = DataTransferTab()
+        #self.data_transfer_tab_urllib = DataTransferTabUrllib()
+        #self.data_transfer_tab_httpx = DataTransferTabHttpx()
+        #self.data_transfer_tab_pycurl = DataTransferTabPycurl()
+        #self.data_transfer_tab_wininet = DataTransferTabWininet()
 
         # Журнал проверки знаний
         data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -55,6 +59,10 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.data_entry_tab, "Внесение данных")
         self.tabs.addTab(self.data_view_tab, "Просмотр данных")
         self.tabs.addTab(self.data_transfer_tab, "Передача данных")
+        #self.tabs.addTab(self.data_transfer_tab_urllib, "Передача данных (urllib)")
+        #self.tabs.addTab(self.data_transfer_tab_httpx, "Передача данных (httpx)")
+        #self.tabs.addTab(self.data_transfer_tab_pycurl, "Передача данных (pycurl)")
+        #self.tabs.addTab(self.data_transfer_tab_wininet, "Передача данных (WinINET)")
         self.tabs.addTab(self.exam_journal_tab, "Журнал проверки знаний")
         self.tabs.addTab(self.protocol_tab, "Протокол")
 
@@ -65,6 +73,10 @@ class MainWindow(QMainWindow):
 
         # Подключение журнала к вкладке передачи данных
         self.data_transfer_tab.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
+        #self.data_transfer_tab_urllib.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
+        #self.data_transfer_tab_httpx.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
+        #self.data_transfer_tab_pycurl.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
+        #self.data_transfer_tab_wininet.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
 
         self.setCentralWidget(self.tabs)
 

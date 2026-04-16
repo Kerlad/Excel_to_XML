@@ -31,7 +31,7 @@ HEADERS = {
 }
 
 # Импортируем функцию прокси из utils.proxy_manager
-from utils.proxy_manager import build_proxies_for_requests, build_proxy_headers
+from utils.proxy_manager import build_proxies_for_requests, build_proxy_headers, create_proxy_session
 
 
 # ============ Сохранение API-ключа ============
@@ -176,21 +176,17 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
         olot_data = olot_buffer.getvalue()
 
         # Формируем multipart/form-data с двумя файлами
-        # Используем requests.Session для корректной обработки proxy-аутентификации
+        # Используем create_proxy_session для корректной proxy-аутентификации
         logger.info(f"Отправка XML на {API_URL}")
         if proxies:
             logger.info(f"Используется прокси: {proxies.get('https', 'N/A')}")
-            if proxy_headers:
-                logger.info(f"Добавлены заголовки Proxy-Authorization")
-        
-        # Создаем сессию для корректной работы с прокси
-        with requests.Session() as session:
-            # Устанавливаем прокси и заголовки для сессии
-            if proxies:
-                session.proxies = proxies
-            if proxy_headers:
-                session.headers.update(proxy_headers)
-            
+
+        # Создаем сессию через create_proxy_session для корректной работы с прокси
+        session = create_proxy_session(proxy_settings)
+        if not session:
+            return {"success": False, "error": "Не удалось создать сессию с прокси"}
+
+        try:
             response = session.post(
                 API_URL,
                 files={
@@ -201,6 +197,8 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
                 verify=False,
                 timeout=60
             )
+        finally:
+            session.close()
 
         response_text = response.text
         # Если response.text содержит кракозябры — декодируем вручную
@@ -405,16 +403,14 @@ def _fetch_page(xml_content, page_label="", page_size=100, proxy_settings=None):
     try:
         if proxies:
             logger.info(f"Запрос {page_label} через прокси: {proxies.get('https', 'N/A')}")
-            if proxy_headers:
-                logger.info(f"Добавлены заголовки Proxy-Authorization для {page_label}")
-        
-        # Используем Session для корректной proxy-аутентификации
-        with requests.Session() as session:
-            if proxies:
-                session.proxies = proxies
-            if proxy_headers:
-                session.headers.update(proxy_headers)
-            
+
+        # Используем create_proxy_session для корректной proxy-аутентификации
+        session = create_proxy_session(proxy_settings)
+        if not session:
+            logger.error(f"Не удалось создать сессию с прокси для {page_label}")
+            return None
+
+        try:
             response = session.post(
                 GET_URL,
                 files=files,
@@ -422,6 +418,8 @@ def _fetch_page(xml_content, page_label="", page_size=100, proxy_settings=None):
                 verify=False,
                 timeout=60
             )
+        finally:
+            session.close()
         
         response.encoding = 'utf-8'
         response_text = response.text

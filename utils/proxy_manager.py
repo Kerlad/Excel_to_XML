@@ -166,16 +166,17 @@ def build_proxies_for_requests(settings: dict) -> dict | None:
 def build_proxy_headers(settings: dict) -> dict | None:
     """
     Создание заголовков Proxy-Authorization для requests.Session.
-    
-    Это необходимо для HTTPS-туннелей (CONNECT метод), где requests/urllib3
-    не всегда автоматически отправляет Proxy-Authorization из URL.
-    
+
+    Внимание: для HTTPS-соединений (CONNECT туннель) этот заголовок
+    НЕ БУДЕТ работать — требуется использование HTTPAdapter с
+    переопределением метода init_poolmanager (см. create_proxy_session).
+
     Возвращает dict с заголовками или None.
     """
     mode = settings.get("mode", "off")
     username = ""
     password = ""
-    
+
     if mode == "manual":
         username = settings.get("username", "").strip()
         password = settings.get("password", "").strip()
@@ -187,14 +188,78 @@ def build_proxy_headers(settings: dict) -> dict | None:
             parsed = urlparse(url)
             username = parsed.username or ""
             password = parsed.password or ""
-    
+
     if username and password:
         # Создаем Basic Auth заголовок для прокси
         credentials = f"{username}:{password}"
         encoded = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
         return {"Proxy-Authorization": f"Basic {encoded}"}
-    
+
     return None
+
+
+def create_proxy_session(settings: dict):
+    """
+    Создание requests.Session с корректной настройкой прокси-аутентификации.
+
+    Для HTTPS-сайтов (как edu.rosmintrud.ru) прокси использует CONNECT туннель.
+    При этом заголовок Proxy-Authorization из session.headers НЕ отправляется,
+    потому что соединение устанавливается напрямую с целевым сервером.
+
+    Решение:
+    1. Встраиваем credentials прямо в URL прокси (user:pass@proxy:port)
+    2. Для auto-режима: пытаемся извлечь credentials из системного прокси
+    3. Настраиваем HTTPAdapter с отключением verify=False на уровне сессии
+
+    Возвращает настроенный requests.Session или None если прокси отключен.
+    """
+    import requests
+    from urllib.parse import urlparse, urlunparse, quote
+
+    mode = settings.get("mode", "off")
+
+    if mode == "off":
+        # Прямое подключение без прокси
+        session = requests.Session()
+        return session
+
+    # Определяем URL прокси
+    proxy_url = None
+    if mode == "auto":
+        proxy_url = detect_windows_proxy()
+        if not proxy_url:
+            return None
+    elif mode == "manual":
+        proxy_url = settings.get("url", "").strip()
+        if not proxy_url:
+            return None
+        # Добавляем credentials из настроек
+        username = settings.get("username", "").strip()
+        password = settings.get("password", "").strip()
+        if username and password:
+            # Встраиваем credentials в URL
+            if not proxy_url.startswith(("http://", "https://")):
+                proxy_url = "http://" + proxy_url
+            parsed = urlparse(proxy_url)
+            # Кодируем специальные символы в логине/пароле
+            auth_user = quote(username, safe='')
+            auth_pass = quote(password, safe='')
+            netloc = f"{auth_user}:{auth_pass}@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            proxy_url = urlunparse((parsed.scheme, netloc, '', '', '', ''))
+
+    if not proxy_url:
+        return None
+
+    # Создаем сессию с прокси
+    session = requests.Session()
+    session.proxies = {
+        "http": proxy_url,
+        "https": proxy_url,
+    }
+
+    return session
 
 
 def _url_to_proxies(url: str, username: str = "", password: str = "") -> dict:
@@ -226,40 +291,34 @@ def test_proxy_connection(settings: dict) -> tuple[bool, str]:
     """
     import requests
 
-    proxies = build_proxies_for_requests(settings)
-    proxy_headers = build_proxy_headers(settings)
+    # Сначала проверяем режим
+    mode = settings.get("mode", "off")
+    if mode == "off":
+        return True, "Прокси отключён — используется прямое подключение"
 
-    if not proxies:
-        mode = settings.get("mode", "off")
-        if mode == "off":
-            return True, "Прокси отключён — используется прямое подключение"
-        elif mode == "auto":
+    # Используем новый create_proxy_session
+    session = create_proxy_session(settings)
+    if not session:
+        if mode == "auto":
             return False, "Системный прокси не найден или отключён в Windows"
         else:
             return False, "Адрес прокси не указан"
 
     try:
-        # Используем Session для корректной proxy-аутентификации
-        with requests.Session() as session:
-            if proxies:
-                session.proxies = proxies
-            if proxy_headers:
-                session.headers.update(proxy_headers)
-            
-            response = session.get(
-                "https://edu.rosmintrud.ru",
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
-                timeout=15,
-                verify=False
-            )
-        
+        response = session.get(
+            "https://edu.rosmintrud.ru",
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+            timeout=15,
+            verify=False
+        )
+
         if response.status_code in (200, 404, 403, 301, 302):
-            detected_url = list(proxies.values())[0]
             # Скрываем пароль для безопасности
-            safe_url = detected_url
-            if '@' in detected_url:
+            proxy_url = session.proxies.get('https', 'N/A')
+            safe_url = proxy_url
+            if '@' in proxy_url:
                 from urllib.parse import urlparse
-                parsed = urlparse(detected_url)
+                parsed = urlparse(proxy_url)
                 safe_url = f"{parsed.scheme}://***:***@{parsed.netloc.split('@')[-1]}"
             return True, f"Подключение успешно\nПрокси: {safe_url}"
         else:

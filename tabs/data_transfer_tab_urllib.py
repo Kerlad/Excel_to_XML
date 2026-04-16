@@ -1,3 +1,7 @@
+"""
+Альтернативная вкладка передачи данных с использованием urllib вместо requests.
+Используется при проблемах с прокси-серверами в корпоративной сети.
+"""
 import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit,
@@ -7,17 +11,19 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from lxml import etree
-from api.mintrud_api import (
-    load_api_key, save_api_key, push_xml,
+from api.mintrud_api_urllib import (
+    push_xml,
     get_by_set_id, get_by_snils, export_records_to_xlsx
 )
 from utils.proxy_manager import (
     load_proxy_settings, save_proxy_settings, test_proxy_connection,
     detect_windows_proxy
 )
+# Для работы с API ключом используем основной модуль
+from api.mintrud_api import load_api_key, save_api_key
 
 
-class DataTransferTab(QWidget):
+class DataTransferTabUrllib(QWidget):
     def __init__(self):
         super().__init__()
         self.setStyleSheet("background-color: transparent;")
@@ -68,139 +74,83 @@ class DataTransferTab(QWidget):
 
         # Callback-функции для журнала (устанавливаются из main.py)
         self._journal_add_callback = None    # add_records_to_journal
-        self._journal_update_callback = None # update_base_no
-
-    def set_journal_callback(self, add_callback, update_callback):
-        """Установка callback-функций для журнала проверки знаний."""
-        self._journal_add_callback = add_callback
-        self._journal_update_callback = update_callback
-
-    def _group_style(self):
-        return """
-            QGroupBox {
-                border: 2px solid #4169E1;
-                border-radius: 10px;
-                margin-top: 10px;
-                padding: 15px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                color: #4169E1;
-                font-weight: bold;
-                font-size: 14px;
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """
-
-    def _btn_style(self, hover_color="#3151B1"):
-        return f"""
-            QPushButton {{
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {hover_color};
-            }}
-        """
-
-    # ============ Группа API ключ ============
+        self._journal_update_callback = None  # update_base_no
 
     def _create_api_key_group(self):
-        group = QGroupBox()
-        group.setStyleSheet(self._group_style())
-        group.setTitle("API ключ")
-
-        layout = QVBoxLayout(group)
-
-        row = QHBoxLayout()
-        self.api_key_label = QLabel("API ключ:")
-        self.api_key_label.setStyleSheet("color: black;")
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setMaxLength(32)
-        self.api_key_input.setFixedWidth(350)
-        self.api_key_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        self.api_key_input.setPlaceholderText("32 символа")
-
-        paste_btn = QPushButton("Вставить из буфера")
-        paste_btn.setStyleSheet(self._btn_style())
-        paste_btn.clicked.connect(self.paste_api_key)
-
-        save_btn = QPushButton("Сохранить ключ")
-        save_btn.setStyleSheet(self._btn_style())
-        save_btn.clicked.connect(self.save_api_key)
-
-        row.addWidget(self.api_key_label)
-        row.addWidget(self.api_key_input)
-        row.addWidget(paste_btn)
-        row.addWidget(save_btn)
-        row.addStretch()
-        layout.addLayout(row)
-
-        return group
-
-    # ============ Группа Настройки прокси ============
-
-    def _create_proxy_group(self):
-        group = QGroupBox()
-        group.setStyleSheet(self._group_style())
-        group.setTitle("Настройки прокси")
-
+        group = QGroupBox("API ключ")
+        group.setStyleSheet("""
+            QGroupBox { 
+                color: black; 
+                font-weight: bold; 
+                padding-top: 10px; 
+                border: 1px solid #CCCCCC; 
+                border-radius: 5px; 
+                margin-top: 10px; 
+            }
+            QGroupBox::title { 
+                subcontrol-origin: margin; 
+                left: 10px; 
+                padding: 0 5px; 
+            }
+        """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
-        # Радиокнопки выбора режима
-        mode_layout = QHBoxLayout()
+        inner = QHBoxLayout()
 
-        # Обёртка с серой границей
-        radio_frame = QFrame()
-        radio_frame.setStyleSheet("""
-            QFrame {
-                border: 1px solid #CCCCCC;
-                border-radius: 6px;
-                padding: 8px;
-                background-color: #F5F5F5;
+        label = QLabel("API ключ (32 символа):")
+        label.setStyleSheet("color: black;")
+        self.api_key_input = QLineEdit()
+        self.api_key_input.setFixedWidth(500)
+        self.api_key_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.api_key_input.setPlaceholderText("Вставьте API ключ из личного кабинета")
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+
+        inner.addWidget(label)
+        inner.addWidget(self.api_key_input)
+        layout.addLayout(inner)
+
+        # Кнопки
+        btn_layout = QHBoxLayout()
+        save_btn = QPushButton("Сохранить ключ")
+        save_btn.setStyleSheet(self._btn_style())
+        save_btn.clicked.connect(self.save_api_key_ui)
+        btn_layout.addWidget(save_btn)
+
+        layout.addLayout(btn_layout)
+        return group
+
+    def _create_proxy_group(self):
+        group = QGroupBox("Настройки прокси")
+        group.setStyleSheet("""
+            QGroupBox { 
+                color: black; 
+                font-weight: bold; 
+                padding-top: 10px; 
+                border: 1px solid #CCCCCC; 
+                border-radius: 5px; 
+                margin-top: 10px; 
+            }
+            QGroupBox::title { 
+                subcontrol-origin: margin; 
+                left: 10px; 
+                padding: 0 5px; 
             }
         """)
-        radio_inner = QHBoxLayout(radio_frame)
-        radio_inner.setSpacing(25)
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
 
-        # Стиль для радиокнопок — видимый кружок
-        rb_style = """
-            QRadioButton {
-                color: black;
-                spacing: 6px;
-                font-size: 13px;
-            }
-            QRadioButton::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #888;
-                border-radius: 9px;
-                background-color: white;
-            }
-            QRadioButton::indicator:hover {
-                border: 2px solid #4169E1;
-                background-color: #E8E8FF;
-            }
-            QRadioButton::indicator:checked {
-                border: 3px solid #4169E1;
-                background-color: #4169E1;
-            }
-        """
-
+        # Радиокнопки режима
+        radio_inner = QHBoxLayout()
+        rb_style = "color: black;"
+        
         self.proxy_off_rb = QRadioButton("Без прокси")
         self.proxy_off_rb.setStyleSheet(rb_style)
         self.proxy_off_rb.setChecked(True)
-
+        
         self.proxy_auto_rb = QRadioButton("Авто (системные)")
         self.proxy_auto_rb.setStyleSheet(rb_style)
-
+        
         self.proxy_manual_rb = QRadioButton("Вручную")
         self.proxy_manual_rb.setStyleSheet(rb_style)
 
@@ -213,22 +163,18 @@ class DataTransferTab(QWidget):
         radio_inner.addWidget(self.proxy_off_rb)
         radio_inner.addWidget(self.proxy_auto_rb)
         radio_inner.addWidget(self.proxy_manual_rb)
-        radio_inner.addStretch()
+        layout.addLayout(radio_inner)
 
-        mode_layout.addWidget(radio_frame)
-        mode_layout.addStretch()
-        layout.addLayout(mode_layout)
-
-        # Инфо об авто-режиме (показывается только при "Авто")
+        # Информация о системном прокси
         self.proxy_auto_info = QLabel()
         self.proxy_auto_info.setStyleSheet("color: #666; font-style: italic; padding: 4px;")
         self.proxy_auto_info.setWordWrap(True)
         self.proxy_auto_info.setVisible(False)
         layout.addWidget(self.proxy_auto_info)
 
-        # Поля для ручного режима
-        # Адрес прокси
+        # Поля ручных настроек
         row1 = QHBoxLayout()
+        # Адрес прокси
         self.proxy_url_label = QLabel("Адрес прокси:")
         self.proxy_url_label.setStyleSheet("color: black;")
         self.proxy_url_input = QLineEdit()
@@ -237,11 +183,10 @@ class DataTransferTab(QWidget):
         self.proxy_url_input.setPlaceholderText("http://proxy.example.com:3128")
         row1.addWidget(self.proxy_url_label)
         row1.addWidget(self.proxy_url_input)
-        row1.addStretch()
         layout.addLayout(row1)
 
-        # Логин и пароль
         row2 = QHBoxLayout()
+        # Логин и пароль
         self.proxy_user_label = QLabel("Логин:")
         self.proxy_user_label.setStyleSheet("color: black;")
         self.proxy_user_input = QLineEdit()
@@ -250,8 +195,6 @@ class DataTransferTab(QWidget):
         self.proxy_user_input.setPlaceholderText("Если прокси требует авторизацию")
         row2.addWidget(self.proxy_user_label)
         row2.addWidget(self.proxy_user_input)
-
-        row2.addSpacing(20)
 
         self.proxy_pass_label = QLabel("Пароль:")
         self.proxy_pass_label.setStyleSheet("color: black;")
@@ -262,7 +205,6 @@ class DataTransferTab(QWidget):
         self.proxy_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
         row2.addWidget(self.proxy_pass_label)
         row2.addWidget(self.proxy_pass_input)
-        row2.addStretch()
         layout.addLayout(row2)
 
         # Кнопки
@@ -277,32 +219,26 @@ class DataTransferTab(QWidget):
 
         btn_row.addWidget(self.proxy_save_btn)
         btn_row.addWidget(self.proxy_test_btn)
-        btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        # Инициальное состояние — скрыть ручные поля
+        # Инициализация видимости
         self._on_proxy_mode_changed(self.proxy_off_rb)
-
         return group
 
     def _on_proxy_mode_changed(self, button):
         """Обработка смены режима прокси."""
         mode = self.proxy_mode_group.id(button)
-        # 0 = off, 1 = auto, 2 = manual
-
-        manual_fields = [
+        # Скрыть все поля
+        for w in [
             self.proxy_url_label, self.proxy_url_input,
             self.proxy_user_label, self.proxy_user_input,
             self.proxy_pass_label, self.proxy_pass_input
-        ]
+        ]:
+            w.setVisible(False)
 
         if mode == 0:  # off
-            for w in manual_fields:
-                w.setVisible(False)
             self.proxy_auto_info.setVisible(False)
         elif mode == 1:  # auto
-            for w in manual_fields:
-                w.setVisible(False)
             # Покажем текущий системный прокси
             sys_proxy = detect_windows_proxy()
             if sys_proxy:
@@ -311,108 +247,153 @@ class DataTransferTab(QWidget):
                 self.proxy_auto_info.setText("Системный прокси не обнаружен в настройках Windows")
             self.proxy_auto_info.setVisible(True)
         else:  # manual
-            for w in manual_fields:
+            for w in [
+                self.proxy_url_label, self.proxy_url_input,
+                self.proxy_user_label, self.proxy_user_input,
+                self.proxy_pass_label, self.proxy_pass_input
+            ]:
                 w.setVisible(True)
             self.proxy_auto_info.setVisible(False)
 
     def _create_send_xml_group(self):
-        group = QGroupBox()
-        group.setStyleSheet(self._group_style())
-        group.setTitle("Отправка XML")
-
+        group = QGroupBox("Отправка XML")
+        group.setStyleSheet("""
+            QGroupBox { 
+                color: black; 
+                font-weight: bold; 
+                padding-top: 10px; 
+                border: 1px solid #CCCCCC; 
+                border-radius: 5px; 
+                margin-top: 10px; 
+            }
+            QGroupBox::title { 
+                subcontrol-origin: margin; 
+                left: 10px; 
+                padding: 0 5px; 
+            }
+        """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
-        # Строка 1: Выбор файла
-        file_row = QHBoxLayout()
-        self.xml_file_label = QLabel("XML файл:")
-        self.xml_file_label.setStyleSheet("color: black;")
+        row = QHBoxLayout()
+        label = QLabel("XML файл:")
+        label.setStyleSheet("color: black;")
         self.xml_file_input = QLineEdit()
-        self.xml_file_input.setReadOnly(True)
         self.xml_file_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        self.xml_file_input.setPlaceholderText("Файл не выбран")
+        self.xml_file_input.setReadOnly(True)
 
-        select_xml_btn = QPushButton("Выбрать")
-        select_xml_btn.setStyleSheet(self._btn_style())
-        select_xml_btn.clicked.connect(self.select_xml_file)
+        select_btn = QPushButton("Выбрать")
+        select_btn.setStyleSheet(self._btn_style())
+        select_btn.clicked.connect(self.select_xml_file)
 
-        file_row.addWidget(self.xml_file_label)
-        file_row.addWidget(self.xml_file_input)
-        file_row.addWidget(select_xml_btn)
-        layout.addLayout(file_row)
+        row.addWidget(label)
+        row.addWidget(self.xml_file_input)
+        row.addWidget(select_btn)
+        layout.addLayout(row)
 
-        # Строка 2: Кнопка отправки
         send_btn = QPushButton("Отправить XML на сервер")
         send_btn.setStyleSheet(self._btn_style())
         send_btn.clicked.connect(self.send_xml)
         layout.addWidget(send_btn)
 
-        # Строка 3: Последний SetId
-        setid_row = QHBoxLayout()
-        self.last_setid_label = QLabel("Последний SetId:")
-        self.last_setid_label.setStyleSheet("color: black;")
-        self.last_setid_display = QLineEdit()
-        self.last_setid_display.setReadOnly(True)
-        self.last_setid_display.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        setid_row.addWidget(self.last_setid_label)
-        setid_row.addWidget(self.last_setid_display)
-        layout.addLayout(setid_row)
-
         return group
 
     def _create_query_setid_group(self):
-        group = QGroupBox()
-        group.setStyleSheet(self._group_style())
-        group.setTitle("Запрос по SetId")
-
+        group = QGroupBox("Запрос по SetId")
+        group.setStyleSheet("""
+            QGroupBox { 
+                color: black; 
+                font-weight: bold; 
+                padding-top: 10px; 
+                border: 1px solid #CCCCCC; 
+                border-radius: 5px; 
+                margin-top: 10px; 
+            }
+            QGroupBox::title { 
+                subcontrol-origin: margin; 
+                left: 10px; 
+                padding: 0 5px; 
+            }
+        """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
         row = QHBoxLayout()
-        self.query_setid_label = QLabel("Введите номер набора (SetId):")
-        self.query_setid_label.setStyleSheet("color: black;")
+        label = QLabel("Введите номер набора (SetId):")
+        label.setStyleSheet("color: black;")
         self.query_setid_input = QLineEdit()
+        self.query_setid_input.setFixedWidth(300)
         self.query_setid_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        self.query_setid_input.setPlaceholderText("SetId из ответа сервера")
+
+        row.addWidget(label)
+        row.addWidget(self.query_setid_input)
+        layout.addLayout(row)
 
         query_btn = QPushButton("Запросить номера")
         query_btn.setStyleSheet(self._btn_style())
-        query_btn.clicked.connect(self.query_by_setid)
-
-        row.addWidget(self.query_setid_label)
-        row.addWidget(self.query_setid_input)
-        row.addWidget(query_btn)
-        layout.addLayout(row)
+        query_btn.clicked.connect(self.query_set_id)
+        layout.addWidget(query_btn)
 
         return group
 
     def _create_query_snils_group(self):
-        group = QGroupBox()
-        group.setStyleSheet(self._group_style())
-        group.setTitle("Запрос по СНИЛС")
-
+        group = QGroupBox("Запрос по СНИЛС")
+        group.setStyleSheet("""
+            QGroupBox { 
+                color: black; 
+                font-weight: bold; 
+                padding-top: 10px; 
+                border: 1px solid #CCCCCC; 
+                border-radius: 5px; 
+                margin-top: 10px; 
+            }
+            QGroupBox::title { 
+                subcontrol-origin: margin; 
+                left: 10px; 
+                padding: 0 5px; 
+            }
+        """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
         row = QHBoxLayout()
-        self.query_snils_label = QLabel("Введите СНИЛС:")
-        self.query_snils_label.setStyleSheet("color: black;")
+        label = QLabel("Введите СНИЛС:")
+        label.setStyleSheet("color: black;")
         self.query_snils_input = QLineEdit()
+        self.query_snils_input.setFixedWidth(300)
         self.query_snils_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
         self.query_snils_input.setPlaceholderText("123-456-789 00 или 12345678900")
 
+        row.addWidget(label)
+        row.addWidget(self.query_snils_input)
+        layout.addLayout(row)
+
         query_btn = QPushButton("Отправить запрос")
         query_btn.setStyleSheet(self._btn_style())
-        query_btn.clicked.connect(self.query_by_snils)
-
-        row.addWidget(self.query_snils_label)
-        row.addWidget(self.query_snils_input)
-        row.addWidget(query_btn)
-        layout.addLayout(row)
+        query_btn.clicked.connect(self.query_snils)
+        layout.addWidget(query_btn)
 
         return group
 
-    # ============ Логика API ключа ============
+    def _btn_style(self):
+        return """
+            QPushButton {
+                background-color: #4169E1;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3151B1;
+            }
+            QPushButton:pressed {
+                background-color: #264090;
+            }
+        """
+
+    # ============ Логика API-ключа ============
 
     def load_api_key(self):
         """Загрузка API-ключа из файла."""
@@ -420,25 +401,18 @@ class DataTransferTab(QWidget):
         if key:
             self.api_key_input.setText(key)
 
-    def paste_api_key(self):
-        """Вставка из буфера."""
-        clipboard = QApplication.clipboard()
-        text = clipboard.text()
-        if text:
-            self.api_key_input.setText(text.strip())
-
     def save_api_key(self):
-        """Сохранение API-ключа."""
+        """Сохранение API-ключа в файл."""
         api_key = self.api_key_input.text().strip()
-        if len(api_key) != 32:
-            QMessageBox.warning(self, "Ошибка", f"Длина ключа: {len(api_key)} (требуется 32 символа)")
-            return
-
         ok, msg = save_api_key(api_key, self.data_dir)
         if ok:
-            QMessageBox.information(self, "Успех", "API ключ сохранён")
+            QMessageBox.information(self, "Успех", "API-ключ сохранён")
         else:
             QMessageBox.warning(self, "Ошибка", msg)
+
+    def save_api_key_ui(self):
+        """Обработчик кнопки сохранения API-ключа."""
+        self.save_api_key()
 
     # ============ Логика настроек прокси ============
 
@@ -446,8 +420,6 @@ class DataTransferTab(QWidget):
         """Загрузка настроек прокси из файла."""
         settings = load_proxy_settings(self.data_dir)
         mode = settings.get('mode', 'off')
-
-        # Установить радиокнопку
         if mode == 'auto':
             self.proxy_auto_rb.setChecked(True)
         elif mode == 'manual':
@@ -459,7 +431,6 @@ class DataTransferTab(QWidget):
         self.proxy_user_input.setText(settings.get('username', ''))
         self.proxy_pass_input.setText(settings.get('password', ''))
 
-        # Обновить видимость полей
         if mode == 'auto':
             self._on_proxy_mode_changed(self.proxy_auto_rb)
         elif mode == 'manual':
@@ -470,8 +441,7 @@ class DataTransferTab(QWidget):
     def save_proxy_settings_ui(self):
         """Сохранение настроек прокси из UI."""
         mode_id = self.proxy_mode_group.checkedId()
-        mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
-        mode = mode_map.get(mode_id, 'off')
+        mode = {0: 'off', 1: 'auto', 2: 'manual'}[mode_id]
 
         settings = {
             'mode': mode,
@@ -483,15 +453,14 @@ class DataTransferTab(QWidget):
         ok, msg = save_proxy_settings(self.data_dir, settings)
         if ok:
             mode_text = {'off': 'Без прокси', 'auto': 'Авто (системный)', 'manual': 'Ручной'}
-            QMessageBox.information(self, "Успех", f"Режим: {mode_text.get(mode, mode)}\n{msg}")
+            QMessageBox.information(self, "Успех", f"Режим: {mode_text[mode]}\n{msg}")
         else:
             QMessageBox.warning(self, "Ошибка", msg)
 
     def test_proxy(self):
         """Тестирование подключения через прокси."""
         mode_id = self.proxy_mode_group.checkedId()
-        mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
-        mode = mode_map.get(mode_id, 'off')
+        mode = {0: 'off', 1: 'auto', 2: 'manual'}[mode_id]
 
         settings = {
             'mode': mode,
@@ -510,9 +479,6 @@ class DataTransferTab(QWidget):
                 QMessageBox.warning(self, "Ошибка", "Системный прокси не обнаружен.\nПроверьте настройки прокси в Windows (Параметры → Сеть → Прокси-сервер).")
                 return
 
-        QMessageBox.information(self, "Информация", "Тестирование подключения...")
-        QApplication.processEvents()
-
         ok, msg = test_proxy_connection(settings)
         if ok:
             QMessageBox.information(self, "Успех", msg)
@@ -522,8 +488,7 @@ class DataTransferTab(QWidget):
     def _get_proxy_settings(self):
         """Получение текущих настроек прокси для передачи в API."""
         mode_id = self.proxy_mode_group.checkedId()
-        mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
-        mode = mode_map.get(mode_id, 'off')
+        mode = {0: 'off', 1: 'auto', 2: 'manual'}[mode_id]
 
         return {
             'mode': mode,
@@ -532,82 +497,95 @@ class DataTransferTab(QWidget):
             'password': self.proxy_pass_input.text().strip()
         }
 
-    # ============ Логика отправки XML ============
+    # ============ Отправка XML ============
 
     def select_xml_file(self):
-        """Выбор XML файла с валидацией по XSD."""
+        """Выбор XML файла."""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Выберите XML файл", "", "XML Files (*.xml)"
         )
         if file_path:
-            # Валидация по XSD
-            xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
-            if xsd_files:
-                xsd_path = os.path.join(self.schema_dir, xsd_files[0])
-                try:
-                    schema_doc = etree.parse(xsd_path)
-                    schema = etree.XMLSchema(schema_doc)
-                    xml_doc = etree.parse(file_path)
-                    schema.assertValid(xml_doc)
-                    self.xml_file_input.setText(file_path)
-                except etree.DocumentInvalid as e:
-                    QMessageBox.warning(self, "Ошибка", f"Файл не соответствует схеме:\n{e}")
-                    return
-            else:
-                # XSD нет — просто принимаем файл
-                self.xml_file_input.setText(file_path)
+            self.xml_file_input.setText(file_path)
 
     def send_xml(self):
         """Отправка XML на сервер."""
         api_key = self.api_key_input.text().strip()
-        xml_file = self.xml_file_input.text()
+        xml_file = self.xml_file_input.text().strip()
 
-        # Валидация ключа
         if len(api_key) != 32:
             QMessageBox.warning(self, "Ошибка", "Проверьте API ключ (32 символа)")
             return
 
-        if not xml_file or not os.path.exists(xml_file):
+        if not xml_file:
             QMessageBox.warning(self, "Ошибка", "Выберите XML файл")
             return
 
-        # Парсим XML для получения данных работников (для журнала)
-        xml_records_data = self._parse_xml_for_journal(xml_file)
+        if not os.path.exists(xml_file):
+            QMessageBox.warning(self, "Ошибка", "Файл не найден")
+            return
 
-        proxy_settings = self._get_proxy_settings()
+        # Валидация XSD (опционально)
+        xsd_file = self._find_xsd()
+        if xsd_file:
+            try:
+                xml_doc = etree.parse(xml_file)
+                xsd_doc = etree.parse(xsd_file)
+                schema = etree.XMLSchema(xsd_doc)
+                if not schema.validate(xml_doc):
+                    errors = [str(e) for e in schema.error_log]
+                    QMessageBox.warning(self, "Ошибка XSD", f"Файл не соответствует схеме:\n" + "\n".join(errors[:5]))
+                    return
+            except Exception as e:
+                QMessageBox.warning(self, "Ошибка валидации", str(e))
+                return
 
-        QMessageBox.information(self, "Информация", "Отправка данных...")
+        QMessageBox.information(self, "Информация", "Отправка XML на сервер...\nЭто может занять время.")
         QApplication.processEvents()
 
+        proxy_settings = self._get_proxy_settings()
         result = push_xml(api_key, xml_file, proxy_settings=proxy_settings)
 
-        if result["success"]:
+        if result.get("success"):
             set_id = result.get("set_id", "")
-            self.last_setid_display.setText(set_id)
+            msg = f"Данные загружены на сервер\n\nЗапишите номер набора: {set_id}"
+            
+            # Показываем SetId жирным красным
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Успех")
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.setText(msg)
+            msg_box.setStyleSheet("""
+                QMessageBox QLabel {
+                    color: black;
+                    font-size: 14px;
+                }
+            """)
+            msg_box.exec()
 
-            # Сохраняем в журнал
-            if self._journal_add_callback and xml_records_data:
-                count = self._journal_add_callback(xml_records_data, set_id, xml_file)
-
-            # Диалог с SetId красным полужирным
-            msg = QMessageBox()
-            msg.setWindowTitle("Успех")
-            msg.setText("Данные загружены на сервер")
-            msg.setInformativeText(f'<span style="color:red; font-weight:bold; font-size:14px;">Запишите номер набора: {set_id}</span>')
-            msg.setTextFormat(Qt.TextFormat.RichText)
-            msg.exec()
+            # Добавляем в журнал если есть callback
+            if self._journal_add_callback:
+                try:
+                    from exporters.xml_exporter import convert_xml_to_records
+                    records = convert_xml_to_records(xml_file)
+                    self._journal_add_callback(records, set_id, xml_file)
+                except Exception as e:
+                    pass
         else:
-            error_msg = result.get("error", "Неизвестная ошибка")
-            # Покажем детали ответа если есть
-            raw_response = result.get("raw_response", "")
-            full_error = error_msg
-            if raw_response:
-                full_error += f"\n\nОтвет сервера:\n{raw_response[:500]}"
-            QMessageBox.critical(self, "Ошибка загрузки", full_error)
+            error = result.get("error", "Неизвестная ошибка")
+            QMessageBox.critical(self, "Ошибка загрузки", f"Ошибка: {error}")
 
-    # ============ Логика запросов ============
+    def _find_xsd(self):
+        """Поиск XSD файла в директории schema."""
+        if not os.path.exists(self.schema_dir):
+            return None
+        for f in os.listdir(self.schema_dir):
+            if f.endswith('.xsd'):
+                return os.path.join(self.schema_dir, f)
+        return None
 
-    def query_by_setid(self):
+    # ============ Запрос по SetId ============
+
+    def query_set_id(self):
         """Запрос по SetId."""
         api_key = self.api_key_input.text().strip()
         set_id = self.query_setid_input.text().strip()
@@ -617,7 +595,7 @@ class DataTransferTab(QWidget):
             return
 
         if not set_id:
-            QMessageBox.warning(self, "Ошибка", "Введите SetId")
+            QMessageBox.warning(self, "Ошибка", "Введите номер набора")
             return
 
         QMessageBox.information(self, "Информация", f"Запрос данных по SetId: {set_id}...")
@@ -626,7 +604,7 @@ class DataTransferTab(QWidget):
         proxy_settings = self._get_proxy_settings()
         result = get_by_set_id(api_key, set_id, proxy_settings=proxy_settings)
 
-        if not result["success"]:
+        if not result.get("success"):
             QMessageBox.critical(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
             return
 
@@ -635,22 +613,12 @@ class DataTransferTab(QWidget):
             QMessageBox.information(self, "Информация", "Записей не найдено")
             return
 
-        # Обновляем baseNo в журнале
+        # Обновляем журнал если есть callback
         if self._journal_update_callback:
-            # Строим карту {snils_clean: baseNo}
-            import unicodedata
-            base_no_map = {}
-            for rec in records:
-                snils_raw = rec.get('Snils', '')
-                base_no = rec.get('baseNo', '')
-                # Удаляем все Unicode-пробелы (категория Zs) включая \xa0
-                snils_clean = ''.join(c for c in snils_raw if unicodedata.category(c) != 'Zs')
-                snils_clean = snils_clean.replace('-', '')
-                if snils_clean:
-                    base_no_map[snils_clean] = base_no
-
-            if base_no_map:
-                updated = self._journal_update_callback(set_id, base_no_map)
+            try:
+                self._journal_update_callback(set_id, records)
+            except Exception as e:
+                pass
 
         # Сохранение XLSX
         file_path, _ = QFileDialog.getSaveFileName(
@@ -663,50 +631,9 @@ class DataTransferTab(QWidget):
             else:
                 QMessageBox.warning(self, "Ошибка", msg)
 
-    def _parse_xml_for_journal(self, xml_file_path):
-        """
-        Парсинг XML файла для получения данных работников (для журнала).
+    # ============ Запрос по СНИЛС ============
 
-        Возвращает список словарей с полями:
-            last_name, first_name, middle_name, snils, position,
-            program, date, protocol
-        """
-        import xml.etree.ElementTree as ET
-
-        records = []
-        try:
-            tree = ET.parse(xml_file_path)
-            root = tree.getroot()
-
-            for record in root.findall('RegistryRecord'):
-                worker = record.find('Worker')
-                test = record.find('Test')
-
-                if worker is None or test is None:
-                    continue
-
-                def get_text(elem, tag):
-                    child = elem.find(tag)
-                    return child.text.strip() if child is not None and child.text else ''
-
-                rec = {
-                    'last_name': get_text(worker, 'LastName'),
-                    'first_name': get_text(worker, 'FirstName'),
-                    'middle_name': get_text(worker, 'MiddleName'),
-                    'snils': get_text(worker, 'Snils'),
-                    'position': get_text(worker, 'Position'),
-                    'program': test.get('learnProgramId', ''),
-                    'date': get_text(test, 'Date'),
-                    'protocol': get_text(test, 'ProtocolNumber')
-                }
-                records.append(rec)
-        except Exception as e:
-            # При ошибке парсинга — журнал просто не обновится
-            pass
-
-        return records
-
-    def query_by_snils(self):
+    def query_snils(self):
         """Запрос по СНИЛС."""
         api_key = self.api_key_input.text().strip()
         snils_raw = self.query_snils_input.text().strip()
@@ -754,3 +681,10 @@ class DataTransferTab(QWidget):
                 QMessageBox.information(self, "Успех", f"Сохранено {len(records)} записей\n{msg}")
             else:
                 QMessageBox.warning(self, "Ошибка", msg)
+
+    # ============ Установка callback-функций ============
+
+    def set_journal_callback(self, add_callback, update_callback):
+        """Установка callback-функций для журнала."""
+        self._journal_add_callback = add_callback
+        self._journal_update_callback = update_callback
