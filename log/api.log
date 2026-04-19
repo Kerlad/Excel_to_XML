@@ -1,0 +1,6 @@
+2026-04-18 18:26:25 | api.mintrud_api | ERROR | Критическая ошибка запроса стр. 1: ('Connection aborted.', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None))
+2026-04-18 18:27:25 | api.mintrud_api | ERROR | Критическая ошибка запроса стр. 1: ('Connection aborted.', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None))
+2026-04-18 18:27:48 | api.mintrud_api | ERROR | Критическая ошибка запроса стр. 1: ('Connection aborted.', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None))
+2026-04-18 18:28:12 | api.mintrud_api | ERROR | Критическая ошибка запроса стр. 1: ('Connection aborted.', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None))
+2026-04-18 18:31:28 | api.mintrud_api | ERROR | Критическая ошибка запроса стр. 1: ('Connection aborted.', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None))
+2026-04-18 18:33:12 | api.mintrud_api | INFO | Отправка XML на https://edu.rosmintrud.ru/api/set/push

@@ -12,7 +12,7 @@ a = Analysis(
         ('ico.ico', '.'),
         ('schema', 'schema'),
         ('data', 'data'),
-        ('Protokol_proverki_znanii_OT.xlsx', '.'),
+        ('Protokol_proverki_znanii_OT.docx', '.'),
     ],
     hiddenimports=[
         # PyQt6

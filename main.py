@@ -47,13 +47,12 @@ class MainWindow(QMainWindow):
         # Журнал проверки знаний
         data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
         self.journal_manager = JournalManager(data_dir)
-        self.exam_journal_tab = ExamJournalTab(self.journal_manager)
+        self.exam_journal_tab = ExamJournalTab(self.journal_manager, data_dir)
 
         # Менеджеры для протокола
         self.commission_manager = CommissionManager(data_dir)
         self.programs_manager = ProgramsManager(data_dir)
-        self.protocol_tab = ProtocolTab(self.commission_manager, self.programs_manager, data_dir)
-        # Передаем ссылку на DataViewTab для получения данных работников
+        self.protocol_tab = ProtocolTab(self.commission_manager, self.programs_manager, data_dir, self.journal_manager)
         self.protocol_tab.set_data_source(self.data_view_tab)
 
         self.tabs.addTab(self.data_entry_tab, "Внесение данных")
@@ -226,8 +225,8 @@ class MainWindow(QMainWindow):
         номер и название программы, дату экзамена, номер протокола, SetId и
         регистрационный номер (baseNo).</p>
         <p><b>Поиск и фильтрация:</b> используйте панель поиска — можно фильтровать по
-        ФИО/СНИЛС, SetId, статусу (ожидает/получен) и диапазону дат отправки.
-        Кнопка «Сбросить» очищает все фильтры.</p>
+        ФИО/СНИЛС, SetId, статусу (ожидает/получен), номеру протокола
+        и диапазону дат отправки. Кнопка «Сбросить» очищает все фильтры.</p>
         <p><b>Статусы записей:</b> «ожидает» (оранжевый) — XML отправлен, но рег. номер
         ещё не получен; «получен» (зелёный) — рег. номер подтянут автоматически
         после запроса по SetId.</p>
@@ -245,11 +244,19 @@ class MainWindow(QMainWindow):
         <p><b>Программы обучения:</b> кнопка «Программы обучения» открывает окно для
         редактирования номеров документов и часов обучения по каждой программе
         (двойной клик по ячейке).</p>
-        <p><b>Генерация протокола:</b> нажмите «Сгенерировать протокол» — система
-        найдёт работников с указанным номером протокола на вкладке «Просмотр данных»,
-        заполнит шаблон <code>Protokol_proverki_znanii_OT.xlsx</code> данными комиссии
-        и работников, и сохранит итоговый файл. Обязательные поля: номер протокола,
-        название организации, номер приказа, ФИО председателя.</p>
+        <p><b>Генерация протокола:</b> выберите номер протокола из выпадающего списка
+        или «Все» для генерации всех протоколов. При выборе номера протокола
+        автоматически заполняется поле «Дата проверки знаний» из Журнала.</p>
+        <p>Нажмите «Сгенерировать протокол» — система найдёт работников с указанным
+        номером протокола из журнала, заполнит шаблон <code>Protokol_proverki_znanii_OT.docx</code>
+        данными комиссии и работников, и сохранит итоговый файл.</p>
+        <p><b>Имена файлов:</b></p>
+        <ul>
+        <li>Одиночный протокол: «Протокол {номер} от {дата}.docx» (например, «Протокол 1 от 21-08-2025.docx»)</li>
+        <li>При выборе «Все» — каждый протокол сохраняется в отдельный файл в выбранную папку</li>
+        </ul>
+        <p><b>Обязательные поля:</b> номер протокола, название организации,
+        номер приказа, ФИО председателя.</p>
         """)
 
         layout.addWidget(help_text)
@@ -292,7 +299,7 @@ class MainWindow(QMainWindow):
             "обученных требованиям охраны труда (постановление 2464), "
             "и отправки данных в информационную систему Минтруда России.<br><br>"
             "<b>Разработчик:</b> Кривоносов Д.А.<br>"
-            "<b>При участии:</b> QWEN Studio<br>"
+            "<b>При участии:</b> QWEN Studio, OpenCode (free AI)<br>"
             "<b>Репозиторий:</b> <a href='https://github.com/Kerlad/Excel_to_XML.git'>https://github.com/Kerlad/Excel_to_XML.git</a><br>"
             "<b>Электронная почта:</b> <a href='mailto:denis-krv@yandex.ru'>denis-krv@yandex.ru</a>"
         )

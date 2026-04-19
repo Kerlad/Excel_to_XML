@@ -4,10 +4,11 @@
 Кнопки: Сохранить, Загрузить, Программы обучения, Сгенерировать протокол
 """
 import os
+from copy import deepcopy
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QScrollArea, QFileDialog, QMessageBox,
-    QFrame, QGridLayout, QDialog
+    QFrame, QGridLayout, QDialog, QComboBox
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
@@ -18,12 +19,15 @@ from tabs.programs_dialog import ProgramsDialog
 
 class ProtocolTab(QWidget):
     def __init__(self, commission_manager: CommissionManager, programs_manager: ProgramsManager,
-                 data_dir: str):
+                 data_dir: str, journal_manager=None, data_source=None):
         super().__init__()
         self.setStyleSheet("background-color: transparent;")
         self.commission = commission_manager
         self.programs = programs_manager
+        self.journal_manager = journal_manager
+        self.data_source = data_source
         self.data_dir = data_dir
+        self.last_save_path = self._load_last_save_path()
 
         # Основной layout с прокруткой
         main_layout = QVBoxLayout(self)
@@ -53,10 +57,85 @@ class ProtocolTab(QWidget):
 
         # Загрузка данных
         self._load_commission_data()
+        self._populate_protocol_combo()
+    
+    def _populate_protocol_combo(self):
+        """Заполнение комбобокса номеров протоколов из журнала."""
+        if not hasattr(self, 'journal_manager') or self.journal_manager is None:
+            return
+        
+        # Получаем уникальные номера протоколов
+        all_records = self.journal_manager.get_all_records()
+        protocols = set()
+        for rec in all_records:
+            if rec.protocol:
+                protocols.add(rec.protocol)
+        
+        # Очищаем и добавляем "Все"
+        self.protocol_combo.clear()
+        self.protocol_combo.addItem("Все")
+        
+        # Добавляем номера протоколов
+        for proto in sorted(protocols):
+            self.protocol_combo.addItem(proto)
+        
+        # Подключаем обработчик для автозаполнения даты
+        self.protocol_combo.currentTextChanged.connect(self._on_protocol_selected)
+    
+    def _on_protocol_selected(self, protocol_number):
+        """При выборе протокола автозаполняем дату из журнала."""
+        if protocol_number == "Все" or not protocol_number:
+            return
+        if not hasattr(self, 'journal_manager') or self.journal_manager is None:
+            return
+        
+        # Ищем записи с этим протоколом
+        records = self.journal_manager.get_records_by_protocol(protocol_number)
+        if records:
+            for rec in records:
+                if rec.exam_date:
+                    self.exam_date_input.setText(rec.exam_date)
+                    break
+    
+    def _load_last_save_path(self):
+        """Загрузка последнего пути сохранения протокола."""
+        import json
+        settings_file = os.path.join(self.data_dir, "protocol_settings.json")
+        if os.path.exists(settings_file):
+            try:
+                with open(settings_file, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+                    return settings.get('last_save_path', '')
+            except:
+                pass
+        return ''
+    
+    def _save_last_save_path(self, path):
+        """Сохранение последнего пути сохранения протокола."""
+        import json
+        settings_file = os.path.join(self.data_dir, "protocol_settings.json")
+        settings = {}
+        if os.path.exists(settings_file):
+            try:
+                with open(settings_file, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+            except:
+                pass
+        # Сохраняем полный путь, а не только директорию
+        settings['last_save_path'] = path
+        try:
+            with open(settings_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, ensure_ascii=False, indent=2)
+        except:
+            pass
 
     def set_data_source(self, data_view_tab):
         """Установка источника данных для протокола (DataViewTab)."""
         self.data_source = data_view_tab
+    
+    def set_journal_manager(self, journal_manager):
+        """Установка менеджера журнала для получения регистрационных номеров."""
+        self.journal_manager = journal_manager
 
     def _group_style(self):
         return """
@@ -143,11 +222,11 @@ class ProtocolTab(QWidget):
         proto_form = QFormLayout()
         self.protocol_label = QLabel("№ протокола:")
         self.protocol_label.setStyleSheet("color: black;")
-        self.protocol_input = QLineEdit()
-        self.protocol_input.setFixedWidth(200)
-        self.protocol_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
-        self.protocol_input.setPlaceholderText("Номер протокола")
-        proto_form.addRow(self.protocol_label, self.protocol_input)
+        self.protocol_combo = QComboBox()
+        self.protocol_combo.setFixedWidth(200)
+        self.protocol_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px; background-color: white;")
+        self.protocol_combo.addItem("Все")
+        proto_form.addRow(self.protocol_label, self.protocol_combo)
         row2.addLayout(proto_form)
 
         exam_form = QFormLayout()
@@ -443,25 +522,96 @@ class ProtocolTab(QWidget):
             QMessageBox.warning(self, "Ошибка", f"Не заполнены обязательные поля:\n{missing}")
             return
 
-        protocol_number = self.protocol_input.text().strip()
-        if not protocol_number:
-            QMessageBox.warning(self, "Ошибка", "Введите номер протокола")
-            return
+        selected_protocol = self.protocol_combo.currentText()
 
-        # Получаем данные работников из источника (DataViewTab) по номеру протокола
-        worker_records = self._get_worker_records_by_protocol(protocol_number)
-        if not worker_records:
-            QMessageBox.warning(self, "Ошибка", f"Нет данных работников с номером протокола {protocol_number}")
+        # Определяем список протоколов для генерации
+        if selected_protocol == "Все":
+            # Получаем все уникальные номера протоколов
+            if not hasattr(self, 'journal_manager') or self.journal_manager is None:
+                QMessageBox.warning(self, "Ошибка", "Журнал недоступен")
+                return
+            all_records = self.journal_manager.get_all_records()
+            protocols = sorted(set(rec.protocol for rec in all_records if rec.protocol))
+            if not protocols:
+                QMessageBox.warning(self, "Ошибка", "Нет протоколов в журнале")
+                return
+        else:
+            protocols = [selected_protocol]
+
+        # Проверяем, что есть данные для каждого протокола
+        protocols_with_data = []
+        for proto in protocols:
+            worker_records = self._get_worker_records_by_protocol(proto)
+            if worker_records:
+                protocols_with_data.append(proto)
+        
+        if not protocols_with_data:
+            QMessageBox.warning(self, "Ошибка", f"Нет данных работников для выбранных протоколов")
             return
 
         # Диалог сохранения
+        exam_date = self.exam_date_input.text().strip()
+        # Форматируем дату для имени файла
+        date_for_filename = ""
+        if exam_date:
+            try:
+                from datetime import datetime
+                # Убираем время если есть
+                date_part = exam_date.split()[0] if ' ' in exam_date else exam_date
+                # Парсим дату в разных форматах
+                for fmt in ["%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"]:
+                    try:
+                        dt = datetime.strptime(date_part, fmt)
+                        date_for_filename = dt.strftime("%d-%m-%Y")
+                        break
+                    except:
+                        continue
+            except:
+                pass
+        
+        # Если date_for_filename пустой, пытаемся хоть как-то обработать
+        if not date_for_filename and exam_date:
+            date_for_filename = exam_date.replace('.', '-').replace('/', '-').split()[0]
+        
+        if len(protocols_with_data) == 1:
+            if date_for_filename:
+                default_file = f"Протокол {protocols_with_data[0]} от {date_for_filename}.docx"
+            else:
+                default_file = f"Протокол {protocols_with_data[0]}.docx"
+        else:
+            default_file = "Протоколы.docx"
+        
+        # Используем полный путь если файл существует и соответствует типу (для "Все" или одиночного)
+        if self.last_save_path and os.path.exists(self.last_save_path):
+            basename = os.path.basename(self.last_save_path)
+            # Проверяем: если "Протоколы" в имени и мы генерируем "Все", или если номер совпадает
+            if len(protocols_with_data) == 1:
+                # Одиночный - проверяем номер в имени
+                if protocols_with_data[0] in basename and "Протоколы" not in basename:
+                    default_path = self.last_save_path
+                else:
+                    default_path = os.path.join(os.path.dirname(self.last_save_path), default_file)
+            else:
+                # Все - только "Протоколы"
+                if "Протоколы" in basename:
+                    default_path = self.last_save_path
+                else:
+                    default_path = os.path.join(os.path.dirname(self.last_save_path), default_file)
+        elif self.last_save_path and os.path.exists(os.path.dirname(self.last_save_path)):
+            default_path = os.path.join(os.path.dirname(self.last_save_path), default_file)
+        else:
+            default_path = default_file
+            
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить протокол",
-            f"Протокол_{protocol_number}.xlsx",
-            "Excel Files (*.xlsx)"
+            default_path,
+            "Word Files (*.docx)"
         )
         if not file_path:
             return
+        
+        # Сохраняем путь для следующего раза
+        self._save_last_save_path(file_path)
 
         # Собираем данные комиссии
         commission_data = {
@@ -484,49 +634,104 @@ class ProtocolTab(QWidget):
         # Шаблон
         template_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "Protokol_proverki_znanii_OT.xlsx"
+            "Protokol_proverki_znanii_OT.docx"
         )
 
-        success, msg = ProtocolExporter.generate_from_commission(
-            commission_data=commission_data,
-            protocol_number=protocol_number,
-            worker_records=worker_records,
-            programs_manager=self.programs,
-            output_path=file_path,
-            template_path=template_path,
-            data_dir=self.data_dir
-        )
+        # Генерируем протоколы
+        if len(protocols_with_data) == 1:
+            # Один протокол - как раньше
+            protocol_number = protocols_with_data[0]
+            worker_records = self._get_worker_records_by_protocol(protocol_number)
+            
+            success, msg = ProtocolExporter.generate_from_commission(
+                commission_data=commission_data,
+                protocol_number=protocol_number,
+                worker_records=worker_records,
+                programs_manager=self.programs,
+                output_path=file_path,
+                template_path=template_path,
+                data_dir=self.data_dir
+            )
 
-        if success:
-            QMessageBox.information(self, "Успех", msg)
+            if success:
+                QMessageBox.information(self, "Успех", msg)
+            else:
+                QMessageBox.warning(self, "Ошибка генерации", msg)
         else:
-            QMessageBox.warning(self, "Ошибка генерации", msg)
+            # Несколько протоколов - каждый в отдельный файл
+            # Выбираем директорию для сохранения
+            save_dir = QFileDialog.getExistingDirectory(
+                self, "Выберите папку для сохранения протоколов",
+                os.path.dirname(file_path) if file_path else ""
+            )
+            if not save_dir:
+                return
+            
+            saved_count = 0
+            for protocol_number in protocols_with_data:
+                worker_records = self._get_worker_records_by_protocol(protocol_number)
+                if not worker_records:
+                    continue
+                
+                # Формируем имя файла
+                exam_date = self.exam_date_input.text().strip()
+                date_str = ""
+                if exam_date:
+                    try:
+                        from datetime import datetime
+                        date_part = exam_date.split()[0] if ' ' in exam_date else exam_date
+                        for fmt in ["%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"]:
+                            try:
+                                dt = datetime.strptime(date_part, fmt)
+                                date_str = "_" + dt.strftime("%d-%m-%Y")
+                                break
+                            except:
+                                continue
+                    except:
+                        pass
+                
+                output_file = os.path.join(save_dir, f"Протокол {protocol_number}{date_str}.docx")
+                
+                success, _ = ProtocolExporter.generate_from_commission(
+                    commission_data=commission_data,
+                    protocol_number=protocol_number,
+                    worker_records=worker_records,
+                    programs_manager=self.programs,
+                    output_path=output_file,
+                    template_path=template_path,
+                    data_dir=self.data_dir
+                )
+                
+                if success:
+                    saved_count += 1
+            
+            QMessageBox.information(self, "Успех", f"Сохранено протоколов: {saved_count}\nПапка: {save_dir}")
 
     def _get_worker_records_by_protocol(self, protocol_number: str) -> list:
-        """Получение записей работников по номеру протокола из DataViewTab."""
-        if not hasattr(self, 'data_source') or self.data_source is None:
+        """Получение записей работников по номеру протокола из JournalManager."""
+        if not hasattr(self, 'journal_manager') or self.journal_manager is None:
             return []
 
+        journal_records = self.journal_manager.get_records_by_protocol(protocol_number)
+        
         records = []
-        table = self.data_source.table
-        for row in range(table.rowCount()):
-            # Колонка 12 = № протокола
-            protocol_item = table.item(row, 12)
-            if protocol_item and protocol_item.text().strip() == protocol_number:
-                record = {
-                    'last_name': table.item(row, 0).text() if table.item(row, 0) else '',
-                    'first_name': table.item(row, 1).text() if table.item(row, 1) else '',
-                    'middle_name': table.item(row, 2).text() if table.item(row, 2) else '',
-                    'snils': table.item(row, 3).text() if table.item(row, 3) else '',
-                    'position': table.item(row, 4).text() if table.item(row, 4) else '',
-                    'employer_inn': table.item(row, 5).text() if table.item(row, 5) else '',
-                    'employer_title': table.item(row, 6).text() if table.item(row, 6) else '',
-                    'tc_inn': table.item(row, 7).text() if table.item(row, 7) else '',
-                    'tc_title': table.item(row, 8).text() if table.item(row, 8) else '',
-                    'result': table.item(row, 9).text() if table.item(row, 9) else '',
-                    'program': table.item(row, 10).text() if table.item(row, 10) else '',
-                    'date': table.item(row, 11).text() if table.item(row, 11) else '',
-                    'protocol': protocol_number,
-                }
-                records.append(record)
+        for rec in journal_records:
+            record = {
+                'last_name': rec.last_name,
+                'first_name': rec.first_name,
+                'middle_name': rec.middle_name,
+                'snils': rec.snils,
+                'position': rec.position,
+                'employer_inn': '',
+                'employer_title': '',
+                'tc_inn': '',
+                'tc_title': '',
+                'result': rec.result,
+                'program': rec.program_title,
+                'program_id': rec.program_id,
+                'date': rec.exam_date,
+                'protocol': rec.protocol,
+                'base_no': rec.base_no,
+            }
+            records.append(record)
         return records

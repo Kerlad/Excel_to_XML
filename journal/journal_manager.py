@@ -32,6 +32,7 @@ class JournalRecord:
     program_title: str            # Название программы
     exam_date: str                # Дата экзамена: "ДД.ММ.ГГГГ"
     protocol: str                 # Номер протокола
+    result: str                   # Результат: "Удовлетворительно" или "Неудовлетворительно"
     base_no: str = ""             # Регистрационный номер (заполняется позже)
     status: str = "pending"       # "pending" | "received"
 
@@ -58,22 +59,23 @@ class JournalManager:
                 self.records = []
                 for item in data:
                     record = JournalRecord(
-                        uuid=item.get('uuid', str(uuid.uuid4())),
-                        send_date=item.get('send_date', ''),
-                        set_id=item.get('set_id', ''),
-                        xml_file=item.get('xml_file', ''),
-                        last_name=item.get('last_name', ''),
-                        first_name=item.get('first_name', ''),
-                        middle_name=item.get('middle_name', ''),
-                        snils=item.get('snils', ''),
-                        position=item.get('position', ''),
-                        program_id=item.get('program_id', ''),
-                        program_title=item.get('program_title', ''),
-                        exam_date=item.get('exam_date', ''),
-                        protocol=item.get('protocol', ''),
-                        base_no=item.get('base_no', ''),
-                        status=item.get('status', 'pending')
-                    )
+                uuid=item.get('uuid', str(uuid.uuid4())),
+                send_date=item.get('send_date', ''),
+                set_id=item.get('set_id', ''),
+                xml_file=item.get('xml_file', ''),
+                last_name=item.get('last_name', ''),
+                first_name=item.get('first_name', ''),
+                middle_name=item.get('middle_name', ''),
+                snils=item.get('snils', ''),
+                position=item.get('position', ''),
+                program_id=item.get('program_id', ''),
+                program_title=item.get('program_title', ''),
+                exam_date=item.get('exam_date', ''),
+                protocol=item.get('protocol', ''),
+                result=item.get('result', ''),
+                base_no=item.get('base_no', ''),
+                status=item.get('status', 'pending')
+            )
                     self.records.append(record)
             except Exception as e:
                 logger.error(f"Ошибка загрузки журнала: {e}")
@@ -120,6 +122,7 @@ class JournalManager:
                 program_title=program_title,
                 exam_date=rec.get('date', ''),
                 protocol=rec.get('protocol', ''),
+                result=rec.get('result', ''),  # Add result field
                 base_no="",
                 status="pending"
             )
@@ -242,6 +245,12 @@ class JournalManager:
         """Возвращает список уникальных SetId из журнала."""
         return list(dict.fromkeys(r.set_id for r in self.records if r.set_id))
 
+    def get_records_by_protocol(self, protocol_number: str) -> List[JournalRecord]:
+        """Получение записей по номеру протокола."""
+        if not protocol_number:
+            return []
+        return [r for r in self.records if r.protocol == protocol_number]
+    
     def get_all_records(self) -> List[JournalRecord]:
         """Возвращает все записи журнала."""
         return self.records
