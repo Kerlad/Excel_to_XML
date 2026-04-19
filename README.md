@@ -107,6 +107,12 @@ pip install -r requirements.txt
 | cryptography | ≥41.0.0 | Шифрование API-ключа |
 | Pillow | ≥10.0.0 | Работа с иконками |
 
+### Готовый EXE-файл
+
+Готовый к использованию EXE-файл расположен в папке `dist/ExcelXML-Mintrud/`.
+
+Для запуска перейдите в папку `dist/ExcelXML-Mintrud/` и запустите `ExcelXML-Mintrud.exe`.
+
 ---
 
 ## 💻 Использование
