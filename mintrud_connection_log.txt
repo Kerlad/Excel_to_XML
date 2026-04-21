@@ -1,0 +1,34 @@
+[2026-04-20 09:21:47] ✅ Программа запущена. Нажми «Автоопределить прокси», потом «ТЕСТИРОВАТЬ СОЕДИНЕНИЕ»
+[2026-04-20 09:21:52] 🔍 Автоопределение системного прокси...
+[2026-04-20 09:21:52]    urllib.getproxies() → {'http': 'http://msk-proxy-03.msk.oao.rzd:3128', 'https': 'http://msk-proxy-03.msk.oao.rzd:3128', 'ftp': 'http://msk-proxy-03.msk.oao.rzd:3128'}
+[2026-04-20 09:21:52] ✅ Прокси подхвачен из системы!
+[2026-04-20 09:21:55] 📡 ТЕСТ СОЕДИНЕНИЯ → https://edu.rosmintrud.ru/api/set/push
+[2026-04-20 09:21:55]    Прокси: {'http': 'http://msk-proxy-03.msk.oao.rzd:3128', 'https': 'http://msk-proxy-03.msk.oao.rzd:3128'}
+[2026-04-20 09:21:55] ❌ ОШИБКА ПРОКСИ (407/401): HTTPSConnectionPool(host='edu.rosmintrud.ru', port=443): Max retries exceeded with url: /api/set/push (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 407 Proxy Authentication Required')))
+[2026-04-20 09:21:55] 💡 Попробуй явно прописать логин:пароль в поле HTTP_PROXY
+[2026-04-20 09:21:55] ────────────────────────────────────────────────────────────────────────────────
+[2026-04-20 09:24:19] 📡 ТЕСТ СОЕДИНЕНИЯ → https://edu.rosmintrud.ru/api/set/push
+[2026-04-20 09:24:19]    Прокси: {'http': 'http://login:password@msk-proxy-03.msk.oao.rzd:3128', 'https': 'http://msk-proxy-03.msk.oao.rzd:3128'}
+[2026-04-20 09:24:19] ❌ ОШИБКА ПРОКСИ (407/401): HTTPSConnectionPool(host='edu.rosmintrud.ru', port=443): Max retries exceeded with url: /api/set/push (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 407 Proxy Authentication Required')))
+[2026-04-20 09:24:19] 💡 Попробуй явно прописать логин:пароль в поле HTTP_PROXY
+[2026-04-20 09:24:19] ────────────────────────────────────────────────────────────────────────────────
+[2026-04-20 09:24:31] 📡 ТЕСТ СОЕДИНЕНИЯ → https://edu.rosmintrud.ru/api/set/push
+[2026-04-20 09:24:31]    Прокси: {'http': 'http://login:password@msk-proxy-03.msk.oao.rzd:3128', 'https': 'http://msk-proxy-03.msk.oao.rzd:3128'}
+[2026-04-20 09:24:31] ❌ ОШИБКА ПРОКСИ (407/401): HTTPSConnectionPool(host='edu.rosmintrud.ru', port=443): Max retries exceeded with url: /api/set/push (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 407 Proxy Authentication Required')))
+[2026-04-20 09:24:31] 💡 Попробуй явно прописать логин:пароль в поле HTTP_PROXY
+[2026-04-20 09:24:31] ────────────────────────────────────────────────────────────────────────────────
+[2026-04-20 09:24:51] 📡 ТЕСТ СОЕДИНЕНИЯ → https://edu.rosmintrud.ru/api/set/push
+[2026-04-20 09:24:51]    Прокси: {'http': 'http://login:password@msk-proxy-03.msk.oao.rzd:3128', 'https': 'http://login:password@msk-proxy-03.msk.oao.rzd:3128'}
+[2026-04-20 09:24:52] ❌ ОШИБКА ПРОКСИ (407/401): HTTPSConnectionPool(host='edu.rosmintrud.ru', port=443): Max retries exceeded with url: /api/set/push (Caused by ProxyError('Unable to connect to proxy', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None)))
+[2026-04-20 09:24:52] 💡 Попробуй явно прописать логин:пароль в поле HTTP_PROXY
+[2026-04-20 09:24:52] ────────────────────────────────────────────────────────────────────────────────
+[2026-04-20 09:25:41] 📡 ТЕСТ СОЕДИНЕНИЯ → https://edu.rosmintrud.ru/api/set/push
+[2026-04-20 09:25:41]    Прокси: {'http': 'http://login%40msk.rzd:password@msk-proxy-03.msk.oao.rzd:3128', 'https': 'http://login%40msk.rzd:password@msk-proxy-03.msk.oao.rzd:3128'}
+[2026-04-20 09:25:42] ❌ ОШИБКА ПРОКСИ (407/401): HTTPSConnectionPool(host='edu.rosmintrud.ru', port=443): Max retries exceeded with url: /api/set/push (Caused by ProxyError('Unable to connect to proxy', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None)))
+[2026-04-20 09:25:42] 💡 Попробуй явно прописать логин:пароль в поле HTTP_PROXY
+[2026-04-20 09:25:42] ────────────────────────────────────────────────────────────────────────────────
+[2026-04-20 09:26:13] 📡 ТЕСТ СОЕДИНЕНИЯ → https://edu.rosmintrud.ru/api/GetEducatedPersonXML
+[2026-04-20 09:26:13]    Прокси: {'http': 'http://login%40msk.rzd:password@msk-proxy-03.msk.oao.rzd:3128', 'https': 'http://login%40msk.rzd:password@msk-proxy-03.msk.oao.rzd:3128'}
+[2026-04-20 09:26:13] ❌ ОШИБКА ПРОКСИ (407/401): HTTPSConnectionPool(host='edu.rosmintrud.ru', port=443): Max retries exceeded with url: /api/GetEducatedPersonXML (Caused by ProxyError('Unable to connect to proxy', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None)))
+[2026-04-20 09:26:13] 💡 Попробуй явно прописать логин:пароль в поле HTTP_PROXY
+[2026-04-20 09:26:13] ────────────────────────────────────────────────────────────────────────────────

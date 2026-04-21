@@ -1,8 +1,7 @@
 import os
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit,
-    QPushButton, QFileDialog, QMessageBox, QScrollArea, QApplication,
-    QRadioButton, QButtonGroup, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
+    QLabel, QMessageBox, QFileDialog, QCheckBox, QScrollArea, QFrame, QRadioButton, QButtonGroup, QApplication
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -126,17 +125,29 @@ class DataTransferTab(QWidget):
         self.api_key_input.setFixedWidth(350)
         self.api_key_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
         self.api_key_input.setPlaceholderText("32 символа")
-
-        paste_btn = QPushButton("Вставить из буфера")
+        
+        # Кнопка показать/скрыть API (зажать = показать)
+        self.api_key_toggle_btn = QPushButton("👁")
+        self.api_key_toggle_btn.setFixedWidth(40)
+        self.api_key_toggle_btn.setStyleSheet(self._btn_style())
+        self.api_key_toggle_btn.setCheckable(True)
+        self.api_key_toggle_btn.setToolTip("Зажмите для просмотра ключа")
+        # По умолчанию скрытие - показываем только при зажатии
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_toggle_btn.pressed.connect(lambda: self.api_key_input.setEchoMode(QLineEdit.EchoMode.Normal))
+        self.api_key_toggle_btn.released.connect(lambda: self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password))
+        
+        paste_btn = QPushButton("Вставить")
         paste_btn.setStyleSheet(self._btn_style())
         paste_btn.clicked.connect(self.paste_api_key)
 
-        save_btn = QPushButton("Сохранить ключ")
+        save_btn = QPushButton("Сохранить")
         save_btn.setStyleSheet(self._btn_style())
         save_btn.clicked.connect(self.save_api_key)
 
         row.addWidget(self.api_key_label)
         row.addWidget(self.api_key_input)
+        row.addWidget(self.api_key_toggle_btn)
         row.addWidget(paste_btn)
         row.addWidget(save_btn)
         row.addStretch()
@@ -279,6 +290,49 @@ class DataTransferTab(QWidget):
         btn_row.addWidget(self.proxy_test_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
+        
+        # Переключатель TLS с стилями
+        tls_row = QHBoxLayout()
+        self.tls_checkbox = QCheckBox("TLS верификация (включить для прода)")
+        self.tls_checkbox.setToolTip("Включите для безопасного соединения. Отключите для работы через корпоративный прокси с SSL-инспекцией")
+        self.tls_checkbox.setStyleSheet("""
+            QCheckBox {
+                color: black;
+            }
+            QCheckBox::indicator {
+                border: 1px solid #888888;
+                border-radius: 3px;
+                width: 16px;
+                height: 16px;
+                background-color: white;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #4169E1;
+                border: 1px solid #4169E1;
+            }
+            QToolTip {
+                color: black;
+                background-color: white;
+                border: 1px solid #CCCCCC;
+                padding: 4px;
+            }
+        """)
+        self.tls_checkbox.setChecked(False)  # По умолчанию выключено для корпоративных сетей
+        tls_row.addWidget(self.tls_checkbox)
+        tls_row.addStretch()
+        layout.addLayout(tls_row)
+        
+        # Кнопка показа пароль прокси (зажать = показать)
+        pass_row = QHBoxLayout()
+        self.proxy_pass_toggle_btn = QPushButton("👁 Показать пароль прокси")
+        self.proxy_pass_toggle_btn.setStyleSheet(self._btn_style())
+        self.proxy_pass_toggle_btn.setCheckable(True)
+        self.proxy_pass_toggle_btn.setToolTip("Зажмите для просмотра пароля")
+        self.proxy_pass_toggle_btn.pressed.connect(lambda: self.proxy_pass_input.setEchoMode(QLineEdit.EchoMode.Normal))
+        self.proxy_pass_toggle_btn.released.connect(lambda: self.proxy_pass_input.setEchoMode(QLineEdit.EchoMode.Password))
+        pass_row.addWidget(self.proxy_pass_toggle_btn)
+        pass_row.addStretch()
+        layout.addLayout(pass_row)
 
         # Инициальное состояние — скрыть ручные поля
         self._on_proxy_mode_changed(self.proxy_off_rb)
@@ -492,6 +546,11 @@ class DataTransferTab(QWidget):
         mode_id = self.proxy_mode_group.checkedId()
         mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
         mode = mode_map.get(mode_id, 'off')
+        
+        # Получаем TLS настройку из чекбокса
+        from utils.proxy_manager import ENABLE_TLS_VERIFY
+        from utils import proxy_manager
+        proxy_manager.ENABLE_TLS_VERIFY = self.tls_checkbox.isChecked()
 
         settings = {
             'mode': mode,

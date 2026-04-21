@@ -31,6 +31,7 @@ a = Analysis(
         'lxml',
         'lxml.etree',
         'requests',
+        'requests-ntlm',
         'urllib3',
         'cryptography',
         'cryptography.fernet',

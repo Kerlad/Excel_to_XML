@@ -221,34 +221,43 @@ def validate_row(row_dict, row_num):
     return True, records
 
 
-def load_xlsx(file_path):
+def load_xlsx(file_path, password=None):
     """
-    Загрузка XLSX/XLS файла.
-    Возвращает (records, error_count, error_messages)
-    records — список словарей, error_count — кол-во ошибок
+    Загрузка XLSX файла.
+    
+    Аргументы:
+        file_path — путь к файлу
+        password — пароль для защищённого файла (необязательно)
+    
+    Возвращает (records, error_details, error_rows_set).
+    records — список словарей с данными работников.
+    error_details — список словарей с ошибками: {'row': int, 'type': str, 'field': str, 'message': str}
+    error_rows_set — множество номеров строк с ошибками
     """
-    import xlrd
-
     try:
         if file_path.endswith('.xlsx'):
             from openpyxl import load_workbook
-            return _load_xlsx_openpyxl(file_path)
+            return _load_xlsx_openpyxl(file_path, password)
         elif file_path.endswith('.xls'):
-            return _load_xls_xlrd(file_path)
+            return _load_xls_xlrd(file_path, password)
         else:
-            return None, 0, ["Неподдерживаемый формат. Используйте .xlsx или .xls"]
+            return None, [], set(), ["Неподдерживаемый формат. Используйте .xlsx или .xls"]
     except ImportError as e:
-        return None, 0, [f"Не установлен модуль: {e}. pip install openpyxl xlrd"]
+        return None, [], set(), [f"Не установлен модуль: {e}. pip install openpyxl xlrd"]
     except Exception as e:
         logger.error(f"Ошибка загрузки файла {file_path}: {e}")
-        return None, 0, [f"Ошибка открытия файла: {e}"]
+        err_msg = str(e)
+        if "password" in err_msg.lower() or "protect" in err_msg.lower() or "wrong" in err_msg.lower():
+            return None, [], set(), ["Файл защищён паролем. Требуется пароль."]
+        return None, [], set(), [f"Ошибка открытия файла: {e}"]
 
 
-def _load_xlsx_openpyxl(file_path):
+def _load_xlsx_openpyxl(file_path, password=None):
     """Загрузка .xlsx через openpyxl"""
     from openpyxl import load_workbook
     from datetime import datetime as dt
 
+    # openpyxl не поддерживает пароли Excel - требуется файл без пароля
     wb = load_workbook(file_path, data_only=True)
     ws = wb.active
 
@@ -263,7 +272,7 @@ def _load_xlsx_openpyxl(file_path):
     required_fields = ['Фамилия', 'Имя', 'Отчество', 'СНИЛС', 'Должность', 'Результат', '№ программы', 'Дата', '№ протокола']
     for col in required_fields:
         if col not in headers:
-            return None, [], [f"Отсутствует столбец: {col}"]
+            return None, [], set(), [f"Отсутствует столбец: {col}"]
 
     for row_num in range(2, ws.max_row + 1):
         row_dict = {}
@@ -285,56 +294,4 @@ def _load_xlsx_openpyxl(file_path):
             error_details.extend(result)
             error_rows_set.add(row_num)
 
-    return records, error_details, error_rows_set
-
-
-def _load_xls_xlrd(file_path):
-    """Загрузка .xls через xlrd"""
-    import xlrd
-    from xlrd import xldate_as_tuple
-    from datetime import datetime as dt
-
-    wb = xlrd.open_workbook(file_path)
-    ws = wb.sheet_by_index(0)
-
-    records = []
-    error_details = []  # [{'row': int, 'type': str, 'field': str, 'message': str}]
-    error_rows_set = set()  # номера строк с ошибками
-
-    # Читаем заголовки
-    headers = [str(ws.cell_value(0, c)).strip() for c in range(ws.ncols)]
-
-    # Проверка обязательных полей (без ИНН/названий УЦ и Заказчика)
-    required_fields = ['Фамилия', 'Имя', 'Отчество', 'СНИЛС', 'Должность', 'Результат', '№ программы', 'Дата', '№ протокола']
-    for col in required_fields:
-        if col not in headers:
-            return None, [], [f"Отсутствует столбец: {col}"]
-
-    for row_num in range(1, ws.nrows):
-        row_dict = {}
-        all_empty = True
-        for c_idx, col_name in enumerate(headers):
-            cell = ws.cell(row_num, c_idx)
-            val = cell.value
-            # Преобразование Excel-дат в datetime
-            if cell.ctype in (xlrd.XL_CELL_DATE, xlrd.XL_CELL_DATETIME):
-                try:
-                    val = dt(*xldate_as_tuple(val, wb.datemode))
-                except Exception:
-                    pass
-            row_dict[col_name] = val if val is not None else ''
-            if val is not None and str(val).strip() != '':
-                all_empty = False
-
-        # Пропускаем полностью пустые строки (после таблицы)
-        if all_empty:
-            continue
-
-        is_valid, result = validate_row(row_dict, row_num + 1)
-        if is_valid:
-            records.extend(result)
-        else:
-            error_details.extend(result)
-            error_rows_set.add(row_num + 1)
-
-    return records, error_details, error_rows_set
+    return records, error_details, error_rows_set, ""

@@ -507,3 +507,72 @@ NameError: name 'grouped_workers' is not defined
 2026-04-19 22:16:51 | __main__ | INFO | Окно отображено, тема: light, Mica применён
 2026-04-19 22:35:22 | __main__ | INFO | === Приложение запущено ===
 2026-04-19 22:35:22 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-19 23:09:00 | __main__ | INFO | === Приложение запущено ===
+2026-04-19 23:09:01 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 20:38:22 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 20:40:43 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 20:41:14 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 20:41:14 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 20:45:44 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 20:45:45 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 20:49:40 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 20:49:40 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:07:08 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:07:08 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:08:48 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:08:48 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:23:21 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:23:22 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:37:20 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:37:21 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:41:06 | importers.xlsx_importer | ERROR | Ошибка загрузки файла C:/Users/Denis/Desktop/Шаблон 2026/Шаблон 2026.xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 21:42:25 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:42:25 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:42:38 | importers.xlsx_importer | ERROR | Ошибка загрузки файла C:/Users/Denis/Desktop/Шаблон 2026/Шаблон 2026.xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 21:42:54 | importers.xlsx_importer | ERROR | Ошибка загрузки файла C:/Users/Denis/Desktop/Шаблон 2026/Шаблон 2026.xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 21:45:09 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:45:09 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:45:21 | importers.xlsx_importer | ERROR | Ошибка загрузки файла C:/Users/Denis/Desktop/Шаблон 2026/Шаблон 2026.xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 21:45:23 | importers.xlsx_importer | ERROR | Ошибка загрузки файла C:/Users/Denis/Desktop/Шаблон 2026/Шаблон 2026.xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 21:50:01 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:50:02 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:50:14 | importers.xlsx_importer | ERROR | Ошибка загрузки файла C:/Users/Denis/Desktop/Шаблон 2026/Шаблон 2026.xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 21:53:46 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:53:47 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:54:03 | importers.xlsx_importer | ERROR | Ошибка загрузки файла C:/Users/Denis/Desktop/Шаблон 2026/Шаблон 2026.xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 21:54:15 | importers.xlsx_importer | ERROR | Ошибка загрузки файла C:/Users/Denis/Desktop/Шаблон 2026/Шаблон 2026.xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 21:57:06 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 21:57:07 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 21:57:20 | root | ERROR | Ошибка загрузки xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 22:00:33 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 22:00:33 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 22:00:52 | root | ERROR | Ошибка загрузки xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 22:03:01 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 22:03:02 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-20 22:03:25 | root | ERROR | Ошибка загрузки xlsx: load_workbook() got an unexpected keyword argument 'password'
+2026-04-20 22:07:20 | __main__ | INFO | === Приложение запущено ===
+2026-04-20 22:07:21 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:19:32 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:19:33 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:23:41 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:23:41 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:27:47 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:27:48 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:30:01 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:30:02 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:32:08 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:32:08 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:36:22 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:36:23 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:39:30 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:39:31 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:42:39 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:42:40 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:42:47 | api.mintrud_api | ERROR | Логическая ошибка: 401 - Не найдена информация по ключу abcdefghijklmnop1234567890abcdef
+2026-04-21 20:47:26 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:47:27 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 20:47:38 | api.mintrud_api | ERROR | Логическая ошибка: 401 - Не найдена информация по ключу abcdefghijklmnop1234567890abcdef
+2026-04-21 20:47:55 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 20:47:56 | __main__ | INFO | Окно отображено, тема: light, Mica применён
+2026-04-21 21:23:07 | __main__ | INFO | === Приложение запущено ===
+2026-04-21 21:23:08 | __main__ | INFO | Окно отображено, тема: light, Mica применён

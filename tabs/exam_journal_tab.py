@@ -332,9 +332,9 @@ class ExamJournalTab(QWidget):
         table = QTableWidget()
         table.setColumnCount(15)
         table.setHorizontalHeaderLabels([
-            "Дата отправки", "SetId", "Фамилия", "Имя", "Отчество", "СНИЛС",
-            "Должность", "№ программы", "Название программы", "Дата экзамена",
-            "№ протокола", "Рег. номер", "Статус", "Результат", ""
+            "№ протокола", "Дата экзамена", "Фамилия", "Имя", "Отчество", "СНИЛС",
+            "Рег. номер", "№ программы", "Название программы", "Должность",
+            "Результат", "SetId", "Дата отправки", "Статус", ""
         ])
 
         table.setAlternatingRowColors(True)
@@ -365,20 +365,20 @@ class ExamJournalTab(QWidget):
         """)
 
         # Ширина колонок (10 символов ≈ 100px)
-        table.setColumnWidth(0, 120)   # Дата отправки
-        table.setColumnWidth(1, 120)   # SetId
+        table.setColumnWidth(0, 100)   # № протокола
+        table.setColumnWidth(1, 100)   # Дата экзамена
         table.setColumnWidth(2, 100)   # Фамилия
         table.setColumnWidth(3, 100)   # Имя
         table.setColumnWidth(4, 100)   # Отчество
         table.setColumnWidth(5, 120)   # СНИЛС
-        table.setColumnWidth(6, 100)   # Должность
+        table.setColumnWidth(6, 100)   # Рег. номер
         table.setColumnWidth(7, 100)   # № программы
         table.setColumnWidth(8, 300)   # Название программы
-        table.setColumnWidth(9, 100)   # Дата экзамена
-        table.setColumnWidth(10, 100)  # № протокола
-        table.setColumnWidth(11, 100)  # Рег. номер
-        table.setColumnWidth(12, 100)  # Статус
-        table.setColumnWidth(13, 100)  # Результат
+        table.setColumnWidth(9, 100)   # Должность
+        table.setColumnWidth(10, 100)  # Результат
+        table.setColumnWidth(11, 120)  # SetId
+        table.setColumnWidth(12, 120) # Дата отправки
+        table.setColumnWidth(13, 100)  # Статус
         table.hideColumn(14)           # Скрытый UUID
 
         return table
@@ -394,30 +394,34 @@ class ExamJournalTab(QWidget):
         for row_idx, record in enumerate(filtered):
             self.table.insertRow(row_idx)
 
+            # Форматирование дат без времени
+            exam_date = record.exam_date.split()[0] if record.exam_date else ""
+            send_date = record.send_date.split()[0] if record.send_date else ""
+
             items = [
-            record.send_date,
-            record.set_id,
-            record.last_name,
-            record.first_name,
-            record.middle_name,
-            record.snils,
-            record.position,
-            record.program_id,
-            record.program_title,
-            record.exam_date,
-            record.protocol,
-            record.base_no,
-            "получен" if record.status == "received" else "ожидает",
-            record.result,
-            record.uuid  # Скрытая колонка
-        ]
+                record.protocol,  # 0 - № протокола
+                exam_date,  # 1 - Дата экзамена
+                record.last_name,  # 2 - Фамилия
+                record.first_name,  # 3 - Имя
+                record.middle_name,  # 4 - Отчество
+                record.snils,  # 5 - СНИЛС
+                record.base_no,  # 6 - Рег. номер
+                record.program_id,  # 7 - № программы
+                record.program_title,  # 8 - Название программы
+                record.position,  # 9 - Должность
+                record.result,  # 10 - Результат
+                record.set_id,  # 11 - SetId
+                send_date,  # 12 - Дата отправки
+                "получен" if record.status == "received" else "ожидает",  # 13 - Статус
+                record.uuid  # 14 - Скрытая колонка
+            ]
 
             for col, text in enumerate(items):
-                item = QTableWidgetItem(text)
+                item = QTableWidgetItem(str(text))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-                # Цветовая индикация статуса
-                if col == 12:
+                # Цветовая индикация статуса (колонка 13)
+                if col == 13:
                     if record.status == "received":
                         item.setForeground(QColor("#28a745"))
                         font = item.font()
@@ -594,9 +598,9 @@ class ExamJournalTab(QWidget):
             ws.title = "Журнал"
 
             headers = [
-                "Дата отправки", "SetId", "Фамилия", "Имя", "Отчество", "СНИЛС",
-                "Должность", "№ программы", "Название программы", "Дата экзамена",
-                "№ протокола", "Рег. номер", "Статус", "Результат"
+                "№ протокола", "Дата экзамена", "Фамилия", "Имя", "Отчество", "СНИЛС",
+                "Рег. номер", "№ программы", "Название программы", "Должность",
+                "Результат", "SetId", "Дата отправки", "Статус"
             ]
             ws.append(headers)
 
@@ -609,13 +613,14 @@ class ExamJournalTab(QWidget):
                 cell.alignment = Alignment(horizontal="center")
 
             for rec in records:
+                exam_date = rec.exam_date.split()[0] if rec.exam_date else ""
+                send_date = rec.send_date.split()[0] if rec.send_date else ""
                 ws.append([
-                    rec.send_date, rec.set_id, rec.last_name, rec.first_name,
-                    rec.middle_name, rec.snils, rec.position, rec.program_id,
-                    rec.program_title, rec.exam_date, rec.protocol,
-                    rec.base_no,
-                    "получен" if rec.status == "received" else "ожидает",
-                    rec.result
+                    rec.protocol, exam_date, rec.last_name, rec.first_name,
+                    rec.middle_name, rec.snils, rec.base_no, rec.program_id,
+                    rec.program_title, rec.position, rec.result, rec.set_id,
+                    send_date,
+                    "получен" if rec.status == "received" else "ожидает"
                 ])
 
             # Автоширина столбцов
@@ -652,9 +657,9 @@ class ExamJournalTab(QWidget):
             # Определяем тип файла по заголовкам
             # Формат журнала экспорта
             journal_headers = [
-                "Дата отправки", "SetId", "Фамилия", "Имя", "Отчество", "СНИЛС",
-                "Должность", "№ программы", "Название программы", "Дата экзамена",
-                "№ протокола", "Рег. номер", "Статус"
+                "№ протокола", "Дата экзамена", "Фамилия", "Имя", "Отчество", "СНИЛС",
+                "Рег. номер", "№ программы", "Название программы", "Должность",
+                "Результат", "SetId", "Дата отправки", "Статус"
             ]
             
             # Формат API SetID экспорта
@@ -690,19 +695,20 @@ class ExamJournalTab(QWidget):
                     
                     if is_journal_format:
                         # Импорт из формата журнала экспорта
-                        send_date = str(row[col_indices.get("Дата отправки", 0)] or "").strip()
-                        set_id = str(row[col_indices.get("SetId", 1)] or "").strip()
+                        protocol = str(row[col_indices.get("№ протокола", 0)] or "").strip()
+                        exam_date = str(row[col_indices.get("Дата экзамена", 1)] or "").strip()
                         last_name = str(row[col_indices.get("Фамилия", 2)] or "").strip()
                         first_name = str(row[col_indices.get("Имя", 3)] or "").strip()
                         middle_name = str(row[col_indices.get("Отчество", 4)] or "").strip()
                         snils = str(row[col_indices.get("СНИЛС", 5)] or "").strip()
-                        position = str(row[col_indices.get("Должность", 6)] or "").strip()
+                        base_no = str(row[col_indices.get("Рег. номер", 6)] or "").strip()
                         program_id = str(row[col_indices.get("№ программы", 7)] or "").strip()
                         program_title = str(row[col_indices.get("Название программы", 8)] or "").strip()
-                        exam_date = str(row[col_indices.get("Дата экзамена", 9)] or "").strip()
-                        protocol = str(row[col_indices.get("№ протокола", 10)] or "").strip()
-                        base_no = str(row[col_indices.get("Рег. номер", 11)] or "").strip()
-                        status_str = str(row[col_indices.get("Статус", 12)] or "").lower()
+                        position = str(row[col_indices.get("Должность", 9)] or "").strip()
+                        result = str(row[col_indices.get("Результат", 10)] or "").strip()
+                        set_id = str(row[col_indices.get("SetId", 11)] or "").strip()
+                        send_date = str(row[col_indices.get("Дата отправки", 12)] or "").strip()
+                        status_str = str(row[col_indices.get("Статус", 13)] or "").lower()
                         
                         # Проверяем обязательные поля
                         if not all([last_name, first_name, middle_name, snils, program_id, 
@@ -716,18 +722,16 @@ class ExamJournalTab(QWidget):
                             errors.append(f"Строка {row_idx}: СНИЛС должен содержать 11 цифр")
                             continue
                         snils_formatted = f"{snils_digits[:3]}-{snils_digits[3:6]}-{snils_digits[6:9]} {snils_digits[9:]}"
-                        
+
                         # Определяем статус
                         if "получен" in status_str or "received" in status_str:
                             status = "received"
                         else:
                             status = "pending"  # По умолчанию ожидает
 
-                        # Получаем результат (если есть)
-                        result = str(row[col_indices.get("Результат", -1)] or "").strip()
                         # Если результат не указан, устанавливаем значение по умолчанию
                         if not result:
-                            result = "Удовлетворительно"  # Значение по умолчанию
+                            result = "Удовлетворительно"
                     elif is_api_setid_format:
                         # Импорт из формата API SetID экспорта
                         base_no = str(row[col_indices.get("Номер записи в реестре", 0)] or "").strip()
@@ -833,9 +837,9 @@ class ExamJournalTab(QWidget):
             ws.title = "Журнал"
 
             headers = [
-                "Дата отправки", "SetId", "Фамилия", "Имя", "Отчество", "СНИЛС",
-                "Должность", "№ программы", "Название программы", "Дата экзамена",
-                "№ протокола", "Рег. номер", "Статус"
+                "№ протокола", "Дата экзамена", "Фамилия", "Имя", "Отчество", "СНИЛС",
+                "Рег. номер", "№ программы", "Название программы", "Должность",
+                "Результат", "SetId", "Дата отправки", "Статус"
             ]
             ws.append(headers)
 
@@ -849,19 +853,20 @@ class ExamJournalTab(QWidget):
 
             # Добавляем тестовую запись
             test_record = [
-                "01.01.2026 10:00:00",  # Дата отправки
-                "SET123456",           # SetId
-                "Иванов",              # Фамилия
-                "Иван",                # Имя
-                "Иванович",            # Отчество
-                "123-456-789 00",      # СНИЛС
-                "Инженер",             # Должность
-                "1",                   # № программы
+                "1",                               # № протокола
+                "01.01.2026",                       # Дата экзамена
+                "Иванов",                          # Фамилия
+                "Иван",                            # Имя
+                "Иванович",                        # Отчество
+                "123-456-789 00",                  # СНИЛС
+                "123456",                          # Рег. номер
+                "1",                               # № программы
                 "Оказание первой помощи пострадавшим",  # Название программы
-                "01.01.2026",          # Дата экзамена
-                "1",                   # № протокола
-                "123456",              # Рег. номер
-                "получен"              # Статус
+                "Инженер",                         # Должность
+                "Удовлетворительно",              # Результат
+                "SET123456",                       # SetId
+                "01.01.2026",                     # Дата отправки
+                "получен"                          # Статус
             ]
             ws.append(test_record)
 

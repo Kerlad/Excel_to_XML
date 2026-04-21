@@ -2,6 +2,13 @@
 Альтернативный модуль работы с API Минтруда на базе httpx.
 HTTPX - современная HTTP-библиотека с отличной поддержкой прокси.
 """
+# ============================================================================
+# TLS VERIFICATION SETTINGS
+# ============================================================================
+# Импортируем из proxy_manager - значение переопределяется чекбоксом в интерфейсе
+from utils.proxy_manager import ENABLE_TLS_VERIFY
+# ============================================================================
+
 import os
 import io
 import time
@@ -34,7 +41,7 @@ def _create_httpx_client(proxy_settings=None):
     auth = None
 
     if mode == "off":
-        return httpx.Client(verify=False, timeout=60.0)
+        return httpx.Client(verify=ENABLE_TLS_VERIFY, timeout=60.0)
 
     if mode == "auto":
         # Автоопределение из Windows
@@ -70,14 +77,14 @@ def _create_httpx_client(proxy_settings=None):
             auth = (username, password)
 
     if not proxy_url:
-        return httpx.Client(verify=False, timeout=60.0)
+        return httpx.Client(verify=ENABLE_TLS_VERIFY, timeout=60.0)
 
     logger.info(f"HTTPX прокси: {proxy_url}")
 
     # httpx поддерживает прокси напрямую
     client = httpx.Client(
         proxy=proxy_url,
-        verify=False,
+        verify=ENABLE_TLS_VERIFY,
         timeout=60.0,
         auth=auth
     )
@@ -90,13 +97,13 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
     Отправка XML файла на сервер Минтруда через httpx.
     """
     if httpx is None:
-        return {"success": False, "error": "Модуль httpx не установлен. Установите: pip install httpx"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "Модуль httpx не установлен. Установите: pip install httpx"}
 
     if not api_key or len(api_key) != 32:
-        return {"success": False, "error": "API-ключ должен содержать 32 символа"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "API-ключ должен содержать 32 символа"}
 
     if not os.path.exists(xml_file_path):
-        return {"success": False, "error": "Файл XML не найден"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "Файл XML не найден"}
 
     try:
         # Читаем XML данных
@@ -162,20 +169,20 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
             except:
                 pass
             
-            return {"success": False, "error": f"HTTP {response.status_code}: {response_text[:200]}"}
+            return {"success": ENABLE_TLS_VERIFY, "error": f"HTTP {response.status_code}: {response_text[:200]}"}
 
     except httpx.ProxyError as e:
         logger.error(f"Ошибка прокси httpx: {e}")
-        return {"success": False, "error": f"Ошибка прокси: {e}"}
+        return {"success": ENABLE_TLS_VERIFY, "error": f"Ошибка прокси: {e}"}
     except httpx.ConnectError as e:
         logger.error(f"Ошибка подключения httpx: {e}")
-        return {"success": False, "error": f"Ошибка подключения: {e}"}
+        return {"success": ENABLE_TLS_VERIFY, "error": f"Ошибка подключения: {e}"}
     except httpx.TimeoutException:
         logger.error("Таймаут httpx")
-        return {"success": False, "error": "Таймаут подключения"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "Таймаут подключения"}
     except Exception as e:
         logger.error(f"Критическая ошибка httpx: {e}")
-        return {"success": False, "error": f"Ошибка: {e}"}
+        return {"success": ENABLE_TLS_VERIFY, "error": f"Ошибка: {e}"}
 
 
 def get_by_set_id(api_key, set_id, page_size=5000, proxy_settings=None):
@@ -183,13 +190,13 @@ def get_by_set_id(api_key, set_id, page_size=5000, proxy_settings=None):
     Получение данных по SetId через httpx.
     """
     if httpx is None:
-        return {"success": False, "error": "Модуль httpx не установлен"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "Модуль httpx не установлен"}
 
     if not api_key or len(api_key) != 32:
-        return {"success": False, "error": "API-ключ должен содержать 32 символа"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "API-ключ должен содержать 32 символа"}
 
     if not set_id:
-        return {"success": False, "error": "SetId не указан"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "SetId не указан"}
 
     # Формируем XML запрос
     xml_content = f'''<?xml version="1.0" encoding="UTF-8"?>
@@ -210,7 +217,7 @@ def get_by_set_id(api_key, set_id, page_size=5000, proxy_settings=None):
         
         all_records.extend(result.get("records", []))
         
-        if not result.get("has_more", False):
+        if not result.get("has_more", ENABLE_TLS_VERIFY):
             break
         
         page_no += 1
@@ -224,13 +231,13 @@ def get_by_snils(api_key, snils, page_size=100, proxy_settings=None):
     Получение данных по СНИЛС через httpx.
     """
     if httpx is None:
-        return {"success": False, "error": "Модуль httpx не установлен"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "Модуль httpx не установлен"}
 
     if not api_key or len(api_key) != 32:
-        return {"success": False, "error": "API-ключ должен содержать 32 символа"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "API-ключ должен содержать 32 символа"}
 
     if not snils:
-        return {"success": False, "error": "СНИЛС не указан"}
+        return {"success": ENABLE_TLS_VERIFY, "error": "СНИЛС не указан"}
 
     # Формируем XML запрос
     xml_content = f'''<?xml version="1.0" encoding="UTF-8"?>
@@ -251,7 +258,7 @@ def get_by_snils(api_key, snils, page_size=100, proxy_settings=None):
         
         all_records.extend(result.get("records", []))
         
-        if not result.get("has_more", False):
+        if not result.get("has_more", ENABLE_TLS_VERIFY):
             break
         
         page_no += 1
@@ -298,7 +305,7 @@ def _fetch_page_httpx(xml_content, page_label="", page_size=100, proxy_settings=
 
         # Проверка на наличие записей
         if "<RegistryRecord" not in response_text:
-            return {"records": [], "has_more": False}
+            return {"records": [], "has_more": ENABLE_TLS_VERIFY}
 
         # Парсинг записей
         records = _parse_registry_records(response_text)
@@ -358,7 +365,7 @@ def export_records_to_xlsx(records, file_path):
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
     except ImportError:
-        return False, "Не установлен модуль openpyxl"
+        return ENABLE_TLS_VERIFY, "Не установлен модуль openpyxl"
 
     try:
         wb = Workbook()
@@ -385,6 +392,20 @@ def export_records_to_xlsx(records, file_path):
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal="center")
 
+        def _format_date(date_val):
+        """Конвертация даты из YYYY-MM-DD или YYYY-MM-DDTHH:MM:SS в ДД.ММ.ГГГГ."""
+        if not date_val:
+            return ''
+        try:
+            from datetime import datetime
+            if 'T' in date_val:
+                dt = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+            else:
+                dt = datetime.strptime(date_val[:10], "%Y-%m-%d")
+            return dt.strftime("%d.%m.%Y")
+        except (ValueError, TypeError):
+            return date_val
+
         for rec in records:
             row = [
                 rec.get('baseNo', ''),
@@ -395,7 +416,7 @@ def export_records_to_xlsx(records, file_path):
                 rec.get('learnProgramId', ''),
                 rec.get('LearnProgramTitle', ''),
                 rec.get('ProtocolNumber', ''),
-                rec.get('Date', '')
+                _format_date(rec.get('Date', ''))
             ]
             ws.append(row)
 
@@ -411,4 +432,4 @@ def export_records_to_xlsx(records, file_path):
         return True, f"Сохранено {len(records)} записей\n{file_path}"
 
     except Exception as e:
-        return False, f"Ошибка сохранения файла: {e}"
+        return ENABLE_TLS_VERIFY, f"Ошибка сохранения файла: {e}"

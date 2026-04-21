@@ -569,9 +569,23 @@ class DataEntryTab(QWidget):
         error_rows_set = set()
         duplicate_map = {}  # {(snils, program): [строка1, строка2, ...]}
         xml_xsd_errors = []
+        password = None
 
         if file_path.endswith(('.xlsx', '.xls')):
-            records, error_details, error_rows_set = load_xlsx(file_path)
+            result = load_xlsx(file_path)
+            
+            if len(result) >= 3:
+                records, error_details, error_rows_set = result[0], result[1], result[2]
+                if records is None:
+                    err = error_details[0] if error_details else "Ошибка"
+                    QMessageBox.warning(self, "Ошибка импорта", str(err))
+                    return
+            else:
+                records = None
+                error_details = []
+                error_rows_set = set()
+                QMessageBox.warning(self, "Ошибка", "Ошибка")
+                return
         elif file_path.endswith('.xml'):
             # Находим XSD для валидации
             xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
@@ -709,6 +723,64 @@ class DataEntryTab(QWidget):
             return "replace"
         else:
             return "cancel"
+
+    def _ask_password(self):
+        """Диалог ввода пароля для защищённого Excel-файла."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Ввод пароля")
+        dialog.setMinimumSize(350, 130)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: white;
+            }
+            QLabel {
+                color: black;
+                font-size: 13px;
+            }
+            QLineEdit {
+                color: black;
+                border: 1px solid #CCCCCC;
+                padding: 5px;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #4169E1;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #3151B1;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+
+        label = QLabel("Внимание: библиотека openpyxl не поддерживает пароли Excel.\nДля загрузки сохраните файл БЕЗ пароля:\nExcel → Файл → Сохранить как → Инструменты → Параметры → Защита → снять пароль")
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        password_input = QLineEdit()
+        password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        password_input.setPlaceholderText("Оставьте пустым, если файл без пароля")
+        layout.addWidget(password_input)
+
+        buttons = QHBoxLayout()
+        ok_btn = QPushButton("ОК")
+        ok_btn.clicked.connect(dialog.accept)
+        cancel_btn = QPushButton("Отмена")
+        cancel_btn.clicked.connect(dialog.reject)
+        buttons.addWidget(ok_btn)
+        buttons.addWidget(cancel_btn)
+        layout.addLayout(buttons)
+
+        if dialog.exec():
+            return password_input.text()
+        return "CANCEL"
 
     def _show_upload_result_dialog(self, success_count, error_rows, duplicate_count):
         """Диалог результата загрузки с кнопкой 'Показать ошибки'."""

@@ -2,6 +2,13 @@
 Альтернативный модуль работы с API Минтруда на базе urllib.
 Используется как резервный вариант при проблемах с requests через прокси.
 """
+# ============================================================================
+# TLS VERIFICATION SETTINGS
+# ============================================================================
+# Импортируем из proxy_manager - значение переопределяется чекбоксом в интерфейсе
+from utils.proxy_manager import ENABLE_TLS_VERIFY
+# ============================================================================
+
 import os
 import io
 import time
@@ -91,7 +98,7 @@ def _setup_proxy_handler(proxy_settings):
             user=username,
             passwd=password
         )
-        logger.info(f"Прокси с авторизацией: {proxy_host} (логин: {username})")
+        logger.info(f"Прокси с авторизацией: {proxy_host}")
     else:
         logger.info(f"Прокси без авторизации: {proxy_host}")
 
@@ -103,12 +110,20 @@ def _setup_proxy_handler(proxy_settings):
     
     auth_handler = HTTPBasicAuthHandler(password_mgr)
     
-    # Создаем opener с SSL контекстом (игнорируем проверку сертификатов)
+    # Создаем opener с SSL контекстом
     import ssl
-    context = ssl._create_unverified_context()
+    
+    # TLS verification: use verified context for production, unverified for dev/testing
+    if ENABLE_TLS_VERIFY:
+        # Production: use default SSL context with system certificates
+        context = ssl.create_default_context()
+    else:
+        # Development: ignore SSL certificate verification (INSECURE!)
+        # WARNING: This exposes you to MITM attacks!
+        context = ssl._create_unverified_context()
     
     opener = build_opener(proxy_handler, auth_handler)
-    # Добавляем HTTPS handler с отключенной проверкой
+    # Добавляем HTTPS handler с настроенным SSL контекстом
     from urllib.request import HTTPSHandler
     https_handler = HTTPSHandler(context=context)
     opener = build_opener(proxy_handler, auth_handler, https_handler)
@@ -452,6 +467,20 @@ def export_records_to_xlsx(records, file_path):
             cell.alignment = Alignment(horizontal="center")
 
         # Данные
+        def _format_date(date_val):
+            """Конвертация даты из YYYY-MM-DD или YYYY-MM-DDTHH:MM:SS в ДД.ММ.ГГГГ."""
+            if not date_val:
+                return ''
+            try:
+                from datetime import datetime
+                if 'T' in date_val:
+                    dt = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.strptime(date_val[:10], "%Y-%m-%d")
+                return dt.strftime("%d.%m.%Y")
+            except (ValueError, TypeError):
+                return date_val
+
         for rec in records:
             row = [
                 rec.get('baseNo', ''),
@@ -462,7 +491,7 @@ def export_records_to_xlsx(records, file_path):
                 rec.get('learnProgramId', ''),
                 rec.get('LearnProgramTitle', ''),
                 rec.get('ProtocolNumber', ''),
-                rec.get('Date', '')
+                _format_date(rec.get('Date', ''))
             ]
             ws.append(row)
 

@@ -213,16 +213,8 @@ class ProtocolExporter:
             # Записываем изменённый текст обратно
             paragraph.text = text
 
-            # AllRegNumbers - в параграфах
-            if '{{AllRegNumbers}}' in text:
-                reg_nums = all_programs.get('all_reg_nums', '')
-                text = text.replace('{{AllRegNumbers}}', reg_nums)
-                paragraph.text = text
-            
-            # {{End}} - просто удаляем (разрыв страницы добавляется в protocol_tab.py при генерации нескольких протоколов)
-            if '{{End}}' in text:
-                text = text.replace('{{End}}', '')
-                paragraph.text = text
+            # {{End}} - удаляем
+            paragraph.text = paragraph.text.replace('{{End}}', '')
 
         # Обрабатываем таблицы
         for tbl_idx, tbl in enumerate(doc.tables):
@@ -260,7 +252,7 @@ class ProtocolExporter:
                         new_text = cell_text.replace('{{Должность профсоюза}}', union_pos)
                         cell.text = new_text
                     
-                    # {{End}} - просто удаляем (разрыв страницы добавляется в protocol_tab.py при генерации нескольких протоколов)
+                    # {{End}} - удаляем
                     if '{{End}}' in cell_text:
                         new_text = cell_text.replace('{{End}}', '')
                         cell.text = new_text
@@ -500,8 +492,8 @@ class ProtocolExporter:
             row_cells[2].text = worker.get('position', '')
             # D = Место работы (оставляем пустым, т.к. это отдельное поле в шаблоне)
             row_cells[3].text = ''
-            # E = причина проверки знаний (оставляем пустым)
-            row_cells[4].text = ''
+            # E = причина проверки знаний
+            row_cells[4].text = 'плановая'
             # F = результат - всегда удовлетворительно
             row_cells[5].text = 'Удовлетворительно'
             # G = регистрационный номер (с новой строки после ;)

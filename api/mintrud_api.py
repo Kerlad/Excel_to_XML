@@ -2,6 +2,13 @@
 Модуль работы с API Минтруда
 Отправка наборов записей и получение регистрационных номеров
 """
+# ============================================================================
+# TLS VERIFICATION SETTINGS
+# ============================================================================
+# Импортируем из proxy_manager - значение переопределяется чекбоксом в интерфейсе
+from utils.proxy_manager import ENABLE_TLS_VERIFY
+# ============================================================================
+
 import os
 import io
 import time
@@ -15,7 +22,9 @@ from datetime import datetime
 import requests
 import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# Suppress InsecureRequestWarning only when TLS verification is disabled
+if not ENABLE_TLS_VERIFY:
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -36,23 +45,32 @@ from utils.proxy_manager import build_proxies_for_requests, build_proxy_headers,
 
 # ============ Сохранение API-ключа ============
 
+try:
+    from cryptography.fernet import Fernet
+except ImportError:
+    raise ImportError(
+        "Библиотека 'cryptography' не установлена. "
+        "Установите её: pip install cryptography"
+    )
+
+
 def _get_derive_key():
     """Получение ключа шифрования на основе имени пользователя системы."""
-    import hashlib
     username = os.environ.get('USERNAME', 'default_user').encode('utf-8')
     return hashlib.sha256(username).digest()
 
 
+def _fernet():
+    """Создание объекта Fernet с ключом из имени пользователя."""
+    key = _get_derive_key()
+    fernet_key = base64.urlsafe_b64encode(key)
+    return Fernet(fernet_key)
+
+
 def save_api_key(api_key, data_dir):
-    """Сохранение API-ключа в зашифрованном виде (AES через Fernet)."""
+    """Сохранение API-ключа в зашифрованном виде (AES/Fernet)."""
     try:
-        from cryptography.fernet import Fernet
-
-        key = _get_derive_key()
-        fernet_key = base64.urlsafe_b64encode(key)
-        fernet = Fernet(fernet_key)
-
-        encrypted = fernet.encrypt(api_key.encode('utf-8'))
+        encrypted = _fernet().encrypt(api_key.encode('utf-8'))
 
         key_file = os.path.join(data_dir, "api_key.json")
         with open(key_file, 'w', encoding='utf-8') as f:
@@ -61,9 +79,6 @@ def save_api_key(api_key, data_dir):
                 "created": datetime.now().isoformat()
             }, f, ensure_ascii=False, indent=2)
         return True, "Ключ сохранён"
-    except ImportError:
-        # Если cryptography нет — используем базовое XOR-шифрование
-        return _save_api_key_xor(api_key, data_dir)
     except Exception as e:
         return False, f"Ошибка сохранения: {e}"
 
@@ -77,45 +92,9 @@ def load_api_key(data_dir):
         with open(key_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
         encrypted = data.get('key', '')
-
-        # Пробуем Fernet
-        try:
-            from cryptography.fernet import Fernet
-            import base64
-            key = _get_derive_key()
-            fernet_key = base64.urlsafe_b64encode(key)
-            fernet = Fernet(fernet_key)
-            return fernet.decrypt(encrypted.encode('utf-8')).decode('utf-8')
-        except ImportError:
-            return _load_api_key_xor(data_dir)
-        except Exception:
-            return None
+        return _fernet().decrypt(encrypted.encode('utf-8')).decode('utf-8')
     except Exception:
         return None
-
-
-def _save_api_key_xor(api_key, data_dir):
-    """Резервный метод шифрования — XOR с хешем."""
-    key = hashlib.sha256(os.environ.get('USERNAME', 'default_user').encode()).digest()
-    key_bytes = api_key.encode('utf-8')
-    encrypted = bytes([key_bytes[i] ^ key[i % len(key)] for i in range(len(key_bytes))])
-    encoded = base64.b64encode(encrypted).decode('utf-8')
-    key_file = os.path.join(data_dir, "api_key.json")
-    with open(key_file, 'w', encoding='utf-8') as f:
-        json.dump({"key": encoded, "created": datetime.now().isoformat()}, f, ensure_ascii=False, indent=2)
-    return True, "Ключ сохранён"
-
-
-def _load_api_key_xor(data_dir):
-    """Расшифровка XOR."""
-    key_file = os.path.join(data_dir, "api_key.json")
-    with open(key_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    encoded = data.get('key', '')
-    encrypted = base64.b64decode(encoded)
-    key = hashlib.sha256(os.environ.get('USERNAME', 'default_user').encode()).digest()
-    decrypted = bytes([encrypted[i] ^ key[i % len(key)] for i in range(len(encrypted))])
-    return decrypted.decode('utf-8')
 
 
 def validate_api_key(api_key):
@@ -194,7 +173,10 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
                     'olot': ('data.olot', olot_data, 'application/octet-stream'),
                 },
                 headers=HEADERS,
-                verify=False,
+                # TLS verification - set to True for production, False for dev/testing with self-signed certs
+                # WARNING: Disabling verification exposes you to MITM attacks!
+                # To quickly disable: set verify=False
+                verify=ENABLE_TLS_VERIFY,
                 timeout=60
             )
         finally:
@@ -415,7 +397,7 @@ def _fetch_page(xml_content, page_label="", page_size=100, proxy_settings=None):
                 GET_URL,
                 files=files,
                 headers=HEADERS,
-                verify=False,
+                verify=ENABLE_TLS_VERIFY,
                 timeout=60
             )
         finally:
@@ -540,6 +522,20 @@ def export_records_to_xlsx(records, file_path):
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal="center")
 
+        def _format_date(date_val):
+            """Конвертация даты из YYYY-MM-DD или YYYY-MM-DDTHH:MM:SS в ДД.ММ.ГГГГ."""
+            if not date_val:
+                return ''
+            try:
+                from datetime import datetime
+                if 'T' in date_val:
+                    dt = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.strptime(date_val[:10], "%Y-%m-%d")
+                return dt.strftime("%d.%m.%Y")
+            except (ValueError, TypeError):
+                return date_val
+
         for rec in records:
             row = [
                 rec.get('baseNo', ''),
@@ -550,7 +546,7 @@ def export_records_to_xlsx(records, file_path):
                 rec.get('learnProgramId', ''),
                 rec.get('LearnProgramTitle', ''),
                 rec.get('ProtocolNumber', ''),
-                rec.get('Date', '')
+                _format_date(rec.get('Date', ''))
             ]
             ws.append(row)
 

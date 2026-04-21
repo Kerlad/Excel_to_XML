@@ -103,14 +103,17 @@ def _load_registry_set(root, xsd_errors):
         # Конвертация isPassed
         result = "Удовлетворительно" if is_passed.lower() in ['true', '1'] else "Неудовлетворительно"
 
-        # Конвертация даты из YYYY-MM-DD в ДД.ММ.ГГГГ
+        # Конвертация даты из YYYY-MM-DD или YYYY-MM-DDTHH:MM:SS в ДД.ММ.ГГГГ
         date_formatted = date_val
-        if len(date_val) == 10 and date_val[4] == '-':
+        if date_val:
             try:
                 from datetime import datetime
-                dt = datetime.strptime(date_val, "%Y-%m-%d")
+                if 'T' in date_val:
+                    dt = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.strptime(date_val[:10], "%Y-%m-%d")
                 date_formatted = dt.strftime("%d.%m.%Y")
-            except ValueError:
+            except (ValueError, TypeError):
                 pass
 
         # Очистка СНИЛС

@@ -519,6 +519,20 @@ def export_records_to_xlsx(records, file_path):
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal="center")
 
+        def _format_date(date_val):
+            """Конвертация даты из YYYY-MM-DD или YYYY-MM-DDTHH:MM:SS в ДД.ММ.ГГГГ."""
+            if not date_val:
+                return ''
+            try:
+                from datetime import datetime
+                if 'T' in date_val:
+                    dt = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.strptime(date_val[:10], "%Y-%m-%d")
+                return dt.strftime("%d.%m.%Y")
+            except (ValueError, TypeError):
+                return date_val
+
         for rec in records:
             row = [
                 rec.get('baseNo', ''),
@@ -529,7 +543,7 @@ def export_records_to_xlsx(records, file_path):
                 rec.get('learnProgramId', ''),
                 rec.get('LearnProgramTitle', ''),
                 rec.get('ProtocolNumber', ''),
-                rec.get('Date', '')
+                _format_date(rec.get('Date', ''))
             ]
             ws.append(row)
 
