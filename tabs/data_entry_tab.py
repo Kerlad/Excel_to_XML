@@ -4,20 +4,21 @@ import webbrowser
 import subprocess
 import shutil
 from openpyxl import Workbook
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QComboBox, QScrollArea,
     QFileDialog, QMessageBox, QFrame
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 from importers.xlsx_importer import load_xlsx
 from importers.xml_importer import load_xml
+from utils.crypto import encrypt_data, decrypt_data
 
 
 class DataEntryTab(QWidget):
     # Сигнал для передачи данных на вкладку Просмотр
-    data_loaded = pyqtSignal(list, bool)  # (records, is_replace)
+    data_loaded = Signal(list, bool)  # (records, is_replace)
 
     def __init__(self):
         super().__init__()
@@ -460,15 +461,20 @@ class DataEntryTab(QWidget):
         return group
 
     def load_settings(self):
-        """Загрузка настроек из JSON файла"""
+        """Загрузка настроек из JSON файла (с расшифровкой)"""
         if os.path.exists(self.settings_file):
             try:
                 with open(self.settings_file, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
-                    self.tc_inn_input.setText(settings.get('tc_inn', ''))
-                    self.tc_title_input.setText(settings.get('tc_title', ''))
-                    self.employer_inn_input.setText(settings.get('employer_inn', ''))
-                    self.employer_title_input.setText(settings.get('employer_title', ''))
+                    wrapper = json.load(f)
+                encrypted = wrapper.get('data', '')
+                if encrypted:
+                    settings = decrypt_data(encrypted)
+                else:
+                    settings = wrapper
+                self.tc_inn_input.setText(settings.get('tc_inn', ''))
+                self.tc_title_input.setText(settings.get('tc_title', ''))
+                self.employer_inn_input.setText(settings.get('employer_inn', ''))
+                self.employer_title_input.setText(settings.get('employer_title', ''))
             except Exception as e:
                 QMessageBox.warning(self, "Ошибка", f"Ошибка чтения настроек: {e}")
 
@@ -480,8 +486,7 @@ class DataEntryTab(QWidget):
             self.xsd_file_input.setText(xsd_path)
 
     def save_org_settings(self):
-        """Сохранение настроек УЦ и Заказчика"""
-        # Валидация ИНН
+        """Сохранение настроек УЦ и Заказчика (с шифрованием)"""
         tc_inn = self.tc_inn_input.text().strip()
         employer_inn = self.employer_inn_input.text().strip()
         
@@ -506,9 +511,10 @@ class DataEntryTab(QWidget):
         }
         
         try:
+            encrypted = encrypt_data(settings)
             with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, ensure_ascii=False, indent=4)
-            QMessageBox.information(self, "Успех", "Данные сохранены")
+                json.dump({"data": encrypted}, f, ensure_ascii=False, indent=4)
+            QMessageBox.information(self, "Успех", "Данные сохранены (зашифрованы)")
         except Exception as e:
             QMessageBox.warning(self, "Ошибка", f"Ошибка сохранения: {e}")
 
@@ -726,7 +732,7 @@ class DataEntryTab(QWidget):
 
     def _ask_password(self):
         """Диалог ввода пароля для защищённого Excel-файла."""
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Ввод пароля")
@@ -784,7 +790,7 @@ class DataEntryTab(QWidget):
 
     def _show_upload_result_dialog(self, success_count, error_rows, duplicate_count):
         """Диалог результата загрузки с кнопкой 'Показать ошибки'."""
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Загрузка завершена")
@@ -937,8 +943,8 @@ class DataEntryTab(QWidget):
 
         blue_programs = {"1", "2", "3", "4", "18", "23"}
 
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QHBoxLayout, QPushButton
-        from PyQt6.QtGui import QColor
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QHBoxLayout, QPushButton
+        from PySide6.QtGui import QColor
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Программы обучения")

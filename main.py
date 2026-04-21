@@ -1,9 +1,9 @@
 import sys
 import os
 import logging
-from PyQt6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QFont, QPalette, QColor
+from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QFont, QPalette, QColor
 from tabs.data_entry_tab import DataEntryTab
 from tabs.data_view_tab import DataViewTab
 from tabs.data_transfer_tab import DataTransferTab
@@ -261,7 +261,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(help_text)
 
-        from PyQt6.QtWidgets import QPushButton
+        from PySide6.QtWidgets import QPushButton
         close_btn = QPushButton("Закрыть")
         close_btn.setStyleSheet("""
             QPushButton {
@@ -289,7 +289,7 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout(dialog)
 
-        from PyQt6.QtWidgets import QLabel, QPushButton
+        from PySide6.QtWidgets import QLabel, QPushButton
         label = QLabel()
         label.setOpenExternalLinks(True)
         label.setStyleSheet("color: black; font-size: 13px;")
@@ -367,7 +367,7 @@ if __name__ == "__main__":
     app.setStyleSheet(get_global_stylesheet(theme))
 
     # Авто-применение темы ко всем всплывающим окнам (QMessageBox, QFileDialog и т.д.)
-    from PyQt6.QtCore import QEvent, QObject
+    from PySide6.QtCore import QEvent, QObject
 
     class DialogStyler(QObject):
         """Применяет stylesheet ко всем новым QDialog."""
@@ -376,7 +376,7 @@ if __name__ == "__main__":
             self._style = style
 
         def eventFilter(self, obj, event):
-            from PyQt6.QtWidgets import QDialog
+            from PySide6.QtWidgets import QDialog
             if isinstance(obj, QDialog) and event.type() == QEvent.Type.Show:
                 current = obj.styleSheet()
                 if not current or self._style[:20] not in current:

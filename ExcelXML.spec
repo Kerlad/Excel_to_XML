@@ -15,11 +15,11 @@ a = Analysis(
         ('Protokol_proverki_znanii_OT.docx', '.'),
     ],
     hiddenimports=[
-        # PyQt6
-        'PyQt6',
-        'PyQt6.QtCore',
-        'PyQt6.QtGui',
-        'PyQt6.QtWidgets',
+        # PySide6
+        'PySide6',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
         # Сторонние библиотеки
         'openpyxl',
         'openpyxl.cell',

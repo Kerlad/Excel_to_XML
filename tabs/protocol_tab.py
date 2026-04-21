@@ -5,13 +5,13 @@
 """
 import os
 from copy import deepcopy
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
-    QLabel, QLineEdit, QPushButton, QScrollArea, QFileDialog, QMessageBox,
-    QFrame, QGridLayout, QDialog, QComboBox
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
+    QLabel, QMessageBox, QFileDialog, QComboBox, QCheckBox, QScrollArea, QFrame,
+    QDateEdit, QPlainTextEdit, QFormLayout
 )
-from PyQt6.QtCore import Qt, QDate
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt, QDate
+from PySide6.QtGui import QFont
 from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from tabs.programs_dialog import ProgramsDialog
@@ -383,7 +383,7 @@ class ProtocolTab(QWidget):
 
     def _create_member_fields(self, title: str):
         """Создание полей для члена комиссии. Возвращает QGroupBox с атрибутами fio_input, pos_input."""
-        from PyQt6.QtWidgets import QGroupBox as QB
+        from PySide6.QtWidgets import QGroupBox as QB
 
         group = QB()
         group.setStyleSheet("""

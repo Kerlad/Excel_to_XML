@@ -6,6 +6,8 @@ import os
 import json
 import logging
 
+from utils.crypto import encrypt_data, decrypt_data
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,11 +21,16 @@ class CommissionManager:
         self.data = self._load()
 
     def _load(self) -> dict:
-        """Загрузка данных комиссии из файла."""
+        """Загрузка данных комиссии из файла (с расшифровкой)."""
         if os.path.exists(self.commission_file):
             try:
                 with open(self.commission_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    wrapper = json.load(f)
+                encrypted = wrapper.get('data', '')
+                if encrypted:
+                    return decrypt_data(encrypted)
+                else:
+                    return wrapper
             except Exception as e:
                 logger.error(f"Ошибка загрузки данных комиссии: {e}")
         return self._default_data()
@@ -49,7 +56,7 @@ class CommissionManager:
 
     def save(self, data: dict) -> tuple[bool, str]:
         """
-        Сохранение данных комиссии.
+        Сохранение данных комиссии (с шифрованием).
 
         data — словарь с полями:
             org_name, order_number, order_date, exam_date,
@@ -63,9 +70,10 @@ class CommissionManager:
         """
         try:
             self.data = data
+            encrypted = encrypt_data(data)
             with open(self.commission_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            return True, "Данные комиссии сохранены"
+                json.dump({"data": encrypted}, f, ensure_ascii=False, indent=2)
+            return True, "Данные комиссии сохранены (зашифрованы)"
         except Exception as e:
             logger.error(f"Ошибка сохранения данных комиссии: {e}")
             return False, f"Ошибка сохранения: {e}"

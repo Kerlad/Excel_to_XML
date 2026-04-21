@@ -1,5 +1,5 @@
 """
-Tahoe Liquid Glass — дизайн-система для PyQt6
+Tahoe Liquid Glass — дизайн-система для PySide6
 Поддержка светлой и тёмной темы + переключатель
 """
 import sys
@@ -639,8 +639,8 @@ def save_theme(base_dir: str, theme: str):
 
 # ============ GLASS CARD & PILL BUTTON ============
 
-from PyQt6.QtWidgets import QFrame, QPushButton, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt
+from PySide6.QtWidgets import QFrame, QPushButton, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt
 
 
 class GlassCard(QFrame):

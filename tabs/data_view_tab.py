@@ -1,14 +1,15 @@
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QMessageBox, QHeaderView, QAbstractItemView, QDialog,
-    QFormLayout, QLineEdit, QComboBox, QLabel, QFileDialog
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
+    QLabel, QMessageBox, QFileDialog, QTableWidget, QTableWidgetItem,
+    QHeaderView, QAbstractItemView, QComboBox, QCheckBox, QScrollArea, QFrame, QDialog, QFormLayout
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from datetime import datetime
 import os
 import json
 from exporters.xml_exporter import export_to_xml
+from utils.crypto import encrypt_data, decrypt_data
 
 
 class DataViewTab(QWidget):
@@ -18,6 +19,13 @@ class DataViewTab(QWidget):
         
         # Хранилище данных
         self.data = []
+        
+        # Путь к файлу зашифрованных данных работников
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        data_dir = os.path.join(base_dir, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        self.workers_file = os.path.join(data_dir, "workers_data.json")
+        self._load_workers_on_startup()
         
         # Основной layout
         layout = QVBoxLayout(self)
@@ -58,7 +66,7 @@ class DataViewTab(QWidget):
             }
         """)
         self.convert_btn.clicked.connect(self.convert_to_xml)
-        
+
         btn_layout.addWidget(self.clear_btn)
         btn_layout.addWidget(separator)
         btn_layout.addWidget(self.convert_btn)
@@ -80,6 +88,7 @@ class DataViewTab(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setDefaultSectionSize(25)
+        self.table.verticalHeader().setVisible(False)
 
         # Разделители между заголовками столбцов
         self.table.horizontalHeader().setStyleSheet("""
@@ -168,7 +177,7 @@ class DataViewTab(QWidget):
     
     def show_context_menu(self, position):
         """Контекстное меню для строки"""
-        from PyQt6.QtWidgets import QMenu
+        from PySide6.QtWidgets import QMenu
 
         menu = QMenu(self)
         menu.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -264,13 +273,21 @@ class DataViewTab(QWidget):
             QMessageBox.warning(self, "Предупреждение", "XSD отсутствует")
             return
 
-        # Загрузка настроек организации
+        # Загрузка настроек организации (с расшифровкой)
         data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
         settings_file = os.path.join(data_dir, "org_settings.json")
         org_settings = {}
         if os.path.exists(settings_file):
-            with open(settings_file, 'r', encoding='utf-8') as f:
-                org_settings = json.load(f)
+            try:
+                with open(settings_file, 'r', encoding='utf-8') as f:
+                    wrapper = json.load(f)
+                encrypted = wrapper.get('data', '')
+                if encrypted:
+                    org_settings = decrypt_data(encrypted)
+                else:
+                    org_settings = wrapper
+            except Exception:
+                pass
 
         # Диалог сохранения
         file_path, _ = QFileDialog.getSaveFileName(
@@ -296,6 +313,21 @@ class DataViewTab(QWidget):
                 QMessageBox.information(self, "Успех", message)
             else:
                 QMessageBox.warning(self, "Ошибка", message)
+
+    def _load_workers_on_startup(self):
+        """Загрузка зашифрованных данных работников при старте."""
+        if not os.path.exists(self.workers_file):
+            return
+        try:
+            with open(self.workers_file, 'r', encoding='utf-8') as f:
+                wrapper = json.load(f)
+            encrypted = wrapper.get('data', '')
+            if encrypted:
+                records = decrypt_data(encrypted)
+                if isinstance(records, list):
+                    self.add_data(records, replace=False)
+        except Exception as e:
+            pass
 
 
 class EditDialog(QDialog):

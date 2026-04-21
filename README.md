@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![PyQt6](https://img.shields.io/badge/PyQt6-6.5+-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
+[![PySide6](https://img.shields.io/badge/PySide6-6.5+-green.svg)](https://wiki.qt.io/PySide6_Getting_Started)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
 
@@ -29,7 +29,7 @@
 - � **Журнал проверки знаний** — история всех отправок с отслеживанием статусов
 - 📄 **Формирование протокола** — автоматическое заполнение шаблона протокола проверки знаний
 - �🔐 **Безопасное хранение** — шифрование API-ключа и настроек прокси (AES/Fernet)
-- 🎨 **Современный UI** — интерфейс на PyQt6 с интуитивной навигацией и темами
+- 🎨 **Современный UI** — интерфейс на PySide6 с интуитивной навигацией и темами
 
 ---
 
@@ -99,12 +99,12 @@ pip install -r requirements.txt
 
 | Пакет | Версия | Назначение |
 |-------|--------|------------|
-| PyQt6 | ≥6.5.0 | Графический интерфейс |
+| PySide6 | ≥6.5.0 | Графический интерфейс (LGPL-лицензия) |
 | openpyxl | ≥3.1.0 | Чтение/запись XLSX |
 | xlrd | ≥2.0.0 | Чтение XLS |
 | requests | ≥2.31.0 | HTTP-запросы к API |
 | lxml | ≥4.9.0 | Валидация XML по XSD |
-| cryptography | ≥41.0.0 | Шифрование API-ключа |
+| cryptography | ≥41.0.0 | Требуется (обязательна для шифрования, AES/Fernet) |
 | Pillow | ≥10.0.0 | Работа с иконками |
 
 ### Готовый EXE-файл
@@ -198,7 +198,7 @@ python main.py
 - Зашифрованные данные сохраняются в `/data/api_key.json` и `/data/proxy_settings.json`
 - Ключ невозможно расшифровать на другом компьютере без совпадения имени пользователя
 - Пароли никогда не логируются
-- **TLS верификация** включена по умолчанию (можно отключить через чекбокс в настройках прокси)
+- **TLS верификация** управляется чекбоксом (по умолчанию выключена для корпоративных прокси с SSL-инспекцией)
 - Поддержка NTLM-аутентификации (логин вида DOMAIN\login)
 
 ### Эндпоинты API
@@ -394,7 +394,7 @@ pyinstaller ExcelXML.spec
 ## 🙏 Благодарности
 
 - Министерство труда и социальной защиты РФ за предоставление API
-- Сообщество PyQt6 за отличную документацию
+- Сообщество PySide6 за отличную документацию
 - Всем тестировщикам и контрибьюторам
 
 ---

@@ -6,3 +6,5 @@
 2026-04-18 18:33:12 | api.mintrud_api | INFO | Отправка XML на https://edu.rosmintrud.ru/api/set/push
 2026-04-21 20:42:47 | api.mintrud_api | ERROR | Логическая ошибка: 401 - Не найдена информация по ключу abcdefghijklmnop1234567890abcdef
 2026-04-21 20:47:38 | api.mintrud_api | ERROR | Логическая ошибка: 401 - Не найдена информация по ключу abcdefghijklmnop1234567890abcdef
+2026-04-21 21:49:04 | api.mintrud_api | ERROR | Логическая ошибка: 401 - Не найдена информация по ключу 12345678901234567890123456789011
+2026-04-21 22:26:42 | api.mintrud_api | ERROR | Критическая ошибка запроса стр. 1: ('Connection aborted.', ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None))

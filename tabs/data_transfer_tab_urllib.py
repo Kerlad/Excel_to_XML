@@ -3,13 +3,13 @@
 Используется при проблемах с прокси-серверами в корпоративной сети.
 """
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit,
     QPushButton, QFileDialog, QMessageBox, QScrollArea, QApplication,
     QRadioButton, QButtonGroup, QFrame
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from lxml import etree
 from api.mintrud_api_urllib import (
     push_xml,

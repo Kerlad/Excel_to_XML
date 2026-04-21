@@ -3,11 +3,11 @@
 Таблица: № программы, Название, Номер документа, Часы
 Двойной клик на ячейки «Номер документа» и «Часы» → диалог ввода
 """
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QMessageBox, QHeaderView, QLineEdit, QAbstractItemView, QLabel
 )
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 
 class ProgramsDialog(QDialog):
@@ -86,6 +86,7 @@ class ProgramsDialog(QDialog):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         table.verticalHeader().setDefaultSectionSize(25)
+        table.verticalHeader().setVisible(False)
 
         table.setStyleSheet("""
             QTableWidget {
@@ -183,7 +184,7 @@ class ProgramsDialog(QDialog):
 
     def _show_input_dialog(self, title: str, current_value: str, digits_only: bool = False) -> str:
         """Диалог ввода значения."""
-        from PyQt6.QtGui import QPalette, QColor
+        from PySide6.QtGui import QPalette, QColor
 
         dialog = QDialog(self)
         dialog.setWindowTitle(title)

@@ -1,10 +1,10 @@
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
     QLabel, QMessageBox, QFileDialog, QCheckBox, QScrollArea, QFrame, QRadioButton, QButtonGroup, QApplication
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from lxml import etree
 from api.mintrud_api import (
     load_api_key, save_api_key, push_xml,

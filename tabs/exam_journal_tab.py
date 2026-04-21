@@ -4,13 +4,13 @@
 """
 import os
 from datetime import datetime, date
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QLineEdit, QComboBox, QHeaderView, QAbstractItemView,
     QMessageBox, QFileDialog, QDateEdit, QGroupBox, QFormLayout, QInputDialog
 )
-from PyQt6.QtCore import Qt, QSortFilterProxyModel, QDate
-from PyQt6.QtGui import QColor, QFont
+from PySide6.QtCore import Qt, QSortFilterProxyModel, QDate
+from PySide6.QtGui import QColor, QFont
 from journal.journal_manager import JournalRecord
 
 
@@ -343,6 +343,7 @@ class ExamJournalTab(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         table.verticalHeader().setDefaultSectionSize(25)
+        table.verticalHeader().setVisible(False)
 
         # Стилизация
         table.setStyleSheet("""
@@ -1072,7 +1073,7 @@ class ExamJournalTab(QWidget):
 
     def _show_context_menu(self, position):
         """Контекстное меню для строки."""
-        from PyQt6.QtWidgets import QMenu
+        from PySide6.QtWidgets import QMenu
 
         # Проверяем есть ли выделенные строки
         if not self.table.selectedIndexes():

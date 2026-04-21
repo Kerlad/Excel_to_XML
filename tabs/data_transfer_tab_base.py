@@ -2,13 +2,12 @@
 Базовый класс для вкладок передачи данных с различными HTTP-библиотеками.
 """
 import os
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit,
-    QPushButton, QFileDialog, QMessageBox, QScrollArea, QApplication,
-    QRadioButton, QButtonGroup, QFrame
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
+    QLabel, QMessageBox, QFileDialog, QCheckBox, QScrollArea, QFrame, QRadioButton, QButtonGroup, QApplication
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from lxml import etree
 from utils.proxy_manager import (
     load_proxy_settings, save_proxy_settings, test_proxy_connection,
