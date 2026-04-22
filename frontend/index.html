@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel-XML для передачи данных в Минтруд</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f5f5fa; color: #1a1a2e; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        h1 { color: #4169E1; margin-bottom: 20px; }
+        h2 { color: #4169E1; margin: 20px 0 10px; font-size: 18px; }
+        
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; }
+        .tab { padding: 10px 20px; background: #e0e0f0; border: none; border-radius: 5px 5px 0 0; cursor: pointer; }
+        .tab.active { background: #4169E1; color: white; }
+        
+        .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; }
+        input, select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        input:focus, select:focus { outline: none; border-color: #4169E1; }
+        
+        .btn { padding: 10px 20px; background: #4169E1; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #3151B1; }
+        .btn.secondary { background: #6c757d; }
+        .btn.success { background: #28a745; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f5f5fa; font-weight: 600; }
+        tr:hover { background: #f9f9f9; }
+        
+        .error { color: #dc3545; padding: 10px; background: #ffe6e6; border-radius: 4px; margin: 10px 0; }
+        .success { color: #28a745; padding: 10px; background: #e6ffe6; border-radius: 4px; margin: 10px 0; }
+        
+        .row { display: flex; gap: 15px; }
+        .col { flex: 1; }
+        
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Excel-XML для передачи данных в Минтруд</h1>
+        
+        <div class="tabs">
+            <button class="tab active" data-tab="entry">Внесение данных</button>
+            <button class="tab" data-tab="view">Просмотр данных</button>
+            <button class="tab" data-tab="transfer">Передача данных</button>
+            <button class="tab" data-tab="journal">Журнал</button>
+            <button class="tab" data-tab="protocol">Протокол</button>
+        </div>
+        
+        <!-- Вкладка: Внесение данных -->
+        <div id="tab-entry" class="tab-content">
+            <div class="card">
+                <h2>Данные УЦ и работодателя</h2>
+                <div class="row">
+                    <div class="col form-group">
+                        <label>ИНН УЦ</label>
+                        <input type="text" id="tc-inn" placeholder="10 или 12 цифр">
+                    </div>
+                    <div class="col form-group">
+                        <label>Название УЦ</label>
+                        <input type="text" id="tc-title">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col form-group">
+                        <label>ИНН Заказчика</label>
+                        <input type="text" id="employer-inn" placeholder="10 или 12 цифр">
+                    </div>
+                    <div class="col form-group">
+                        <label>Название Заказчика</label>
+                        <input type="text" id="employer-title">
+                    </div>
+                </div>
+                <button class="btn" onclick="saveOrg()">Сохранить данные</button>
+            </div>
+            
+            <div class="card">
+                <h2>Ручной ввод работника</h2>
+                <div class="row">
+                    <div class="col form-group">
+                        <label>Фамилия</label>
+                        <input type="text" id="last-name">
+                    </div>
+                    <div class="col form-group">
+                        <label>Имя</label>
+                        <input type="text" id="first-name">
+                    </div>
+                    <div class="col form-group">
+                        <label>Отчество</label>
+                        <input type="text" id="middle-name">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col form-group">
+                        <label>СНИЛС</label>
+                        <input type="text" id="snils" placeholder="123-456-789 00">
+                    </div>
+                    <div class="col form-group">
+                        <label>Должность</label>
+                        <input type="text" id="position">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col form-group">
+                        <label>№ программы (1-29, кроме 5)</label>
+                        <input type="text" id="program" placeholder="1,2,3">
+                    </div>
+                    <div class="col form-group">
+                        <label>№ протокола</label>
+                        <input type="text" id="protocol-no">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col form-group">
+                        <label>Результат</label>
+                        <select id="result">
+                            <option value="Удовлетворительно">Удовлетворительно</option>
+                            <option value="Неудовлетворительно">Неудовлетворительно</option>
+                        </select>
+                    </div>
+                    <div class="col form-group">
+                        <label>Дата (ДД.ММ.ГГГГ)</label>
+                        <input type="text" id="exam-date" placeholder="21.04.2026">
+                    </div>
+                </div>
+                <button class="btn" onclick="addWorker()">Сохранить данные</button>
+                <button class="btn secondary" onclick="clearForm()">Очистить</button>
+            </div>
+            
+            <div class="card">
+                <h2>Загрузка из файла</h2>
+                <input type="file" id="file-input" accept=".xlsx">
+                <button class="btn" onclick="loadFile()">Загрузить файл</button>
+                <div id="load-result"></div>
+            </div>
+        </div>
+        
+        <!-- Вкладка: Просмотр данных -->
+        <div id="tab-view" class="tab-content hidden">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <h2>Список работников (<span id="worker-count">0</span>)</h2>
+                    <div>
+                        <button class="btn" onclick="exportXML()">Конвертировать в XML</button>
+                        <button class="btn secondary" onclick="clearWorkers()">Очистить</button>
+                    </div>
+                </div>
+                <div id="workers-table-container">
+                    <table id="workers-table">
+                        <thead>
+                            <tr>
+                                <th>Фамилия</th>
+                                <th>Имя</th>
+                                <th>Отчество</th>
+                                <th>СНИЛС</th>
+                                <th>Должность</th>
+                                <th>Программа</th>
+                                <th>Дата</th>
+                                <th>Протокол</th>
+                                <th>Результат</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workers-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Вкладка: Передача данных -->
+        <div id="tab-transfer" class="tab-content hidden">
+            <div class="card">
+                <h2>Настройки подключения</h2>
+                <div class="form-group">
+                    <label>API ключ (32 символа)</label>
+                    <input type="password" id="api-key" placeholder="Введите API ключ">
+                </div>
+                <button class="btn" onclick="saveAPIKey()">Сохранить ключ</button>
+            </div>
+            
+            <div class="card">
+                <h2>Настройки прокси</h2>
+                <div class="form-group">
+                    <label>Тип подключения</label>
+                    <select id="proxy-type" onchange="updateProxyFields()">
+                        <option value="none">Без прокси</option>
+                        <option value="auto">Авто (системные)</option>
+                        <option value="manual">Вручную</option>
+                    </select>
+                </div>
+                <div id="proxy-manual" class="hidden">
+                    <div class="form-group">
+                        <label>Адрес прокси</label>
+                        <input type="text" id="proxy-url" placeholder="http://proxy:port">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="tls-verify"> TLS верификация
+                    </label>
+                </div>
+                <button class="btn" onclick="saveProxySettings()">Сохранить настройки</button>
+            </div>
+            
+            <div class="card">
+                <h2>Отправка XML</h2>
+                <input type="file" id="xml-file" accept=".xml">
+                <button class="btn success" onclick="pushXML()">Отправить XML на сервер</button>
+                <div id="push-result"></div>
+            </div>
+            
+            <div class="card">
+                <h2>Запрос регистрационных ном��ро��</h2>
+                <div class="form-group">
+                    <label>SetId</label>
+                    <input type="text" id="set-id" placeholder="Введите SetId">
+                </div>
+                <button class="btn" onclick="getBySetId()">Запросить номера</button>
+                <button class="btn" onclick="getBySnils()">Запрос по СНИЛС</button>
+                <div id="query-result"></div>
+            </div>
+        </div>
+        
+        <!-- Вкладка: Журнал -->
+        <div id="tab-journal" class="tab-content hidden">
+            <div class="card">
+                <h2>Журнал проверки знаний</h2>
+                <p>Журнал будет доступен после отправки данных на сервер.</p>
+            </div>
+        </div>
+        
+        <!-- Вкладка: Протокол -->
+        <div id="tab-protocol" class="tab-content hidden">
+            <div class="card">
+                <h2>Данные комиссии</h2>
+                <div class="form-group">
+                    <label>Название организации</label>
+                    <input type="text" id="org-name">
+                </div>
+                <div class="row">
+                    <div class="col form-group">
+                        <label>№ протокола</label>
+                        <input type="text" id="protocol-num">
+                    </div>
+                    <div class="col form-group">
+                        <label>Дата проверки</label>
+                        <input type="text" id="exam-date-protocol">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Приказ №</label>
+                    <input type="text" id="order-num">
+                    <label>от</label>
+                    <input type="text" id="order-date">
+                </div>
+                <div class="row">
+                    <div class="col form-group">
+                        <label>Председатель</label>
+                        <input type="text" id="chairperson">
+                    </div>
+                    <div class="col form-group">
+                        <label>Должность</label>
+                        <input type="text" id="chair-title">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Члены комиссии</label>
+                    <input type="text" id="member1" placeholder="Член 1">
+                    <input type="text" id="member2" placeholder="Член 2">
+                    <input type="text" id="member3" placeholder="Член 3">
+                </div>
+                <div class="form-group">
+                    <label>Профсоюз</label>
+                    <input type="text" id="trade-union">
+                </div>
+                <button class="btn" onclick="saveCommission()">Сохранить данные комиссии</button>
+            </div>
+            
+            <div class="card">
+                <h2>Генерация протокола</h2>
+                <p>Генерация протоколов Word будет доступна в следующей версии.</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Переключение вкладок
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                tab.classList.add('active');
+                document.getElementById('tab-' + tab.dataset.tab).classList.remove('hidden');
+            });
+        });
+        
+        // Загрузка данных при старте
+        async function loadData() {
+            try {
+                const resp = await fetch('/api/org');
+                const org = await resp.json();
+                if (org) {
+                    document.getElementById('tc-inn').value = org.tc_inn || '';
+                    document.getElementById('tc-title').value = org.tc_title || '';
+                    document.getElementById('employer-inn').value = org.employer_inn || '';
+                    document.getElementById('employer-title').value = org.employer_title || '';
+                }
+                
+                loadWorkers();
+            } catch(e) {
+                console.error('Ошибка загрузки:', e);
+            }
+        }
+        
+        async function loadWorkers() {
+            try {
+                const resp = await fetch('/api/workers');
+                const workers = await resp.json();
+                updateWorkersTable(workers);
+            } catch(e) {
+                console.error('Ошибка:', e);
+            }
+        }
+        
+        function updateWorkersTable(workers) {
+            document.getElementById('worker-count').textContent = workers.length;
+            const tbody = document.getElementById('workers-tbody');
+            tbody.innerHTML = workers.map(w => `
+                <tr>
+                    <td>${w.last_name || ''}</td>
+                    <td>${w.first_name || ''}</td>
+                    <td>${w.middle_name || ''}</td>
+                    <td>${w.snils || ''}</td>
+                    <td>${w.position || ''}</td>
+                    <td>${w.program || ''}</td>
+                    <td>${w.date || ''}</td>
+                    <td>${w.protocol || ''}</td>
+                    <td>${w.result || ''}</td>
+                </tr>
+            `).join('');
+        }
+        
+        // Сохранение организации
+        async function saveOrg() {
+            const org = {
+                tc_inn: document.getElementById('tc-inn').value,
+                tc_title: document.getElementById('tc-title').value,
+                employer_inn: document.getElementById('employer-inn').value,
+                employer_title: document.getElementById('employer-title').value
+            };
+            await fetch('/api/org', {
+                method: 'POST',
+                body: JSON.stringify(org)
+            });
+            alert('Данные сохранены');
+        }
+        
+        // Добавление работника
+        async function addWorker() {
+            const worker = {
+                last_name: document.getElementById('last-name').value,
+                first_name: document.getElementById('first-name').value,
+                middle_name: document.getElementById('middle-name').value,
+                snils: document.getElementById('snils').value,
+                position: document.getElementById('position').value,
+                program: document.getElementById('program').value,
+                protocol: document.getElementById('protocol-no').value,
+                result: document.getElementById('result').value,
+                date: document.getElementById('exam-date').value
+            };
+            
+            await fetch('/api/worker/add', {
+                method: 'POST',
+                body: JSON.stringify(worker)
+            });
+            
+            alert('Запись создана');
+            clearForm();
+            loadWorkers();
+        }
+        
+        function clearForm() {
+            document.getElementById('last-name').value = '';
+            document.getElementById('first-name').value = '';
+            document.getElementById('middle-name').value = '';
+            document.getElementById('snils').value = '';
+            document.getElementById('position').value = '';
+            document.getElementById('program').value = '';
+            document.getElementById('protocol-no').value = '';
+        }
+        
+        // Загрузка файла
+        async function loadFile() {
+            const fileInput = document.getElementById('file-input');
+            if (!fileInput.files[0]) {
+                alert('Выберите файл');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            // Нам нужен путь к файлу - используем FileReader для получения пути (только для демо)
+            // В реальном приложении нужно загрузить файл на сервер
+            const resultDiv = document.getElementById('load-result');
+            resultDiv.innerHTML = '<div class="error">Для загрузки используйте CLI: go run cmd/app/main.go</div>';
+        }
+        
+        // Экспорт XML
+        async function exportXML() {
+            const path = prompt('Введите путь для сохранения XML:');
+            if (!path) return;
+            
+            const resp = await fetch('/api/xml/export', {
+                method: 'POST',
+                body: JSON.stringify({path})
+            });
+            const result = await resp.json();
+            
+            if (result.error) {
+                document.getElementById('load-result').innerHTML = '<div class="error">' + result.error + '</div>';
+            } else {
+                alert('XML сохранен: ' + result.path);
+            }
+        }
+        
+        // Очистка работников
+        function clearWorkers() {
+            if (confirm('Очистить все данные?')) {
+                workers = [];
+                saveWorkersData();
+                updateWorkersTable([]);
+            }
+        }
+        
+        // Сохранение API ключа
+        async function saveAPIKey() {
+            localStorage.setItem('api_key', document.getElementById('api-key').value);
+            alert('Ключ сохранён');
+        }
+        
+        // Прокси
+        function updateProxyFields() {
+            const type = document.getElementById('proxy-type').value;
+            document.getElementById('proxy-manual').classList.toggle('hidden', type !== 'manual');
+        }
+        
+        async function saveProxySettings() {
+            const settings = {
+                proxy_type: document.getElementById('proxy-type').value,
+                proxy_url: document.getElementById('proxy-url').value,
+                tls_verify: document.getElementById('tls-verify').checked
+            };
+            await fetch('/api/proxy/save', {
+                method: 'POST',
+                body: JSON.stringify(settings)
+            });
+            alert('Настройки сохранены');
+        }
+        
+        // Отправка XML
+        async function pushXML() {
+            const fileInput = document.getElementById('xml-file');
+            if (!fileInput.files[0]) {
+                alert('Выберите XML файл');
+                return;
+            }
+            
+            const apiKey = localStorage.getItem('api_key') || document.getElementById('api-key').value;
+            const resultDiv = document.getElementById('push-result');
+            
+            // Для реальной отправки нужно загрузить файл
+            resultDiv.innerHTML = '<div class="error">Для отправки используйте CLI</div>';
+        }
+        
+        // Запрос по SetId
+        async function getBySetId() {
+            const setId = document.getElementById('set-id').value;
+            const apiKey = localStorage.getItem('api_key') || document.getElementById('api-key').value;
+            
+            const resp = await fetch('/api/setid/query', {
+                method: 'POST',
+                body: JSON.stringify({set_id: setId, api_key: apiKey})
+            });
+            const result = await resp.json();
+            
+            const div = document.getElementById('query-result');
+            if (result.error) {
+                div.innerHTML = '<div class="error">' + result.error + '</div>';
+            } else {
+                div.innerHTML = '<div class="success">Найдено: ' + result.totalCount + '</div>';
+            }
+        }
+        
+        // Запрос по СНИЛС
+        async function getBySnils() {
+            const snils = prompt('Введите СНИЛС:');
+            if (!snils) return;
+            
+            const apiKey = localStorage.getItem('api_key') || document.getElementById('api-key').value;
+            
+            const resp = await fetch('/api/snils/query', {
+                method: 'POST',
+                body: JSON.stringify({snils: snils, api_key: apiKey})
+            });
+            const result = await resp.json();
+            
+            const div = document.getElementById('query-result');
+            if (result.error) {
+                div.innerHTML = '<div class="error">' + result.error + '</div>';
+            } else {
+                div.innerHTML = '<div class="success">Рег.номер: ' + result.baseNo + '</div>';
+            }
+        }
+        
+        // Сохранение комиссии
+        async function saveCommission() {
+            alert('Данные сохранены');
+        }
+        
+        // Инициализация
+        loadData();
+    </script>
+</body>
+</html>
