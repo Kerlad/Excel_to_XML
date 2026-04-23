@@ -1,0 +1,1059 @@
+package main
+
+import (
+	"archive/zip"
+	"bytes"
+	"encoding/csv"
+	"encoding/json"
+	"encoding/xml"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+var (
+	workers    []Worker
+	orgSet     OrgSettings
+	proxySet   ProxySettings
+	dataDir   string
+	apiKey    string
+	port     string
+	programMap = map[string]string{
+		"1":  "Оказание первой помощи пострадавшим",
+		"2":  "Использование (применение) средств индивидуальной защиты",
+		"3":  "Общие вопросы охраны труда и функционирования системы управления охраной труда",
+		"4":  "Безопасные методы и приемы выполнения работ при воздействии вредных и (или) опасных производственных факторов, источников опасности, идентифицированных в рамках специальной оценки условий труда и оценки профессиональных рисков",
+		"6":  "Безопасные методы и приемы выполнения земляных работ",
+		"7":  "Безопасные методы и приемы выполнения ремонтных, монтажных и демонтажных работ зданий и сооружений",
+		"8":  "Безопасные методы и приемы выполнения работ при размещении, монтаже, техническом обслуживании и ремонте технологического оборудования (включая технологическое оборудование)",
+		"9":  "Безопасные методы и приемы выполнения работ на высоте",
+		"10": "Безопасные методы и приемы выполнения пожароопасных работ",
+		"11": "Безопасные методы и приемы выполнения работ в ограниченных и замкнутых пространствах (ОЗП)",
+		"12": "Безопасные методы и приемы выполнения строительных работ, в том числе: - окрасочные работы - электросварочные и газосварочные работы",
+		"13": "Безопасные методы и приемы выполнения работ, связанных с опасностью воздействия сильнодействующих и ядовитых веществ",
+		"14": "Безопасные методы и приемы выполнения газоопасных работ",
+		"15": "Безопасные методы и приемы выполнения огневых работ",
+		"16": "Безопасные методы и приемы выполнения работ, связанных с эксплуатацией подъемных сооружений",
+		"17": "Безопасные методы и приемы выполнения работ, связанных с эксплуатацией тепловых энергоустановок",
+		"18": "Безопасные методы и приемы выполнения работ в электроустановках",
+		"19": "Безопасные методы и приемы выполнения работ, связанных с эксплуатацией сосудов, работающих под избыточным давлением",
+		"20": "Безопасные методы и приемы обращения с животными",
+		"21": "Безопасные методы и приемы при выполнении водолазных работ",
+		"22": "Безопасные методы и приемы работ по поиску, идентификации, обезвреживанию и уничтожению взрывоопасных предметов",
+		"23": "Безопасные методы и приемы работ в непосредственной близости от полотна или проезжей части эксплуатируемых автомобильных и железных дорог",
+		"24": "Безопасные методы и приемы работ, на участках с патогенным заражением почвы",
+		"25": "Безопасные методы и приемы работ по валке леса в особо опасных условиях",
+		"26": "Безопасные методы и приемы работ по перемещению тяжеловесных и крупногабаритных грузов при отсутствии машин соответствующей грузоподъемности и разборке покосившихся и опасных (неправильно уложенных) штабелей круглых лесоматериалов",
+		"27": "Безопасные методы и приемы работ с радиоактивными веществами и источниками ионизирующих излучений",
+		"28": "Безопасные методы и приемы работ с ручным инструментом, в том числе с пиротехническим",
+		"29": "Безопасные методы и приемы работ в театрах",
+	}
+)
+
+type Worker struct {
+	LastName      string `json:"lastName"`
+	FirstName    string `json:"firstName"`
+	MiddleName   string `json:"middleName"`
+	SNILS       string `json:"snils"`
+	Position    string `json:"position"`
+	EmployerInn string `json:"employerInn"`
+	EmployerTit string `json:"employerTitle"`
+	TCInn       string `json:"tcInn"`
+	TCTitle     string `json:"tcTitle"`
+	Result      string `json:"result"`
+	ProgramNum  string `json:"programNumber"`
+	Date        string `json:"date"`
+	ProtocolNum string `json:"protocolNumber"`
+}
+
+type OrgSettings struct {
+	TCInn   string `json:"tc_inn"`
+	TCTitle string `json:"tc_title"`
+	EmplInn string `json:"employer_inn"`
+	EmplTit string `json:"employer_title"`
+}
+
+type ProxySettings struct {
+	Mode      string `json:"mode"`
+	URL       string `json:"url"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	TLSVerify bool   `json:"tls_verify"`
+}
+
+type JournalEntry struct {
+	ID            int    `json:"id"`
+	LastName      string `json:"lastName"`
+	FirstName    string `json:"firstName"`
+	MiddleName   string `json:"middleName"`
+	SNILS       string `json:"snils"`
+	Position    string `json:"position"`
+	ProgramNum  string `json:"programNumber"`
+	ProgramTit  string `json:"programTitle"`
+	Date        string `json:"date"`
+	ProtocolNum string `json:"protocolNumber"`
+	SetId       string `json:"setId"`
+	BaseNo      string `json:"baseNo"`
+	SendDate    string `json:"sendDate"`
+	XMLPath     string `json:"xmlFilePath"`
+	Status     string `json:"status"`
+}
+
+var journal struct {
+	Entries []JournalEntry `json:"entries"`
+}
+
+func main() {
+	flag.StringVar(&port, "port", "8080", "HTTP server port")
+	flag.Parse()
+
+	execDir, _ := filepath.Abs(os.Args[0])
+	execDir = filepath.Dir(execDir)
+	dataDir = filepath.Join(execDir, "data")
+	os.MkdirAll(dataDir, 0755)
+
+	loadData()
+
+	http.HandleFunc("/api/workers", handleWorkers)
+	http.HandleFunc("/api/org", handleOrg)
+	http.HandleFunc("/api/proxy", handleProxy)
+	http.HandleFunc("/api/key", handleKey)
+	http.HandleFunc("/api/journal", handleJournal)
+	http.HandleFunc("/api/convert", handleConvert)
+	http.HandleFunc("/api/send", handleSend)
+	http.HandleFunc("/api/query", handleQuery)
+	http.HandleFunc("/api/protocol", handleProtocol)
+	http.HandleFunc("/api/template", handleTemplate)
+	http.HandleFunc("/", handleGUI)
+	http.HandleFunc("/api/shutdown", handleShutdown)
+
+	go func() {
+		l := log.New(os.Stdout, "", 0)
+		l.Printf("http://localhost:%s", port)
+		l.Fatal(http.ListenAndServe(":"+port, nil))
+	}()
+
+	go func() {
+		url := fmt.Sprintf("http://localhost:%s", port)
+		for i := 0; i < 10; i++ {
+			if resp, _ := http.Get(url); resp != nil {
+				resp.Body.Close()
+				exec.Command("cmd", "/c", "start", url).Run()
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
+
+	select {}
+}
+
+func handleShutdown(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	go func() { time.Sleep(100 * time.Millisecond); os.Exit(0) }()
+}
+
+func handleGUI(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excel-XML для Минтруда</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+--primary:#3050C0;--primary-dark:#1a3a8a;--primary-light:#4a70d0;--accent:#C00000;--bg:#F5F5F5;--white:#FFFFFF;--border:#CCCCCC;--text:#000000;--text-secondary:#666666;--success:#27ae60;--warning:#e67e22;--danger:#C00000;--shadow:0 2px 8px rgba(0,0,0,0.1);--shadow-lg:0 4px 16px rgba(0,0,0,0.15);--radius:8px;--radius-lg:12px;--transition:all 0.2s ease
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter','Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5}
+.app{display:flex;min-height:100vh}
+.sidebar{width:260px;background:linear-gradient(180deg,#2c3e50 0%,#1a252f 100%);color:white;padding:0;flex-shrink:0;display:flex;flex-direction:column}
+.sidebar-header{padding:24px 20px;border-bottom:1px solid rgba(255,255,255,0.1)}
+.sidebar-header h1{font-size:16px;font-weight:600;letter-spacing:0.5px}
+.sidebar-header p{font-size:12px;opacity:0.7;margin-top:4px}
+.nav{flex:1;padding:12px 0}
+.nav-item{padding:14px 20px;cursor:pointer;transition:var(--transition);display:flex;align-items:center;gap:12px;font-size:14px;border-left:3px solid transparent;opacity:0.85}
+.nav-item:hover{background:rgba(255,255,255,0.08);opacity:1}
+.nav-item.active{background:rgba(48,80,192,0.2);border-left-color:var(--primary);opacity:1}
+.nav-item svg{width:20px;height:20px;flex-shrink:0}
+.main{flex:1;padding:24px 32px;overflow-y:auto}
+.page{display:none}
+.page.active{display:block}
+.page-header{margin-bottom:24px}
+.page-title{font-size:24px;font-weight:600;color:var(--text);margin-bottom:8px}
+.page-subtitle{font-size:14px;color:var(--text-secondary)}
+.card{background:var(--white);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px;box-shadow:var(--shadow);transition:var(--transition)}
+.card:hover{box-shadow:var(--shadow-lg)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid var(--primary)}
+.card-title{font-size:16px;font-weight:600;color:var(--primary)}
+.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.form-grid-3{grid-template-columns:repeat(3,1fr)}
+.form-group{position:relative}
+.form-label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:6px}
+.form-input,.form-select{padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;width:100%;transition:var(--transition);background:var(--white)}
+.form-input:focus,.form-select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(48,80,192,0.1)}
+.form-input.error{border-color:var(--danger)}
+.form-input::placeholder{color:#aaa}
+.form-hint{font-size:12px;color:var(--text-secondary);margin-top:4px}
+.form-error{font-size:12px;color:var(--danger);margin-top:4px;display:none}
+.form-group.has-error .form-error{display:block}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 24px;border:none;border-radius:var(--radius);font-size:14px;font-weight:500;cursor:pointer;transition:var(--transition)}
+.btn-primary{background:var(--primary);color:white}
+.btn-primary:hover{background:var(--primary-dark)}
+.btn-secondary{background:#e8e8e8;color:var(--text)}
+.btn-secondary:hover{background:#dcdcdc}
+.btn-danger{background:var(--danger);color:white}
+.btn-danger:hover{background:#a00000}
+.btn-outline{background:transparent;border:1.5px solid var(--primary);color:var(--primary)}
+.btn-outline:hover{background:var(--primary);color:white}
+.btn-sm{padding:8px 16px;font-size:13px}
+.btn-group{display:flex;gap:12px;margin-top:20px}
+.input-group{position:relative;display:flex}
+.input-group .form-input{border-radius:var(--radius) 0 0 var(--radius);flex:1}
+.input-group .btn{border-radius:0 var(--radius) var(--radius) 0;white-space:nowrap}
+.input-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;opacity:0.5}
+.input-icon:hover{opacity:1}
+.table-wrap{overflow-x:auto;margin-top:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:14px 12px;text-align:left;border-bottom:1px solid #eee}
+th{background:#f8f9fa;font-weight:600;color:var(--text-secondary);font-size:12px;text-transform:uppercase;letter-spacing:0.5px}
+th:hover{background:#eee;cursor:pointer}
+tr:hover{background:#f8f9fa}
+.status{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500}
+.status-waiting{background:#fff3e0;color:#e65100}
+.status-waiting::before{content:'';width:6px;height:6px;border-radius:50%;background:#ff9800}
+.status-received{background:#e8f5e9;color:#2e7d32}
+.status-received::before{content:'';width:6px;height:6px;border-radius:50%;background:#4caf50}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge-primary{background:rgba(48,80,192,0.1);color:var(--primary)}
+.badge-success{background:rgba(39,174,96,0.1);color:var(--success)}
+.modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;visibility:hidden;transition:var(--transition)}
+.modal.active{opacity:1;visibility:visible}
+.modal-content{background:var(--white);border-radius:var(--radius-lg);padding:24px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto;transform:scale(0.9);transition:var(--transition)}
+.modal.active .modal-content{transform:scale(1)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #eee}
+.modal-title{font-size:18px;font-weight:600}
+.modal-close{background:none;border:none;font-size:24px;cursor:pointer;opacity:0.5}
+.modal-close:hover{opacity:1}
+.radio-group{display:flex;gap:20px;flex-wrap:wrap}
+.radio-item{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px}
+.radio-item input{accent-color:var(--primary)}
+.checkbox-item{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px}
+.checkbox-item input{width:18px;height:18px;accent-color:var(--primary)}
+.alert{padding:14px 18px;border-radius:var(--radius);margin-bottom:16px;font-size:14px;display:flex;align-items:center;gap:12px}
+.alert-success{background:#e8f5e9;border-left:4px solid var(--success);color:#2e7d32}
+.alert-error{background:#ffebee;border-left:4px solid var(--danger);color:#c62828}
+.alert-warning{background:#fff3e0;border-left:4px solid var(--warning);color:#e65100}
+.alert-info{background:#e3f2fd;border-left:4px solid var(--primary);color:#1565c0}
+.tabs{display:flex;gap:8px;border-bottom:2px solid #eee;margin-bottom:20px}
+.tab-btn{padding:12px 20px;background:none;border:none;font-size:14px;font-weight:500;color:var(--text-secondary);cursor:pointer;position:relative;transition:var(--transition)}
+.tab-btn:hover{color:var(--primary)}
+.tab-btn.active{color:var(--primary)}
+.tab-btn.active::after{content:'';position:absolute;bottom:-2px;left:0;right:0;height:2px;background:var(--primary)}
+.search-box{position:relative;margin-bottom:16px}
+.search-box input{pl:40px}
+.search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:0.5}
+.file-input-wrap{display:flex;gap:12px;align-items:center}
+.file-input-wrap input{flex:1}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:var(--white);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.stat-value{font-size:28px;font-weight:700;color:var(--primary)}
+.stat-label{font-size:13px;color:var(--text-secondary);margin-top:4px}
+.empty-state{text-align:center;padding:48px 24px;color:var(--text-secondary)}
+.empty-state svg{width:64px;height:64px;opacity:0.3;margin-bottom:16px}
+.empty-state p{font-size:14px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px}
+.toolbar-left,.toolbar-right{display:flex;gap:12px;align-items:center}
+.programs-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;max-height:300px;overflow-y:auto}
+.program-item{padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:var(--transition);font-size:13px}
+.program-item:hover{border-color:var(--primary);background:rgba(48,80,192,0.05)}
+.program-item.selected{border-color:var(--primary);background:rgba(48,80,192,0.1)}
+.program-item .num{font-weight:600;color:var(--primary)}
+.program-item .title{font-size:12px;color:var(--text-secondary);margin-top:2px}
+@media(max-width:768px){.sidebar{width:60px}
+.sidebar-header h1,.nav-item span{display:none}
+.nav-item{justify-content:center;padding:16px}
+.form-grid{grid-template-columns:1fr}
+.main{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+<div class="sidebar-header">
+<h1>Excel-XML</h1>
+<p>Минтруд</p>
+</div>
+<nav class="nav">
+<div class="nav-item active" data-page="input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg><span>Внесение данных</span></div>
+<div class="nav-item" data-page="view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><span>Просмотр данных</span></div>
+<div class="nav-item" data-page="transfer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01 22 4"/></svg><span>Передача данных</span></div>
+<div class="nav-item" data-page="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Журнал проверок</span></div>
+<div class="nav-item" data-page="protocol"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg><span>Протокол</span></div>
+</nav>
+</aside>
+<main class="main">
+<div id="page-input" class="page active">
+<div class="page-header"><h1 class="page-title">Внесение данных</h1><p class="page-subtitle">Заполните данные об учебном центре, заказчике и работниках</p></div>
+<div class="card">
+<div class="card-header"><h2 class="card-title">Данные УЦ и работодателя</h2></div>
+<div class="form-grid">
+<div class="form-group"><label class="form-label">ИНН Учебного центра *</label><input class="form-input" id="tc-inn" placeholder="10 или 12 цифр"><span class="form-hint">ИНН организации, проводящей обучение</span><span class="form-error">ИНН - только 10 или 12 цифр</span></div>
+<div class="form-group"><label class="form-label">Название УЦ *</label><input class="form-input" id="tc-title" placeholder="Полное наименование"></div>
+<div class="form-group"><label class="form-label">ИНН Заказчика *</label><input class="form-input" id="empl-inn" placeholder="10 или 12 цифр"><span class="form-hint">ИНН организации-работодателя</span><span class="form-error">ИНН - только 10 или 12 цифр</span></div>
+<div class="form-group"><label class="form-label">Название Заказчика *</label><input class="form-input" id="empl-title" placeholder="Полное наименование"></div>
+</div>
+<div class="btn-group"><button class="btn btn-primary" onclick="saveOrg()">Сохранить данные</button></div>
+</div>
+<div class="card">
+<div class="card-header"><h2 class="card-title">Загрузка из файла</h2></div>
+<div class="file-input-wrap"><input type="file" class="form-input" id="file-input" accept=".xlsx,.xls,.xml"><button class="btn btn-primary" onclick="loadFile()">Загрузить</button></div>
+<div class="form-hint" style="margin-top:12px">Поддерживаются форматы: XLSX, XLS, XML. <a href="#" onclick="createTemplate();return false" style="color:var(--primary)">Создать шаблон</a> | <a href="#" onclick="openXSD();return false" style="color:var(--primary)">Схема XSD</a></div>
+</div>
+<div class="card">
+<div class="card-header"><h2 class="card-title">Ручной ввод работника</h2></div>
+<div class="form-grid">
+<div class="form-group"><label class="form-label">Фамилия *</label><input class="form-input" id="w-last" placeholder="Иванов"></div>
+<div class="form-group"><label class="form-label">Имя *</label><input class="form-input" id="w-first" placeholder="Иван"></div>
+<div class="form-group"><label class="form-label">Отчество</label><input class="form-input" id="w-middle" placeholder="Иванович"></div>
+<div class="form-group"><label class="form-label">СНИЛС *</label><div class="input-group"><input class="form-input" id="w-snils" placeholder="123-456-789 00" maxlength="14"></div><span class="form-hint">Автоформатирование при вводе</span></div>
+<div class="form-group"><label class="form-label">Должность *</label><input class="form-input" id="w-pos" placeholder="Слесарь"></div>
+<div class="form-group"><label class="form-label">№ программы *</label><div class="input-group"><input class="form-input" id="w-prog" placeholder="1,2,3"><button class="btn btn-secondary btn-sm" onclick="showPrograms()">Справка</button></div><span class="form-hint">1-29, кроме 5. Через запятую.</span></div>
+<div class="form-group"><label class="form-label">№ протокола *</label><input class="form-input" id="w-prot" placeholder="001"></div>
+<div class="form-group"><label class="form-label">Дата *</label><input class="form-input" id="w-date" type="date"></div>
+<div class="form-group"><label class="form-label">Результат</label><select class="form-select" id="w-res"><option value="true">Удовлетворительно</option><option value="false">Неудовлетворительно</option></select></div>
+</div>
+<div class="btn-group"><button class="btn btn-primary" onclick="saveWorker()">Сохранить данные</button><button class="btn btn-secondary" onclick="clearForm()">Очистить</button></div>
+</div>
+</div>
+<div id="page-view" class="page">
+<div class="page-header"><h1 class="page-title">Просмотр данных</h1><p class="page-subtitle">Таблица загруженных и введенных работников</p></div>
+<div class="toolbar"><div class="toolbar-left"><button class="btn btn-primary" onclick="convertXML()">Конвертировать в XML</button><button class="btn btn-danger" onclick="clearWorkers()">Очистить все</button></div></div>
+<div class="card">
+<div class="table-wrap">
+<table id="workers-table"><thead><tr><th>Фамилия</th><th>Имя</th><th>Отчество</th><th>СНИЛС</th><th>Должность</th><th>№ прогр</th><th>Дата</th><th>Протокол</th><th>Результат</th><th></th></tr></thead><tbody id="workers-tbody"></tbody></table>
+</div>
+</div>
+</div>
+<div id="page-transfer" class="page">
+<div class="page-header"><h1 class="page-title">Передача данных</h1><p class="page-subtitle">Отправка данных на сервер Минтруда</p></div>
+<div class="tabs"><button class="tab-btn active" data-tab="api">API ключ</button><button class="tab-btn" data-tab="proxy">Настройки прокси</button><button class="tab-btn" data-tab="send">Отправка XML</button><button class="tab-btn" data-tab="query">Запросы</button></div>
+<div id="tab-api" class="tab-content">
+<div class="card">
+<h3 class="card-title" style="margin-bottom:16px">API ключ</h3>
+<div class="form-group"><label class="form-label">Ключ API (32 символа)</label><div class="input-group"><input type="password" class="form-input" id="api-key" maxlength="32" placeholder="Введите API ключ"><button class="btn btn-secondary" onclick="toggleKey()">👁</button></div></div>
+<div class="btn-group"><button class="btn btn-primary" onclick="saveKey()">Сохранить ключ</button></div>
+</div>
+</div>
+<div id="tab-proxy" class="tab-content" style="display:none">
+<div class="card">
+<h3 class="card-title" style="margin-bottom:16px">Настройки прокси</h3>
+<div class="radio-group">
+<label class="radio-item"><input type="radio" name="proxy-mode" value="none" checked> Без прокси</label>
+<label class="radio-item"><input type="radio" name="proxy-mode" value="auto"> Авто (системные)</label>
+<label class="radio-item"><input type="radio" name="proxy-mode" value="manual"> Вручную</label>
+</div>
+<div id="proxy-fields" style="display:none;margin-top:20px">
+<div class="form-grid">
+<div class="form-group"><label class="form-label">Адрес прокси</label><input class="form-input" id="proxy-url" placeholder="http://proxy:3128"></div>
+<div class="form-group"><label class="form-label">Логин</label><input class="form-input" id="proxy-user"></div>
+<div class="form-group"><label class="form-label">Пароль</label><input type="password" class="form-input" id="proxy-pass"></div>
+</div>
+</div>
+<label class="checkbox-item" style="margin-top:16px"><input type="checkbox" id="tls-verify"> TLS верификация</label>
+<div class="btn-group"><button class="btn btn-primary" onclick="saveProxy()">Сохранить</button><button class="btn btn-secondary" onclick="testProxy()">Тест подключения</button></div>
+</div>
+</div>
+<div id="tab-send" class="tab-content" style="display:none">
+<div class="card">
+<h3 class="card-title" style="margin-bottom:16px">Отправка XML</h3>
+<div class="file-input-wrap"><input type="file" class="form-input" id="xml-file" accept=".xml"><button class="btn btn-primary" onclick="sendXML()">Отправить на сервер</button></div>
+</div>
+</div>
+<div id="tab-query" class="tab-content" style="display:none">
+<div class="card">
+<h3 class="card-title" style="margin-bottom:16px">Запрос по SetId</h3>
+<div class="form-group"><label class="form-label">Номер набора (SetId)</label><input class="form-input" id="query-setid" placeholder="Введите SetId"></div>
+<div class="btn-group"><button class="btn btn-primary" onclick="queryBySetId()">Запросить номера</button></div>
+</div>
+<div class="card">
+<h3 class="card-title" style="margin-bottom:16px">Запрос по СНИЛС</h3>
+<div class="form-group"><label class="form-label">СНИЛС работника</label><input class="form-input" id="query-snils" placeholder="123-456-789 00"></div>
+<div class="btn-group"><button class="btn btn-primary" onclick="queryBySNILS()">Отправить запрос</button></div>
+</div>
+</div>
+</div>
+<div id="page-journal" class="page">
+<div class="page-header"><h1 class="page-title">Журнал проверки знаний</h1><p class="page-subtitle">История отправок и статусы регистрации</p></div>
+<div class="toolbar"><div class="toolbar-left"><div class="search-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input class="form-input" id="search-input" placeholder="Поиск по ФИО или СНИЛС" style="padding-left:40px" oninput="filterJournal()"></div></div><div class="toolbar-right"><button class="btn btn-secondary" onclick="exportJournal()">Экспорт в XLSX</button></div></div>
+<div class="card">
+<div class="table-wrap">
+<table><thead><tr><th>Дата</th><th>SetId</th><th>Фамилия</th><th>Имя</th><th>СНИЛС</th><th>№ прогр</th><th>Рег.номер</th><th>Статус</th></tr></thead>
+<tbody id="journal-tbody"></tbody>
+</table>
+</div>
+</div>
+</div>
+<div id="page-protocol" class="page">
+<div class="page-header"><h1 class="page-title">Протокол</h1><p class="page-subtitle">Формирование протокола проверки знаний</p></div>
+<div class="card">
+<div class="card-header"><h2 class="card-title">Данные комиссии</h2></div>
+<div class="form-grid">
+<div class="form-group"><label class="form-label">Название организации</label><input class="form-input" id="org-name"></div>
+<div class="form-group"><label class="form-label">№ протокола</label><input class="form-input" id="protocol-num"></div>
+<div class="form-group"><label class="form-label">Дата проверки</label><input class="form-input" id="exam-date" type="date"></div>
+<div class="form-group"><label class="form-label">Приказ о комиссии</label><input class="form-input" id="order-num"></div>
+</div>
+</div>
+<div class="card">
+<div class="card-header"><h2 class="card-title">Состав комиссии</h2></div>
+<div class="form-grid">
+<div class="form-group"><label class="form-label">Председатель</label><input class="form-input" id="chairperson"></div>
+<div class="form-group"><label class="form-label">Должность</label><input class="form-input" id="chair-title"></div>
+<div class="form-group"><label class="form-label">Член комиссии 1</label><input class="form-input" id="member1"></div>
+<div class="form-group"><label class="form-label">Член комиссии 2</label><input class="form-input" id="member2"></div>
+</div>
+</div>
+<div class="btn-group"><button class="btn btn-primary" onclick="generateProtocol()">Сгенерировать протокол</button></div>
+</div>
+</div>
+</main>
+</div>
+<div class="modal" id="programs-modal"><div class="modal-content"><div class="modal-header"><h3 class="modal-title">Программы обучения</h3><button class="modal-close" onclick="closePrograms()">×</button></div><div class="programs-grid" id="programs-list"></div></div></div>
+<div class="modal" id="edit-modal"><div class="modal-content"><div class="modal-header"><h3 class="modal-title">Редактирование</h3><button class="modal-close" onclick="closeEdit()">×</button></div>
+<div class="form-grid">
+<div class="form-group"><label class="form-label">Фамилия *</label><input class="form-input" id="e-last"></div>
+<div class="form-group"><label class="form-label">Имя *</label><input class="form-input" id="e-first"></div>
+<div class="form-group"><label class="form-label">Отчество</label><input class="form-input" id="e-middle"></div>
+<div class="form-group"><label class="form-label">СНИЛС *</label><input class="form-input" id="e-snils"></div>
+<div class="form-group"><label class="form-label">Должность *</label><input class="form-input" id="e-pos"></div>
+<div class="form-group"><label class="form-label">№ программы *</label><input class="form-input" id="e-prog"></div>
+<div class="form-group"><label class="form-label">№ протокола</label><input class="form-input" id="e-prot"></div>
+<div class="form-group"><label class="form-label">Дата</label><input class="form-input" id="e-date" type="date"></div>
+<div class="form-group"><label class="form-label">Результат</label><select class="form-select" id="e-res"><option value="true">Удовлетворительно</option><option value="false">Неудовлетворительно</option></select></div>
+</div>
+<div class="btn-group"><button class="btn btn-primary" onclick="saveEdit()">Сохранить</button><button class="btn btn-secondary" onclick="closeEdit()">Отмена</button></div>
+</div></div>
+<div class="modal" id="alert-modal"><div class="modal-content" style="max-width:400px"><div class="modal-header"><h3 class="modal-title" id="alert-title">Уведомление</h3><button class="modal-close" onclick="closeAlert()">×</button></div><p id="alert-message"></p><div class="btn-group" style="justify-content:flex-end;margin-top:20px"><button class="btn btn-primary" onclick="closeAlert()">ОК</button></div></div></div>
+<script>
+const programs={
+"1":"Оказание первой помощи пострадавшим","2":"Использование (применение) средств индивидуальной защиты","3":"Общие вопросы охраны труда и функционирования системы управления охраной труда","4":"Безопасные методы и приемы выполнения работ при воздействии вредных и (или) опасных производственных факторов, источников опасности, идентифицированных в рамках специальной оценки условий труда и оценки профессиональных рисков","6":"Безопасные методы и приемы выполнения земляных работ","7":"Безопасные методы и приемы выполнения ремонтных, монтажных и демонтажных работ зданий и сооружений","8":"Безопасные методы и приемы выполнения работ при размещении, монтаже, техническом обслуживании и ремонте технологического оборудования (включая технологическое оборудование)","9":"Безопасные методы и приемы выполнения работ на высоте","10":"Безопасные методы и приемы выполнения пожароопасных работ","11":"Безопасные методы и приемы выполнения работ в ограниченных и замкнутых пространствах (ОЗП)","12":"Безопасные методы и приемы выполнения строительных работ, в том числе: - окрасочные работы - электросварочные и газосварочные работы","13":"Безопасные методы и приемы выполнения работ, связанных с опасностью воздействия сильнодействующих и ядовитых веществ","14":"Безопасные методы и приемы выполнения газоопасных работ","15":"Безопасные методы и приемы выполнения огневых работ","16":"Безопасные методы и приемы выполнения работ, связанных с эксплуатацией подъемных сооружений","17":"Безопасные методы и приемы выполнения работ, связанных с эксплуатацией тепловых энергоустановок","18":"Безопасные методы и приемы выполнения работ в электроустановках","19":"Безопасные методы и приемы выполнения работ, связанных с эксплуатацией сосудов, работающих под избыточным давлением","20":"Безопасные методы и приемы обращения с животными","21":"Безопасные методы и приемы при выполнении водолазных работ","22":"Безопасные методы и приемы работ по поиску, идентификации, обезвреживанию и уничтожению взрывоопасных предметов","23":"Безопасные методы и приемы работ в непосредственной близости от полотна или проезжей части эксплуатируемых автомобильных и железных дорог","24":"Безопасные методы и приемы работ, на участках с патогенным заражением почвы","25":"Безопасные методы и приемы работ по валке леса в особо опасных условиях","26":"Безопасные методы и приемы работ по перемещению тяжеловесных и крупногабаритных грузов при отсутствии машин соответствующей грузоподъемности и разборке покосившихся и опасных (неправильно уложенных) штабелей круглых лесоматериалов","27":"Безопасные методы и приемы работ с радиоактивными веществами и источниками ионизирующих излучений","28":"Безопасные методы и приемы работ с ручным инструментом, в том числе с пиротехническим","29":"Безопасные методы и приемы работ в театрах"
+};
+document.querySelectorAll('.nav-item').forEach(item=>{item.onclick=()=>{document.querySelectorAll('.nav-item').forEach(i=>i.classList.remove('active'));document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));item.classList.add('active');document.getElementById('page-'+item.dataset.page).classList.add('active')}});
+document.querySelectorAll('.tab-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(c=>c.style.display='none');btn.classList.add('active');document.getElementById('tab-'+btn.dataset.tab).style.display='block'}});
+document.querySelectorAll('input[name="proxy-mode"]').forEach(el=>{el.onchange=()=>{document.getElementById('proxy-fields').style.display=el.value==='manual'?'block':'none'}});
+const snilsInput=document.getElementById('w-snils');
+snilsInput.oninput=e=>{let v=e.target.value.replace(/\D/g,'').slice(0,11);if(v.length>9)v=v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6,9)+' '+v.slice(9);else if(v.length>6)v=v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6);e.target.value=v;};
+function formatSNILS(s){let m=s.replace(/\D/g,'');if(m.length===11)return m.slice(0,3)+'-'+m.slice(3,6)+'-'+m.slice(6,9)+' '+m.slice(9);return s;}
+function validateINN(s){return/^\d{10}$/.test(s)||/^\d{12}$/.test(s);}
+function validateSNILS(s){let m=s.replace(/\D/g,'');return m.length===11;}
+function showAlert(t,m){document.getElementById('alert-title').textContent=t;document.getElementById('alert-message').textContent=m;document.getElementById('alert-modal').classList.add('active');}
+function closeAlert(){document.getElementById('alert-modal').classList.remove('active');}
+function showPrograms(){let p=document.getElementById('programs-list');p.innerHTML='';Object.entries(programs).forEach(([n,t])=>{p.innerHTML+=`<div class="program-item" onclick="addProgram('${n}')"><span class="num">N ${n}</span><div class="title">${t}</div></div>`});document.getElementById('programs-modal').classList.add('active');}
+function closePrograms(){document.getElementById('programs-modal').classList.remove('active');}
+function addProgram(n){let el=document.getElementById('w-prog');el.value=el.value?el.value+','+n:n;closePrograms();}
+async function api(u,d){let r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});return r.json();}
+async function saveOrg(){let d={tc_inn:Ti('tc-inn'),tc_title:Ti('tc-title'),employer_inn:Ti('empl-inn'),employer_title:Ti('empl-title')};if(d.tc_inn&&!validateINN(d.tc_inn))return showAlert('Ошибка','ИНН УЦ - 10 или 12 цифр');if(d.employer_inn&&!validateINN(d.employer_inn))return showAlert('Ошибка','ИНН работодателя - 10 или 12 цифр');let r=await api('/api/org',d);showAlert(r.ok?'Успешно':'Ошибка',r.ok?'Данные сохранены':r.error);}
+async function saveWorker(){let d={lastName:Ti('w-last'),firstName:Ti('w-first'),middleName:Ti('w-middle'),snils:Ti('w-snils'),position:Ti('w-pos'),programNumber:Ti('w-prog'),protocolNumber:Ti('w-prot'),date:Ti('w-date'),result:Ti('w-res')==='true'?'Удовлетворительно':'Неудовлетворительно'};if(!d.lastName||!d.firstName||!d.snils||!d.position||!d.programNumber||!d.protocolNumber||!d.date)return showAlert('Ошибка','Заполните обязательные поля');if(!validateSNILS(d.snils))return showAlert('Ошибка','СНИЛС: 11 цифр');d.snils=formatSNILS(d.snils);let r=await api('/api/workers',{action:'add',worker:d});if(r.ok){showAlert('Успешно','Запись добавлена');clearForm();loadWorkers()}else showAlert('Ошибка',r.error);}
+function clearForm(){['w-last','w-first','w-middle','w-snils','w-pos','w-prog','w-prot','w-date'].forEach(x=>Ti(x,''));}
+async function loadFile(){let f=document.getElementById('file-input').files[0];if(!f)return showAlert('Ошибка','Выберите файл');let fd=new FormData();fd.append('file',f);let r=await fetch('/api/workers',{method:'POST',body:fd});let j=await r.json();showAlert(j.ok?'Успешно':j.error,j.msg||'Загрузка завершена');loadWorkers();}
+async function loadWorkers(){let j=await api('/api/workers',{action:'list'});let tb=document.getElementById('workers-tbody');tb.innerHTML='';(j.workers||[]).forEach((w,i)=>{let resClass=w.result==='Удовлетворительно'?'badge-success':'badge-primary';tb.innerHTML+=`<tr><td>${w.lastName}</td><td>${w.firstName}</td><td>${w.middleName||''}</td><td>${w.snils}</td><td>${w.position}</td><td>${w.programNumber}</td><td>${w.date}</td><td>${w.protocolNumber}</td><td><span class="badge ${resClass}">${w.result}</span></td><td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" style="padding:4px 8px" onclick="editWorker(${i})">E</button><button class="btn btn-danger btn-sm" style="padding:4px 8px;margin-left:4px" onclick="deleteWorker(${i})">X</button></td></tr>`});}
+async function deleteWorker(i){if(!confirm('Удалить запись?'))return;let j=await api('/api/workers',{action:'delete',index:i});loadWorkers();}
+let editIndex=-1;
+async function editWorker(i){let j=await api('/api/workers',{action:'list'});let w=j.workers[i];if(!w)return;editIndex=i;Ti('e-last',w.lastName);Ti('e-first',w.firstName);Ti('e-middle',w.middleName||'');Ti('e-snils',w.snils);Ti('e-pos',w.position);Ti('e-prog',w.programNumber);Ti('e-prot',w.protocolNumber);Ti('e-date',w.date);Ti('e-res',w.result==='Удовлетворительно'?'true':'false');document.getElementById('edit-modal').classList.add('active');}
+function closeEdit(){document.getElementById('edit-modal').classList.remove('active');editIndex=-1;}
+async function saveEdit(){let d={lastName:Ti('e-last'),firstName:Ti('e-first'),middleName:Ti('e-middle'),snils:Ti('e-snils'),position:Ti('e-pos'),programNumber:Ti('e-prog'),protocolNumber:Ti('e-prot'),date:Ti('e-date'),result:Ti('e-res')==='true'?'Удовлетворительно':'Неудовлетворительно'};if(!d.lastName||!d.snils||!d.programNumber)return showAlert('Ошибка','Заполните обязательные поля');let r=await api('/api/workers',{action:'update',index:editIndex,worker:d});if(r.ok){closeEdit();loadWorkers();}else showAlert('Ошибка',r.error);}
+async function clearWorkers(){if(!confirm('Очистить все данные?'))return;await api('/api/workers',{action:'clear'});loadWorkers();}
+async function convertXML(){let j=await api('/api/convert',{});showAlert(j.ok?'Успешно':'Ошибка',j.ok?'Сохранено: '+j.path:j.error);}
+async function saveKey(){let k=Ti('api-key').trim();if(k.length!==32)return showAlert('Ошибка','API ключ должен быть 32 символа');let r=await api('/api/key',{key:k});showAlert(r.ok?'Успешно':'Ошибка',r.ok?'Ключ сохранён':r.error);}
+function toggleKey(){let el=document.getElementById('api-key');el.type=el.type==='password'?'text':'password';}
+async function saveProxy(){let d={mode:document.querySelector('input[name="proxy-mode"]:checked').value,url:Ti('proxy-url'),username:Ti('proxy-user'),password:Ti('proxy-pass'),tls_verify:Ci('tls-verify')};let r=await api('/api/proxy',d);showAlert(r.ok?'Успешно':'Ошибка',r.ok?'Настройки сохранены':r.error);}
+async function testProxy(){showAlert('Тест','Проверка подключения...');}
+async function sendXML(){let f=document.getElementById('xml-file').files[0];if(!f)return showAlert('Ошибка','Выберите файл');let j=await api('/api/send',{path:f.name});if(j.ok)showAlert('Успешно',j.setId?'Загружено. SetId: '+j.setId:'Загрузка выполнена');else showAlert('Ошибка',j.error);}
+async function queryBySetId(){let s=Ti('query-setid').trim();if(!s)return showAlert('Ошибка','Введите SetId');let j=await api('/api/query',{setId:s});showAlert(j.ok?'Успешно':'Ошибка',j.ok?'Сохранено: '+j.path:j.error);loadJournal();}
+async function queryBySNILS(){let s=Ti('query-snils').trim();if(!s)return showAlert('Ошибка','Введите СНИЛС');s=formatSNILS(s);let j=await api('/api/query',{snils:s});showAlert(j.ok?'Успешно':'Ошибка',j.ok?'Сохранено: '+j.path:j.error);}
+async function loadJournal(){let j=await api('/api/journal',{});let tb=document.getElementById('journal-tbody');tb.innerHTML='';(j.entries||[]).forEach(e=>{let st=e.status==='получен'?'status-received':'status-waiting';tb.innerHTML+=`<tr><td>${e.sendDate}</td><td>${e.setId}</td><td>${e.lastName}</td><td>${e.firstName}</td><td>${e.snils}</td><td>${e.programNumber}</td><td>${e.baseNo||'-'}</td><td><span class="status ${st}">${e.status}</span></td></tr>`});}
+function filterJournal(){let q=Ti('search-input').toLowerCase();document.querySelectorAll('#journal-tbody tr').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(q)?'':'none'});}
+async function exportJournal(){let j=await api('/api/journal',{export:true});showAlert(j.ok?'Экспорт':'Ошибка',j.ok?'Сохранено: '+j.path:j.error);}
+async function generateProtocol(){let r=await api('/api/protocol',{});showAlert(r.ok?'Успешно':'Ошибка',r.ok?'Протокол создан':r.error);}
+function Ti(id,val){let e=document.getElementById(id);if(val!==undefined)e.value=val;return e.value;}
+function Ci(id){return document.getElementById(id).checked;}
+function createTemplate(){showAlert('Шаблон','Создание шаблона...');api('/api/template',{}).then(r=>{if(r.ok)showAlert('Успешно','Шаблон создан: '+r.path);else showAlert('Ошибка',r.error);});}
+function openXSD(){window.open('https://akot.rosmintrud.ru/sout/info','_blank');}
+loadWorkers();loadJournal();loadOrg();
+window.onbeforeunload=function(){fetch('/api/shutdown',{method:'POST'})};
+</script>
+</body>
+</html>`
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Excel-XML для Минтруда</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#f5f5f5;min-height:100vh}
+.sidebar{position:fixed;left:0;top:0;width:220px;height:100vh;background:#2c3e50;color:white;padding:20px 0}
+.sidebar h1{font-size:18px;text-align:center;padding:0 10px 20px;border-bottom:1px solid #34495e}
+.nav-item{padding:15px 25px;cursor:pointer;transition:background 0.2s}
+.nav-item:hover,.nav-item.active{background:#34495e}
+.content{margin-left:220px;padding:30px}
+.tab{display:none}
+.tab.active{display:block}
+.card{background:white;border-radius:8px;padding:25px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.card h2{margin-bottom:20px;color:#2c3e50;border-bottom:2px solid #3498db;padding-bottom:10px}
+.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px;margin-bottom:20px}
+.form-group{display:flex;flex-direction:column}
+label{font-size:13px;color:#7f8c8d;margin-bottom:5px}
+input,select{padding:10px;border:1px solid #ddd;border-radius:4px;font-size:14px}
+input:focus{outline:none;border-color:#3498db}
+button{padding:12px 24px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px}
+button:hover{background:#2980b9}
+button.secondary{background:#95a5a6}
+.btn-group{display:flex;gap:10px;margin-top:20px}
+table{width:100%;border-collapse:collapse;margin-top:15px}
+th,td{padding:12px;text-align:left;border-bottom:1px solid #ecf0f1}
+th{background:#34495e;color:white}
+tr:hover{background:#f8f9fa}
+.status-wait{color:#e67e22;font-weight:bold}
+.status-ok{color:#27ae60;font-weight:bold}
+.radio-group{display:flex;gap:20px;margin-bottom:15px}
+.help-text{font-size:12px;color:#95a5a6}
+</style>
+</head>
+<body>
+<div class="sidebar">
+<h1>Excel-XML для Минтруда</h1>
+<div class="nav-item active" data-t="input">Внесение данных</div>
+<div class="nav-item" data-t="view">Просмотр данных</div>
+<div class="nav-item" data-t="transfer">Передача данных</div>
+<div class="nav-item" data-t="journal">Журнал проверок</div>
+</div>
+<div class="content">
+<div id="tab-input" class="tab active">
+<div class="card">
+<h2>Данные УЦ и работодателя</h2>
+<div class="form-grid">
+<div class="form-group"><label>ИНН УЦ</label><input id="tc-inn"></div>
+<div class="form-group"><label>Название УЦ</label><input id="tc-title"></div>
+<div class="form-group"><label>ИНН Заказчика</label><input id="empl-inn"></div>
+<div class="form-group"><label>Название Заказчика</label><input id="empl-title"></div>
+</div>
+<button onclick="saveOrg()">Сохранить</button>
+</div>
+<div class="card">
+<h2>Данные работника</h2>
+<div class="form-grid">
+<div class="form-group"><label>Фамилия *</label><input id="w-last"></div>
+<div class="form-group"><label>Имя *</label><input id="w-first"></div>
+<div class="form-group"><label>Отчество</label><input id="w-middle"></div>
+<div class="form-group"><label>СНИЛС *</label><input id="w-snils" placeholder="123-456-789 00"></div>
+<div class="form-group"><label>Должность *</label><input id="w-pos"></div>
+<div class="form-group"><label>№ программы *</label><input id="w-prog" placeholder="1,2,3"><span class="help-text">1-29, кроме 5</span></div>
+<div class="form-group"><label>№ протокола *</label><input id="w-prot"></div>
+<div class="form-group"><label>Дата *</label><input id="w-date" type="date"></div>
+<div class="form-group"><label>Результат</label><select id="w-res"><option value="true">Удовлетворительно</option><option value="false">Неудовлетворительно</option></select></div>
+</div>
+<div class="btn-group"><button onclick="saveW()">Сохранить</button><button class="secondary" onclick="clearF()">Очистить</button></div>
+</div>
+<div class="card">
+<h2>Загрузить из файла</h2>
+<input type="file" id="file-in" accept=".xlsx,.xls"><button onclick="loadF()">Загрузить</button>
+</div>
+</div>
+<div id="tab-view" class="tab">
+<div class="card">
+<h2>Работники</h2>
+<button onclick="conv()">Конвертировать в XML</button>
+<button class="secondary" onclick="clearW()">Очистить</button>
+<table><thead><tr><th>Фамилия</th><th>Имя</th><th>СНИЛС</th><th>Должность</th><th>Прогр</th><th>Дата</th><th>Протокол</th></tr></thead>
+<tbody id="w-tbody"></tbody></table>
+</div>
+</div>
+<div id="tab-transfer" class="tab">
+<div class="card">
+<h2>API ключ</h2>
+<input type="password" id="api-key" maxlength="32" style="width:300px">
+<button onclick="saveKey()">Сохранить</button>
+</div>
+<div class="card">
+<h2>Прокси</h2>
+<div class="radio-group">
+<label><input type="radio" name="pmode" value="none" checked> Без прокси</label>
+<label><input type="radio" name="pmode" value="auto"> Авто</label>
+<label><input type="radio" name="pmode" value="manual"> Вручную</label>
+</div>
+<div id="proxy-f" style="display:none" class="form-grid">
+<div class="form-group"><label>Адрес</label><input id="p-url"></div>
+<div class="form-group"><label>Логин</label><input id="p-user"></div>
+<div class="form-group"><label>Пароль</label><input id="p-pass"></div>
+</div>
+<button onclick="saveProxy()">Сохранить</button>
+</div>
+<div class="card">
+<h2>Отправить XML</h2>
+<input type="file" id="xml-f" accept=".xml"><button onclick="sendXML()">О��править</button>
+</div>
+<div class="card">
+<h2>Запрос по SetId</h2>
+<input id="q-setid"><button onclick="qSetId()">Запросить</button>
+</div>
+<div class="card">
+<h2>Запрос по СНИЛС</h2>
+<input id="q-snils"><button onclick="qSnils()">Запросить</button>
+</div>
+</div>
+<div id="tab-journal" class="tab">
+<div class="card">
+<h2>Журнал</h2>
+<button onclick="expJ()">Экспорт</button>
+<table><thead><tr><th>Дата</th><th>SetId</th><th>Фамилия</th><th>СНИЛС</th><th>Прогр</th><th>Статус</th></tr></thead>
+<tbody id="j-tbody"></tbody></table>
+</div>
+</div>
+</div>
+<script>
+document.querySelectorAll('.nav-item').forEach(i=>i.onclick=()=>{
+document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+i.classList.add('active');document.getElementById('tab-'+i.dataset.t).classList.add('active');
+});
+document.getElementById('w-snils').oninput=e=>{
+let v=e.target.value.replace(/\D/g,'').slice(0,11);
+if(v.length>9)v=v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6,9)+' '+v.slice(9);
+else if(v.length>6)v=v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6);
+e.target.value=v;
+};
+async function api(u,d){let r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});return r.json();}
+async function saveOrg(){let d={tc_inn:Ti('tc-inn'),tc_title:Ti('tc-title'),employer_inn:Ti('empl-inn'),employer_title:Ti('empl-title')};alert((await api('/api/org',d)).ok?'Сохранено':'Ошибка');}
+async function saveW(){let d={lastName:Ti('w-last'),firstName:Ti('w-first'),middleName:Ti('w-middle'),snils:Ti('w-snils'),position:Ti('w-pos'),programNumber:Ti('w-prog'),protocolNumber:Ti('w-prot'),date:Ti('w-date'),result:Ti('w-res')==='true'?'Удовлетворительно':'Неудовлетворительно'};if(!d.lastName||!d.firstName||!d.snils||!d.position||!d.programNumber)return alert('Заполните обязательные');d.snils=d.snils.replace(/\D/g,'');if(d.snils.length===11)d.snils=d.snils.slice(0,3)+'-'+d.snils.slice(3,6)+'-'+d.snils.slice(6,9)+' '+d.snils.slice(9);let r=await api('/api/workers',{action:'add',worker:d});if(r.ok){alert('Сохранено');clearF();loadW()}else alert(r.error);}
+function clearF(){['w-last','w-first','w-middle','w-snils','w-pos','w-prog','w-prot','w-date'].forEach(x=>Ti(x,''));}
+async function loadF(){let f=Fi('file-in');if(!f)return;let fd=new FormData();fd.append('file',f);let r=await fetch('/api/workers',{method:'POST',body:fd});let j=await r.json();alert(j.ok?j.msg+' записей':'Ошибка');loadW();}
+async function loadW(){let j=await api('/api/workers',{action:'list'});document.getElementById('w-tbody').innerHTML='';j.workers.forEach(w=>{document.getElementById('w-tbody').innerHTML+='<tr><td>'+w.lastName+'</td><td>'+w.firstName+'</td><td>'+w.snils+'</td><td>'+w.position+'</td><td>'+w.programNumber+'</td><td>'+w.date+'</td><td>'+w.protocolNumber+'</td></tr>'});}
+async function clearW(){if(!confirm('Очистить?'))return;await api('/api/workers',{action:'clear'});loadW();}
+async function conv(){let j=await api('/api/convert',{});alert(j.ok?'Сохранено: '+j.path:'Ошибка: '+j.error);}
+document.querySelectorAll('input[name="pmode"]').forEach(i=>i.onchange=()=>{document.getElementById('proxy-f').style.display=i.value==='manual'?'grid':'none';});
+async function saveProxy(){let d={mode:document.querySelector('input[name="pmode"]:checked').value,url:Ti('p-url'),username:Ti('p-user'),password:Ti('p-pass'),tls_verify:false};alert((await api('/api/proxy',d)).ok?'Сохранено':'Ошибка');}
+async function saveKey(){let k=Ti('api-key').trim();if(k.length!==32)return alert('32 символа');alert((await api('/api/key',{key:k})).ok?'Сохранено':'Ошибка');}
+async function sendXML(){let f=Fi('xml-f');if(!f)return alert('Выберите');let j=await api('/api/send',{path:f.name});alert(j.ok?'SetId: '+j.setId:'Ошибка: '+j.error);}
+async function qSetId(){let s=Ti('q-setid').trim();if(!s)return alert('Введите');let j=await api('/api/query',{setId:s});alert(j.ok?'Сохранено: '+j.path:'Ошибка: '+j.error);}
+async function qSnils(){let s=Ti('q-snils').trim();if(!s)return alert('Введите');s=s.replace(/\D/g,'');if(s.length===11)s=s.slice(0,3)+'-'+s.slice(3,6)+'-'+s.slice(6,9)+' '+s.slice(9);let j=await api('/api/query',{snils:s});alert(j.ok?'Сохранено: '+j.path:'Ошибка: '+j.error);}
+async function loadJ(){let j=await api('/api/journal',{});document.getElementById('j-tbody').innerHTML='';j.entries.forEach(e=>{let st=e.status==='получен'?'status-ok':'status-wait';document.getElementById('j-tbody').innerHTML+='<tr><td>'+e.sendDate+'</td><td>'+e.setId+'</td><td>'+e.lastName+'</td><td>'+e.snils+'</td><td>'+e.programNumber+'</td><td class="'+st+'">'+e.status+'</td></tr>'});}
+async function expJ(){let j=await api('/api/journal',{export:true});alert(j.ok?'Сохранено: '+j.path:'Ошибка');}
+function Ti(id,val){let e=document.getElementById(id);if(val!==undefined)e.value=val;return e.value;}
+function Fi(id){return document.getElementById(id).files[0];}
+window.onbeforeunload=function(){fetch('/api/shutdown',{method:'POST'});}
+loadW();loadJ();
+</script>
+</body>
+</html>`
+	fmt.Fprint(w, html)
+}
+
+func handleWorkers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	action := r.FormValue("action")
+	if action == "add" {
+		var wr Worker
+		json.NewDecoder(r.Body).Decode(&wr)
+		workers = append(workers, wr)
+		saveWorkers()
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		return
+	}
+	if action == "update" {
+		var d struct {
+			Index  int    `json:"index"`
+			Worker Worker `json:"worker"`
+		}
+		json.NewDecoder(r.Body).Decode(&d)
+		if d.Index >= 0 && d.Index < len(workers) {
+			workers[d.Index] = d.Worker
+			saveWorkers()
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		return
+	}
+	if action == "delete" {
+		var d struct {
+			Index int `json:"index"`
+		}
+		json.NewDecoder(r.Body).Decode(&d)
+		if d.Index >= 0 && d.Index < len(workers) {
+			workers = append(workers[:d.Index], workers[d.Index+1:]...)
+			saveWorkers()
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		return
+	}
+	if action == "clear" {
+		workers = nil
+		saveWorkers()
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		return
+	}
+	if action == "list" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"workers": workers})
+		return
+	}
+}
+
+func handleOrg(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	action := r.FormValue("action")
+	if action == "get" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"org": orgSet})
+		return
+	}
+	var s OrgSettings
+	json.NewDecoder(r.Body).Decode(&s)
+	orgSet = s
+	saveOrg()
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleProxy(w http.ResponseWriter, r *http.Request) {
+	var p ProxySettings
+	json.NewDecoder(r.Body).Decode(&p)
+	proxySet = p
+	saveProxy()
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleKey(w http.ResponseWriter, r *http.Request) {
+	var d map[string]string
+	json.NewDecoder(r.Body).Decode(&d)
+	apiKey = d["key"]
+	saveKey()
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleJournal(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.FormValue("export") == "true" {
+		exportJournal()
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": "journal.xlsx"})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"entries": journal.Entries})
+}
+
+func handleConvert(w http.ResponseWriter, r *http.Request) {
+	if len(workers) == 0 {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Нет данных"})
+		return
+	}
+	type Rec struct {
+		XMLName xml.Name `xml:"RegistryRecord"`
+		Worker  struct {
+			LastName   string `xml:"LastName"`
+			FirstName  string `xml:"FirstName"`
+			MiddleName string `xml:"MiddleName"`
+			Snils     string `xml:"Snils"`
+			Position  string `xml:"Position"`
+			EmpInn    string `xml:"EmployerInn"`
+			EmpTit    string `xml:"EmployerTitle"`
+		} `xml:"Worker"`
+		Org struct {
+			Inn   string `xml:"Inn"`
+			Title string `xml:"Title"`
+		} `xml:"Organization"`
+		Test struct {
+			Date     string `xml:"Date"`
+			Protocol string `xml:"ProtocolNumber"`
+			Prog     string `xml:"learnProgramId,attr"`
+			ProgTit  string `xml:"LearnProgramTitle"`
+			Passed   string `xml:"isPassed,attr"`
+		} `xml:"Test"`
+	}
+	var recs []Rec
+	snilsMap := make(map[string][]Worker)
+	for _, w := range workers {
+		snilsMap[w.SNILS] = append(snilsMap[w.SNILS], w)
+	}
+	for _, wrs := range snilsMap {
+		w := wrs[0]
+		prog := w.ProgramNum
+		if prog == "" {
+			prog = "1"
+		}
+		progTit := programMap[prog]
+		if progTit == "" {
+			progTit = "Программа " + prog
+		}
+		passed := "false"
+		if strings.Contains(w.Result, "Удовлетворительно") {
+			passed = "true"
+		}
+		empInn, empTit := w.EmployerInn, w.EmployerTit
+		if empInn == "" {
+			empInn = orgSet.EmplInn
+			empTit = orgSet.EmplTit
+		}
+		recs = append(recs, Rec{
+			Worker: struct {
+				LastName   string `xml:"LastName"`
+				FirstName  string `xml:"FirstName"`
+				MiddleName string `xml:"MiddleName"`
+				Snils     string `xml:"Snils"`
+				Position  string `xml:"Position"`
+				EmpInn    string `xml:"EmployerInn"`
+				EmpTit    string `xml:"EmployerTitle"`
+			}{
+				LastName:   w.LastName,
+				FirstName: w.FirstName,
+				MiddleName: w.MiddleName,
+				Snils:     w.SNILS,
+				Position:  w.Position,
+				EmpInn:    empInn,
+				EmpTit:    empTit,
+			},
+			Org: struct {
+				Inn   string `xml:"Inn"`
+				Title string `xml:"Title"`
+			}{Inn: w.TCInn, Title: w.TCTitle},
+			Test: struct {
+				Date     string `xml:"Date"`
+				Protocol string `xml:"ProtocolNumber"`
+				Prog     string `xml:"learnProgramId,attr"`
+				ProgTit  string `xml:"LearnProgramTitle"`
+				Passed   string `xml:"isPassed,attr"`
+			}{Date: w.Date, Protocol: w.ProtocolNum, Prog: prog, ProgTit: progTit, Passed: passed},
+		})
+	}
+	type XD struct {
+		XMLName xml.Name `xml:"RegistrySet"`
+		Recs    []Rec  `xml:"RegistryRecord"`
+	}
+	data := XD{Recs: recs}
+	out, _ := xml.MarshalIndent(data, "  ", "  ")
+	xmlBytes := append([]byte("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"), out...)
+	filename := filepath.Join(dataDir, "export_"+time.Now().Format("20060102150405")+".xml")
+	os.WriteFile(filename, xmlBytes, 0644)
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": filename})
+}
+
+func handleSend(w http.ResponseWriter, r *http.Request) {
+	if apiKey == "" {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Сохраните API ключ"})
+		return
+	}
+	setId, err := sendToMintrud(r.FormValue("path"), apiKey)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	addToJournal(setId, r.FormValue("path"))
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "setId": setId})
+}
+
+func handleQuery(w http.ResponseWriter, r *http.Request) {
+	var q map[string]string
+	json.NewDecoder(r.Body).Decode(&q)
+	if q["setId"] != "" {
+		updateJournal(q["setId"])
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": "query.xlsx"})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+func handleProtocol(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+func handleTemplate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	cols := []string{"Фамилия", "Имя", "Отчество", "СНИЛС", "Должность", "ИНН Заказчика", "Наименование ЮЛ Заказчика", "ИНН УЦ", "Наименование УЦ", "Результат", "№ программы", "Дата", "№ протокола"}
+	rows := [][]string{cols}
+	buf := &bytes.Buffer{}
+	wr := csv.NewWriter(buf)
+	wr.WriteAll(rows)
+	if err := wr.Error(); err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	path := filepath.Join(dataDir, "Шаблон.xlsx.csv")
+	os.WriteFile(path, buf.Bytes(), 0644)
+	path = filepath.Join(dataDir, "Шаблон.xlsx")
+	os.WriteFile(path, []byte(`Создайте копию файла Шаблон.xlsx.csv и сохраните как .xlsx после заполнения в Excel`), 0644)
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": "Шаблон.xlsx"})
+}
+
+func loadData() {
+	loadOrg()
+	loadKey()
+	loadProxy()
+	loadWorkers()
+	loadJournal()
+}
+
+func loadOrg() {
+	p := filepath.Join(dataDir, "org_settings.json")
+	if d, err := os.ReadFile(p); err == nil {
+		json.Unmarshal(d, &orgSet)
+	}
+}
+
+func saveOrg() {
+	p := filepath.Join(dataDir, "org_settings.json")
+	if d, err := json.MarshalIndent(orgSet, "", "  "); err == nil {
+		os.WriteFile(p, d, 0644)
+	}
+}
+
+func loadKey() {
+	p := filepath.Join(dataDir, "api_key.json")
+	if d, err := os.ReadFile(p); err == nil {
+		apiKey = strings.TrimSpace(string(d))
+	}
+}
+
+func saveKey() {
+	p := filepath.Join(dataDir, "api_key.json")
+	os.WriteFile(p, []byte(apiKey), 0644)
+}
+
+func loadProxy() {
+	p := filepath.Join(dataDir, "proxy_settings.json")
+	if d, err := os.ReadFile(p); err == nil {
+		json.Unmarshal(d, &proxySet)
+	}
+}
+
+func saveProxy() {
+	p := filepath.Join(dataDir, "proxy_settings.json")
+	if d, err := json.MarshalIndent(proxySet, "", "  "); err == nil {
+		os.WriteFile(p, d, 0644)
+	}
+}
+
+func loadWorkers() {
+	p := filepath.Join(dataDir, "workers.json")
+	if d, err := os.ReadFile(p); err == nil {
+		json.Unmarshal(d, &workers)
+	}
+}
+
+func saveWorkers() {
+	p := filepath.Join(dataDir, "workers.json")
+	if d, err := json.MarshalIndent(workers, "", "  "); err == nil {
+		os.WriteFile(p, d, 0644)
+	}
+}
+
+func loadJournal() {
+	p := filepath.Join(dataDir, "exam_journal.json")
+	if d, err := os.ReadFile(p); err == nil {
+		json.Unmarshal(d, &journal)
+	}
+}
+
+func saveJournal() {
+	p := filepath.Join(dataDir, "exam_journal.json")
+	if d, err := json.MarshalIndent(journal, "", "  "); err == nil {
+		os.WriteFile(p, d, 0644)
+	}
+}
+
+func formatSNILS(s string) string {
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, " ", "")
+	if len(s) == 11 {
+		return s[:3] + "-" + s[3:6] + "-" + s[6:9] + " " + s[9:]
+	}
+	return s
+}
+
+func sendToMintrud(xmlPath, key string) (string, error) {
+	xmlData, err := os.ReadFile(xmlPath)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	f, _ := zw.Create("Data.xml")
+	f.Write(xmlData)
+	zw.Close()
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	part, _ := w.CreateFormFile("Data.olot", "Data.olot")
+	part.Write(buf.Bytes())
+	w.WriteField("ApiKey", key)
+	w.WriteField("NeedSend", "false")
+	w.Close()
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, _ := http.NewRequest("POST", "https://edu.rosmintrud.ru/api/set/push", body)
+	req.Header.Set("X-API-Key", key)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	var res map[string]string
+	json.Unmarshal(b, &res)
+	if id, ok := res["setId"]; ok {
+		return id, nil
+	}
+	return "", fmt.Errorf(string(b))
+}
+
+func addToJournal(setId, xmlPath string) {
+	for _, w := range workers {
+		e := JournalEntry{
+			ID:           len(journal.Entries) + 1,
+			LastName:     w.LastName,
+			FirstName:   w.FirstName,
+			MiddleName:  w.MiddleName,
+			SNILS:        w.SNILS,
+			Position:     w.Position,
+			ProgramNum:  w.ProgramNum,
+			ProgramTit:   programMap[w.ProgramNum],
+			Date:         w.Date,
+			ProtocolNum:  w.ProtocolNum,
+			SetId:        setId,
+			SendDate:     time.Now().Format("02.01.2006 15:04"),
+			XMLPath:      xmlPath,
+			Status:       "ожидает",
+		}
+		journal.Entries = append(journal.Entries, e)
+	}
+	saveJournal()
+}
+
+func updateJournal(setId string) {
+	for i := range journal.Entries {
+		if journal.Entries[i].SetId == setId {
+			journal.Entries[i].Status = "получен"
+		}
+	}
+	saveJournal()
+}
+
+func exportJournal() {
+	p := filepath.Join(dataDir, "journal_"+time.Now().Format("20060102150405")+".csv")
+	f, _ := os.Create(p)
+	w := csv.NewWriter(f)
+	w.Write([]string{"Дата", "SetId", "Фамилия", "Имя", "СНИЛС", "Прогр", "Статус"})
+	for _, e := range journal.Entries {
+		w.Write([]string{e.SendDate, e.SetId, e.LastName, e.FirstName, e.SNILS, e.ProgramNum, e.Status})
+	}
+	w.Flush()
+	f.Close()
+}

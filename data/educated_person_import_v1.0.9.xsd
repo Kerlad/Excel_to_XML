@@ -1,0 +1,104 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema" version="1.0.9">
+	<xs:attribute name="outerId">
+		<xs:simpleType>
+			<xs:restriction base="xs:string">
+				<xs:pattern value="[A-Za-z0-9-]+"/>
+			</xs:restriction>
+		</xs:simpleType>
+	</xs:attribute>
+	<xs:simpleType name="bit">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="0"/>
+			<xs:enumeration value="1"/>
+			<xs:enumeration value="False"/>
+			<xs:enumeration value="True"/>
+			<xs:enumeration value="false"/>
+			<xs:enumeration value="true"/>
+			<xs:enumeration value="FALSE"/>
+			<xs:enumeration value="TRUE"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="learnProgram">
+		<xs:restriction base="xs:unsignedLong">
+			<xs:enumeration value="1"/>
+			<xs:enumeration value="2"/>
+			<xs:enumeration value="3"/>
+			<xs:enumeration value="4"/>
+			<xs:enumeration value="6"/>
+			<xs:enumeration value="7"/>
+			<xs:enumeration value="8"/>
+			<xs:enumeration value="9"/>
+			<xs:enumeration value="10"/>
+			<xs:enumeration value="11"/>
+			<xs:enumeration value="12"/>
+			<xs:enumeration value="13"/>
+			<xs:enumeration value="14"/>
+			<xs:enumeration value="15"/>
+			<xs:enumeration value="16"/>
+			<xs:enumeration value="17"/>
+			<xs:enumeration value="18"/>
+			<xs:enumeration value="19"/>
+			<xs:enumeration value="20"/>
+			<xs:enumeration value="21"/>
+			<xs:enumeration value="22"/>
+			<xs:enumeration value="23"/>
+			<xs:enumeration value="24"/>
+			<xs:enumeration value="25"/>
+			<xs:enumeration value="26"/>
+			<xs:enumeration value="27"/>
+			<xs:enumeration value="28"/>
+			<xs:enumeration value="29"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:element name="RegistrySet">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="RegistryRecord" minOccurs="1" maxOccurs="5000">
+					<xs:complexType>
+						<xs:all>
+							<xs:element name="Worker" minOccurs="1" maxOccurs="1">
+								<xs:complexType>
+									<xs:all>
+										<xs:element name="LastName" type="xs:string" minOccurs="1" maxOccurs="1" />
+										<xs:element name="FirstName" type="xs:string" minOccurs="1" maxOccurs="1" />
+										<xs:element name="MiddleName" type="xs:string" minOccurs="1" maxOccurs="1" />
+										<xs:element name="Snils" type="xs:string" minOccurs="0" maxOccurs="1" />
+										<xs:element name="IsForeignSnils" type="bit" minOccurs="0" maxOccurs="1"/>
+										<xs:element name="ForeignSnils" type="xs:string" minOccurs="0" maxOccurs="1" />
+										<xs:element name="Citizenship" type="xs:string" minOccurs="0" maxOccurs="1" />
+										<xs:element name="Position" type="xs:string" minOccurs="1" maxOccurs="1" />
+										<xs:element name="EmployerInn" type="xs:string" minOccurs="1" maxOccurs="1" />
+										<xs:element name="EmployerTitle" type="xs:string" minOccurs="1" maxOccurs="1" />
+										<xs:element name="OrganizationUnitId" type="xs:int" minOccurs="0" maxOccurs="1" />
+									</xs:all>
+								</xs:complexType>
+							</xs:element>
+							<xs:element name="Organization" minOccurs="1" maxOccurs="1">
+								<xs:complexType>
+									<xs:all>
+										<xs:element name="Inn" type="xs:string" minOccurs="1" maxOccurs="1" />
+										<xs:element name="Title" type="xs:string" minOccurs="1" maxOccurs="1" />
+									</xs:all>
+								</xs:complexType>
+							</xs:element>
+							<xs:element name="Test" minOccurs="1" maxOccurs="1">
+								<xs:complexType>
+									<xs:all>
+										<xs:element name="Date" type="xs:date" minOccurs="1" maxOccurs="1" />
+										<xs:element name="ProtocolNumber" type="xs:string" minOccurs="1" maxOccurs="1" />
+										<xs:element name="LearnProgramTitle" type="xs:string" minOccurs="1" maxOccurs="1" />
+									</xs:all>
+									<xs:attribute name="isPassed" type="bit" use="required"/>
+									<xs:attribute name="learnProgramId" type="learnProgram" use="required"/>
+								</xs:complexType>
+							</xs:element>
+						</xs:all>
+						<xs:attribute ref="outerId" use="optional"/>
+					</xs:complexType>
+				</xs:element>
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+</xs:schema>
