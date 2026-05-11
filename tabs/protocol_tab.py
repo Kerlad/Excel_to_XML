@@ -225,7 +225,6 @@ class ProtocolTab(QWidget):
         self.protocol_combo = QComboBox()
         self.protocol_combo.setFixedWidth(200)
         self.protocol_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px; background-color: white;")
-        self.protocol_combo.addItem("Все")
         proto_form.addRow(self.protocol_label, self.protocol_combo)
         row2.addLayout(proto_form)
 

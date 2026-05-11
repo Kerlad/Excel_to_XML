@@ -579,18 +579,25 @@ class DataEntryTab(QWidget):
 
         if file_path.endswith(('.xlsx', '.xls')):
             result = load_xlsx(file_path)
-            
-            if len(result) >= 3:
+
+            if len(result) >= 4:
+                records, error_details, error_rows_set = result[0], result[1], result[2]
+                error_msg = result[3] if len(result) > 3 else ""
+                if records is None:
+                    err_msg = error_msg if error_msg else (str(error_details[0]['message']) if error_details else "Неизвестная ошибка")
+                    QMessageBox.warning(self, "Ошибка импорта", err_msg)
+                    return
+            elif len(result) >= 3:
                 records, error_details, error_rows_set = result[0], result[1], result[2]
                 if records is None:
-                    err = error_details[0] if error_details else "Ошибка"
+                    err = error_details[0]['message'] if error_details else "Ошибка"
                     QMessageBox.warning(self, "Ошибка импорта", str(err))
                     return
             else:
                 records = None
                 error_details = []
                 error_rows_set = set()
-                QMessageBox.warning(self, "Ошибка", "Ошибка")
+                QMessageBox.warning(self, "Ошибка", "Ошибка при загрузке файла")
                 return
         elif file_path.endswith('.xml'):
             # Находим XSD для валидации

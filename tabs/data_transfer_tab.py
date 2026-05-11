@@ -8,7 +8,7 @@ from PySide6.QtGui import QFont
 from lxml import etree
 from api.mintrud_api import (
     load_api_key, save_api_key, push_xml,
-    get_by_set_id, get_by_snils, export_records_to_xlsx
+    get_by_set_id, get_by_snils, get_by_org_id, export_records_to_xlsx
 )
 from utils.proxy_manager import (
     load_proxy_settings, save_proxy_settings, test_proxy_connection,
@@ -54,6 +54,9 @@ class DataTransferTab(QWidget):
 
         # Группа 4: Запрос по СНИЛС
         scroll_layout.addWidget(self._create_query_snils_group())
+
+        # Группа 5: Запрос по OrgId (НСПР)
+        scroll_layout.addWidget(self._create_query_orgid_group())
 
         scroll_layout.addStretch()
         scroll.setWidget(scroll_widget)
@@ -466,6 +469,51 @@ class DataTransferTab(QWidget):
 
         return group
 
+    def _create_query_orgid_group(self):
+        """Группа для запроса данных по OrgId (НСПР)."""
+        group = QGroupBox()
+        group.setStyleSheet(self._group_style())
+        group.setTitle("Запрос по OrgId (НСПР)")
+
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
+
+        # Строка 1: OrgId
+        row1 = QHBoxLayout()
+        self.query_orgid_label = QLabel("ID организации:")
+        self.query_orgid_label.setStyleSheet("color: black;")
+        self.query_orgid_input = QLineEdit()
+        self.query_orgid_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.query_orgid_input.setPlaceholderText("00000000-0000-0000-0000-000000000001")
+
+        row1.addWidget(self.query_orgid_label)
+        row1.addWidget(self.query_orgid_input)
+        row1.addStretch()
+        layout.addLayout(row1)
+
+        # Строка 2: Лимит записей
+        row2 = QHBoxLayout()
+        self.query_limit_label = QLabel("Лимит записей:")
+        self.query_limit_label.setStyleSheet("color: black;")
+        self.query_limit_input = QLineEdit()
+        self.query_limit_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.query_limit_input.setPlaceholderText("0 = без ограничения")
+        self.query_limit_input.setFixedWidth(150)
+        self.query_limit_input.setText("0")
+
+        row2.addWidget(self.query_limit_label)
+        row2.addWidget(self.query_limit_input)
+        row2.addStretch()
+        layout.addLayout(row2)
+
+        # Строка 3: Кнопка запроса
+        query_btn = QPushButton("Загрузить данные по организации")
+        query_btn.setStyleSheet(self._btn_style())
+        query_btn.clicked.connect(self.query_by_orgid)
+        layout.addWidget(query_btn)
+
+        return group
+
     # ============ Логика API ключа ============
 
     def load_api_key(self):
@@ -513,6 +561,9 @@ class DataTransferTab(QWidget):
         self.proxy_user_input.setText(settings.get('username', ''))
         self.proxy_pass_input.setText(settings.get('password', ''))
 
+        # Загрузить TLS настройку
+        self.tls_checkbox.setChecked(settings.get('tls_verify', False))
+
         # Обновить видимость полей
         if mode == 'auto':
             self._on_proxy_mode_changed(self.proxy_auto_rb)
@@ -531,7 +582,8 @@ class DataTransferTab(QWidget):
             'mode': mode,
             'url': self.proxy_url_input.text().strip(),
             'username': self.proxy_user_input.text().strip(),
-            'password': self.proxy_pass_input.text().strip()
+            'password': self.proxy_pass_input.text().strip(),
+            'tls_verify': self.tls_checkbox.isChecked()
         }
 
         ok, msg = save_proxy_settings(self.data_dir, settings)
@@ -808,6 +860,54 @@ class DataTransferTab(QWidget):
             self, "Сохранить XLSX", f"{snils_file}.xlsx", "Excel Files (*.xlsx)"
         )
         if file_path:
+            ok, msg = export_records_to_xlsx(records, file_path)
+            if ok:
+                QMessageBox.information(self, "Успех", f"Сохранено {len(records)} записей\n{msg}")
+            else:
+                QMessageBox.warning(self, "Ошибка", msg)
+
+    def query_by_orgid(self):
+        """Запрос данных по OrgId (НСПР)."""
+        from api.mintrud_api import get_by_org_id
+
+        api_key = self.api_key_input.text().strip()
+        org_id = self.query_orgid_input.text().strip()
+        limit_text = self.query_limit_input.text().strip()
+
+        if len(api_key) != 32:
+            QMessageBox.warning(self, "Ошибка", "Проверьте API ключ (32 символа)")
+            return
+
+        if not org_id:
+            QMessageBox.warning(self, "Ошибка", "Введите OrgId")
+            return
+
+        try:
+            limit = int(limit_text) if limit_text else 0
+        except ValueError:
+            limit = 0
+
+        QMessageBox.information(self, "Информация", f"Загрузка данных по OrgId: {org_id}...")
+        QApplication.processEvents()
+
+        proxy_settings = self._get_proxy_settings()
+        result = get_by_org_id(api_key, org_id, proxy_settings=proxy_settings, limit=limit)
+
+        if not result["success"]:
+            QMessageBox.critical(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
+            return
+
+        records = result.get("records", [])
+        if not records:
+            QMessageBox.information(self, "Информация", "Записей не найдено")
+            return
+
+        # Сохранение XLSX
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Сохранить XLSX", f"org_{org_id}.xlsx", "Excel Files (*.xlsx)"
+        )
+        if file_path:
+            from api.mintrud_api import export_records_to_xlsx
             ok, msg = export_records_to_xlsx(records, file_path)
             if ok:
                 QMessageBox.information(self, "Успех", f"Сохранено {len(records)} записей\n{msg}")

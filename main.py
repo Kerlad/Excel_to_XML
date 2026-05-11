@@ -9,6 +9,7 @@ from tabs.data_view_tab import DataViewTab
 from tabs.data_transfer_tab import DataTransferTab
 from tabs.exam_journal_tab import ExamJournalTab
 from tabs.protocol_tab import ProtocolTab
+from tabs.single_worker_protocol_tab import SingleWorkerProtocolTab
 from journal.journal_manager import JournalManager
 from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
@@ -39,10 +40,6 @@ class MainWindow(QMainWindow):
         self.data_entry_tab = DataEntryTab()
         self.data_view_tab = DataViewTab()
         self.data_transfer_tab = DataTransferTab()
-        #self.data_transfer_tab_urllib = DataTransferTabUrllib()
-        #self.data_transfer_tab_httpx = DataTransferTabHttpx()
-        #self.data_transfer_tab_pycurl = DataTransferTabPycurl()
-        #self.data_transfer_tab_wininet = DataTransferTabWininet()
 
         # Журнал проверки знаний
         data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -58,12 +55,12 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.data_entry_tab, "Внесение данных")
         self.tabs.addTab(self.data_view_tab, "Просмотр данных")
         self.tabs.addTab(self.data_transfer_tab, "Передача данных")
-        #self.tabs.addTab(self.data_transfer_tab_urllib, "Передача данных (urllib)")
-        #self.tabs.addTab(self.data_transfer_tab_httpx, "Передача данных (httpx)")
-        #self.tabs.addTab(self.data_transfer_tab_pycurl, "Передача данных (pycurl)")
-        #self.tabs.addTab(self.data_transfer_tab_wininet, "Передача данных (WinINET)")
         self.tabs.addTab(self.exam_journal_tab, "Журнал проверки знаний")
         self.tabs.addTab(self.protocol_tab, "Протокол")
+
+        # Вкладка "Протокол одиночного работника"
+        self.single_worker_tab = SingleWorkerProtocolTab(self.programs_manager, data_dir)
+        self.tabs.addTab(self.single_worker_tab, "Протокол одиночного")
 
         # Подключение сигнала передачи данных
         self.data_entry_tab.data_loaded.connect(self.data_view_tab.add_data)
@@ -72,10 +69,6 @@ class MainWindow(QMainWindow):
 
         # Подключение журнала к вкладке передачи данных
         self.data_transfer_tab.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
-        #self.data_transfer_tab_urllib.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
-        #self.data_transfer_tab_httpx.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
-        #self.data_transfer_tab_pycurl.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
-        #self.data_transfer_tab_wininet.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
 
         self.setCentralWidget(self.tabs)
 

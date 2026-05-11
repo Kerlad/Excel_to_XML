@@ -270,9 +270,10 @@ def _load_xlsx_openpyxl(file_path, password=None):
 
     # Проверка обязательных полей (без ИНН/названий УЦ и Заказчика — они подставляются из настроек)
     required_fields = ['Фамилия', 'Имя', 'Отчество', 'СНИЛС', 'Должность', 'Результат', '№ программы', 'Дата', '№ протокола']
-    for col in required_fields:
-        if col not in headers:
-            return None, [], set(), [f"Отсутствует столбец: {col}"]
+    missing_cols = [col for col in required_fields if col not in headers]
+    if missing_cols:
+        error_msg = f"Отсутствуют обязательные столбцы: {', '.join(missing_cols)}"
+        return None, [{"row": 1, "type": "Ошибка", "field": "Заголовки", "message": error_msg}], {1}, error_msg
 
     for row_num in range(2, ws.max_row + 1):
         row_dict = {}

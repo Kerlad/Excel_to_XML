@@ -16,6 +16,7 @@ import base64
 import json
 import zipfile
 import logging
+import hashlib
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -40,7 +41,15 @@ HEADERS = {
 }
 
 # Импортируем функцию прокси из utils.proxy_manager
-from utils.proxy_manager import build_proxies_for_requests, build_proxy_headers, create_proxy_session
+from utils.proxy_manager import (
+    build_proxies_for_requests,
+    build_proxy_headers,
+    create_proxy_session,
+    diagnose_407_error,
+    try_fallback_connection,
+    NTLM_AVAILABLE,
+    KERBEROS_AVAILABLE
+)
 
 
 # ============ Сохранение API-ключа ============
@@ -161,9 +170,14 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
             logger.info(f"Используется прокси: {proxies.get('https', 'N/A')}")
 
         # Создаем сессию через create_proxy_session для корректной работы с прокси
-        session = create_proxy_session(proxy_settings)
+        session, auth_method = create_proxy_session(proxy_settings, prefer_auth="auto")
         if not session:
-            return {"success": False, "error": "Не удалось создать сессию с прокси"}
+            error_msg = "Не удалось создать сессию с прокси"
+            if proxy_settings and proxy_settings.get("mode") != "off":
+                error_msg += f"\n\nПопробуйте: pip install requests-ntlm requests-negotiate-sspi"
+            return {"success": False, "error": error_msg}
+
+        logger.info(f"Используется метод авторизации прокси: {auth_method}")
 
         try:
             response = session.post(
@@ -244,8 +258,65 @@ def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
 
     except requests.exceptions.Timeout:
         return {"success": False, "error": "Таймаут соединения. Повторите попытку."}
-    except requests.exceptions.ConnectionError:
-        return {"success": False, "error": "Нет соединения с сервером Минтруда"}
+    except requests.exceptions.ConnectionError as e:
+        # Пробуем fallback при ошибке подключения
+        logger.warning(f"Ошибка подключения, пробуем fallback: {e}")
+        session, method = try_fallback_connection(proxy_settings, str(e))
+        if session:
+            logger.info(f"Fallback успешен: {method}")
+            try:
+                response = session.post(
+                    API_URL,
+                    files={
+                        'xml': ('Request.xml', request_xml.encode('utf-8'), 'text/xml'),
+                        'olot': ('data.olot', olot_data, 'application/octet-stream'),
+                    },
+                    headers=HEADERS,
+                    verify=ENABLE_TLS_VERIFY,
+                    timeout=60
+                )
+
+                response_text = response.text
+                try:
+                    response_bytes = response.content
+                    response_text = response_bytes.decode('utf-8')
+                except Exception:
+                    pass
+
+                logger.info(f"Fallback ответ сервера: HTTP {response.status_code}")
+
+                # Парсим ответ после fallback
+                try:
+                    root = ET.fromstring(response_text)
+                except ET.ParseError:
+                    if response.status_code == 200:
+                        return {"success": True, "set_id": "unknown", "message": response_text[:200]}
+                    _save_error_log(response_text)
+                    return {"success": False, "error": f"Fallback HTTP {response.status_code}: Не удалось разобрать ответ", "raw_response": response_text[:1000]}
+
+                if root.tag == "Response":
+                    set_id_elem = root.find("SetId")
+                    send_elem = root.find("SendEducatedPerson")
+                    msg_elem = root.find("Message")
+                    set_id = set_id_elem.text if set_id_elem is not None else ""
+                    send_edu = send_elem.text if send_elem is not None else "false"
+                    msg = msg_elem.text if msg_elem is not None else ""
+                    return {"success": True, "set_id": set_id, "send_educated_person": send_edu.lower() == "true", "message": msg}
+                elif root.tag == "Error":
+                    status_code_elem = root.find("StatusCode")
+                    msg_elem = root.find("Message")
+                    status_code = status_code_elem.text if status_code_elem is not None else "unknown"
+                    msg = msg_elem.text if msg_elem is not None else ""
+                    error_msg = _format_error(status_code, msg)
+                    return {"success": False, "error": error_msg, "raw_response": response_text[:1000]}
+                else:
+                    return {"success": False, "error": f"Неизвестный формат ответа: {root.tag}", "raw_response": response_text[:500]}
+
+            except Exception as fallback_error:
+                logger.error(f"Fallback не удался: {fallback_error}")
+                return {"success": False, "error": f"Ошибка подключения: {e}\n\nПопробуйте установить: pip install requests-ntlm requests-negotiate-sspi"}
+        else:
+            return {"success": False, "error": "Нет соединения с сервером Минтруда\n\nПопробуйте: pip install requests-ntlm requests-negotiate-sspi"}
     except Exception as e:
         logger.error(f"Критическая ошибка отправки: {e}")
         return {"success": False, "error": f"Ошибка: {e}"}
@@ -387,10 +458,12 @@ def _fetch_page(xml_content, page_label="", page_size=100, proxy_settings=None):
             logger.info(f"Запрос {page_label} через прокси: {proxies.get('https', 'N/A')}")
 
         # Используем create_proxy_session для корректной proxy-аутентификации
-        session = create_proxy_session(proxy_settings)
+        session, auth_method = create_proxy_session(proxy_settings, prefer_auth="auto")
         if not session:
             logger.error(f"Не удалось создать сессию с прокси для {page_label}")
             return None
+
+        logger.info(f"Метод авторизации для {page_label}: {auth_method}")
 
         try:
             response = session.post(
@@ -565,3 +638,64 @@ def export_records_to_xlsx(records, file_path):
     except Exception as e:
         logger.error(f"Ошибка экспорта XLSX: {e}")
         return False, f"Ошибка экспорта: {e}"
+
+
+# ============ Запрос данных по OrgId (НСПР) ============
+
+def get_by_org_id(api_key, org_id, page_size=5000, proxy_settings=None, limit=0):
+    """
+    Запрос всех обученных лиц по ID организации (для НСПР - реестр обученных лиц).
+    
+    POST на GET_URL с фильтром OrgId.
+    Поддерживает пагинацию — собирает все страницы.
+    
+    proxy_settings — dict с полями: mode, url, username, password
+    
+    limit — ограничение количества записей (0 = без ограничения)
+    
+    Возвращает:
+        {"success": bool, "records": list, "error": str}
+    """
+    ok, err = validate_api_key(api_key)
+    if not ok:
+        return {"success": False, "error": err}
+
+    if not org_id:
+        return {"success": False, "error": "OrgId не введён"}
+
+    all_records = []
+    page_no = 1
+
+    while True:
+        # Проверка лимита
+        if limit > 0 and len(all_records) >= limit:
+            break
+        
+        # Вычисляем размер страницы с учётом лимита
+        current_page_size = page_size
+        if limit > 0 and len(all_records) + current_page_size > limit:
+            current_page_size = limit - len(all_records)
+        
+        # Строгий порядок тегов: ApiKey, PageNo, PageSize, OrgId
+        xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
+<EducatedPersonFilter>
+    <ApiKey>{api_key}</ApiKey>
+    <PageNo>{page_no}</PageNo>
+    <PageSize>{current_page_size}</PageSize>
+    <OrgId>{org_id}</OrgId>
+</EducatedPersonFilter>'''
+
+        result = _fetch_page(xml_content, f"стр. {page_no}", current_page_size, proxy_settings)
+        if result is None:
+            break
+
+        records = result.get("records", [])
+        all_records.extend(records)
+
+        if not result.get("has_more", False):
+            break
+
+        page_no += 1
+        time.sleep(0.5)
+
+    return {"success": True, "records": all_records}

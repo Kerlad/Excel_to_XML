@@ -19,6 +19,7 @@
 <span class="moduletype">Script</span>  <div class="import">
 imports:
     <a href="#PIL">PIL</a>
+ &#8226;   <a href="#PIL.Image">PIL.Image</a>
  &#8226;   <a href="#PySide6">PySide6</a>
  &#8226;   <a href="#PySide6.QtCore">PySide6.QtCore</a>
  &#8226;   <a href="#PySide6.QtGui">PySide6.QtGui</a>
@@ -29,6 +30,7 @@ imports:
  &#8226;   <a href="#api">api</a>
  &#8226;   <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#codecs">codecs</a>
  &#8226;   <a href="#collections">collections</a>
  &#8226;   <a href="#collections.abc">collections.abc</a>
@@ -204,6 +206,8 @@ imports:
  &#8226;   <a href="#re._parser">re._parser</a>
  &#8226;   <a href="#reprlib">reprlib</a>
  &#8226;   <a href="#requests">requests</a>
+ &#8226;   <a href="#requests_negotiate_sspi">requests_negotiate_sspi</a>
+ &#8226;   <a href="#requests_ntlm">requests_ntlm</a>
  &#8226;   <a href="#sre_compile">sre_compile</a>
  &#8226;   <a href="#sre_constants">sre_constants</a>
  &#8226;   <a href="#sre_parse">sre_parse</a>
@@ -216,12 +220,15 @@ imports:
  &#8226;   <a href="#tabs.exam_journal_tab">tabs.exam_journal_tab</a>
  &#8226;   <a href="#tabs.programs_dialog">tabs.programs_dialog</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
  &#8226;   <a href="#traceback">traceback</a>
  &#8226;   <a href="#types">types</a>
  &#8226;   <a href="#urllib3">urllib3</a>
+ &#8226;   <a href="#urllib3.exceptions">urllib3.exceptions</a>
  &#8226;   <a href="#utils">utils</a>
  &#8226;   <a href="#utils.crypto">utils.crypto</a>
  &#8226;   <a href="#utils.logger">utils.logger</a>
+ &#8226;   <a href="#utils.proxy_manager">utils.proxy_manager</a>
  &#8226;   <a href="#utils.tahoe_style">utils.tahoe_style</a>
  &#8226;   <a href="#warnings">warnings</a>
  &#8226;   <a href="#weakref">weakref</a>
@@ -1312,6 +1319,7 @@ imported by:
  &#8226;   <a href="#PIL.XbmImagePlugin">PIL.XbmImagePlugin</a>
  &#8226;   <a href="#PIL.XpmImagePlugin">PIL.XpmImagePlugin</a>
  &#8226;   <a href="#PIL.features">PIL.features</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#openpyxl.drawing.image">openpyxl.drawing.image</a>
 
   </div>
@@ -2839,6 +2847,7 @@ imported by:
  &#8226;   <a href="#tabs.exam_journal_tab">tabs.exam_journal_tab</a>
  &#8226;   <a href="#tabs.programs_dialog">tabs.programs_dialog</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
  &#8226;   <a href="#utils.tahoe_style">utils.tahoe_style</a>
 
   </div>
@@ -2871,6 +2880,7 @@ imported by:
  &#8226;   <a href="#tabs.exam_journal_tab">tabs.exam_journal_tab</a>
  &#8226;   <a href="#tabs.programs_dialog">tabs.programs_dialog</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
 
   </div>
 
@@ -2926,6 +2936,7 @@ imported by:
  &#8226;   <a href="#tabs.exam_journal_tab">tabs.exam_journal_tab</a>
  &#8226;   <a href="#tabs.programs_dialog">tabs.programs_dialog</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
  &#8226;   <a href="#utils.tahoe_style">utils.tahoe_style</a>
 
   </div>
@@ -4383,9 +4394,15 @@ imported by:
   <a name="api"></a>
   <a target="code" href="///D:/PythonProject/Excel_to_XML/api/__init__.py" type="text/plain"><tt>api</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
+imports:
+    <a href="#api.mintrud_api">api.mintrud_api</a>
+
+  </div>
+  <div class="import">
 imported by:
     <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#main.py">main.py</a>
 
   </div>
@@ -4401,6 +4418,7 @@ imports:
  &#8226;   <a href="#base64">base64</a>
  &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
  &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#hashlib">hashlib</a>
  &#8226;   <a href="#io">io</a>
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#logging">logging</a>
@@ -4417,7 +4435,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#main.py">main.py</a>
+    <a href="#api">api</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#tabs.data_transfer_tab">tabs.data_transfer_tab</a>
 
   </div>
@@ -4444,6 +4463,36 @@ imports:
  &#8226;   <a href="#urllib.parse">urllib.parse</a>
  &#8226;   <a href="#urllib.request">urllib.request</a>
  &#8226;   <a href="#utils.proxy_manager">utils.proxy_manager</a>
+ &#8226;   <a href="#winreg">winreg</a>
+ &#8226;   <a href="#xml.etree.ElementTree">xml.etree.ElementTree</a>
+ &#8226;   <a href="#zipfile">zipfile</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="api.mintrud_api_wininet"></a>
+  <a target="code" href="///D:/PythonProject/Excel_to_XML/api/mintrud_api_wininet.py" type="text/plain"><tt>api.mintrud_api_wininet</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#api">api</a>
+ &#8226;   <a href="#ctypes">ctypes</a>
+ &#8226;   <a href="#ctypes.wintypes">ctypes.wintypes</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#io">io</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#openpyxl">openpyxl</a>
+ &#8226;   <a href="#openpyxl.styles">openpyxl.styles</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#time">time</a>
+ &#8226;   <a href="#urllib.parse">urllib.parse</a>
  &#8226;   <a href="#winreg">winreg</a>
  &#8226;   <a href="#xml.etree.ElementTree">xml.etree.ElementTree</a>
  &#8226;   <a href="#zipfile">zipfile</a>
@@ -8663,6 +8712,7 @@ imported by:
 imports:
     <a href="#_ctypes">_ctypes</a>
  &#8226;   <a href="#ctypes._endian">ctypes._endian</a>
+ &#8226;   <a href="#ctypes.wintypes">ctypes.wintypes</a>
  &#8226;   <a href="#nt">nt</a>
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#struct">struct</a>
@@ -8672,7 +8722,9 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#ctypes._endian">ctypes._endian</a>
+    <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
+ &#8226;   <a href="#ctypes._endian">ctypes._endian</a>
+ &#8226;   <a href="#ctypes.wintypes">ctypes.wintypes</a>
  &#8226;   <a href="#multiprocessing.sharedctypes">multiprocessing.sharedctypes</a>
  &#8226;   <a href="#numpy._core._dtype_ctypes">numpy._core._dtype_ctypes</a>
  &#8226;   <a href="#numpy._core._internal">numpy._core._internal</a>
@@ -8695,6 +8747,23 @@ imports:
   <div class="import">
 imported by:
     <a href="#ctypes">ctypes</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ctypes.wintypes"></a>
+  <a target="code" href="///C:/Users/Denis/AppData/Local/Programs/Python/Python312/Lib/ctypes/wintypes.py" type="text/plain"><tt>ctypes.wintypes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#ctypes">ctypes</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
+ &#8226;   <a href="#ctypes">ctypes</a>
 
   </div>
 
@@ -8762,6 +8831,7 @@ imported by:
  &#8226;   <a href="#_strptime">_strptime</a>
  &#8226;   <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#calendar">calendar</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
  &#8226;   <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
@@ -14600,6 +14670,7 @@ imported by:
     <a href="#main.py">main.py</a>
  &#8226;   <a href="#tabs.exam_journal_tab">tabs.exam_journal_tab</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
 
   </div>
 
@@ -14932,6 +15003,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#urllib.request">urllib.request</a>
+ &#8226;   <a href="#utils.proxy_manager">utils.proxy_manager</a>
 
   </div>
 
@@ -15071,7 +15143,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#charset_normalizer.models">charset_normalizer.models</a>
+    <a href="#api.mintrud_api">api.mintrud_api</a>
+ &#8226;   <a href="#charset_normalizer.models">charset_normalizer.models</a>
  &#8226;   <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
  &#8226;   <a href="#docx.image.image">docx.image.image</a>
  &#8226;   <a href="#docx.parts.image">docx.parts.image</a>
@@ -16190,6 +16263,7 @@ imported by:
  &#8226;   <a href="#_compression">_compression</a>
  &#8226;   <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#asyncio.proactor_events">asyncio.proactor_events</a>
  &#8226;   <a href="#asyncio.unix_events">asyncio.unix_events</a>
  &#8226;   <a href="#bs4">bs4</a>
@@ -16445,6 +16519,7 @@ imports:
 imported by:
     <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#charset_normalizer.models">charset_normalizer.models</a>
  &#8226;   <a href="#exporters.protocol_exporter">exporters.protocol_exporter</a>
  &#8226;   <a href="#journal.journal_manager">journal.journal_manager</a>
@@ -16648,6 +16723,7 @@ imported by:
  &#8226;   <a href="#PIL.TiffImagePlugin">PIL.TiffImagePlugin</a>
  &#8226;   <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#asyncio.futures">asyncio.futures</a>
  &#8226;   <a href="#asyncio.log">asyncio.log</a>
  &#8226;   <a href="#bs4.dammit">bs4.dammit</a>
@@ -25230,6 +25306,7 @@ imports:
 imported by:
     <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#importers.error_report">importers.error_report</a>
  &#8226;   <a href="#importers.xlsx_importer">importers.xlsx_importer</a>
  &#8226;   <a href="#main.py">main.py</a>
@@ -28177,6 +28254,7 @@ imports:
 imported by:
     <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#importers.error_report">importers.error_report</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#openpyxl.cell.cell">openpyxl.cell.cell</a>
@@ -30097,6 +30175,7 @@ imported by:
  &#8226;   <a href="#_pyi_rth_utils.qt">_pyi_rth_utils.qt</a>
  &#8226;   <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#argparse">argparse</a>
  &#8226;   <a href="#asyncio.base_events">asyncio.base_events</a>
  &#8226;   <a href="#asyncio.coroutines">asyncio.coroutines</a>
@@ -30239,6 +30318,7 @@ imported by:
  &#8226;   <a href="#tabs.data_view_tab">tabs.data_view_tab</a>
  &#8226;   <a href="#tabs.exam_journal_tab">tabs.exam_journal_tab</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
  &#8226;   <a href="#tarfile">tarfile</a>
  &#8226;   <a href="#tempfile">tempfile</a>
  &#8226;   <a href="#threading">threading</a>
@@ -30583,6 +30663,7 @@ imports:
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#protocol">protocol</a>
+ &#8226;   <a href="#utils.crypto">utils.crypto</a>
 
   </div>
   <div class="import">
@@ -30590,6 +30671,7 @@ imported by:
     <a href="#main.py">main.py</a>
  &#8226;   <a href="#protocol">protocol</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
 
   </div>
 
@@ -30612,6 +30694,7 @@ imported by:
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#protocol">protocol</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
 
   </div>
 
@@ -30665,6 +30748,17 @@ imports:
   <div class="import">
 imported by:
     <a href="#zipfile">zipfile</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pycurl"></a>
+  <a target="code" href="" type="text/plain"><tt>pycurl</tt></a>
+<span class="moduletype">MissingModule</span>  <div class="import">
+imported by:
+    <a href="#utils.proxy_manager">utils.proxy_manager</a>
 
   </div>
 
@@ -31637,6 +31731,18 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="requests_negotiate_sspi"></a>
+  <a target="code" href="" type="text/plain"><tt>requests_negotiate_sspi</tt></a>
+<span class="moduletype">MissingModule</span>  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#utils.proxy_manager">utils.proxy_manager</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="requests_ntlm"></a>
   <a target="code" href="///C:/Users/Denis/AppData/Local/Programs/Python/Python312/Lib/site-packages/requests_ntlm/__init__.py" type="text/plain"><tt>requests_ntlm</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
@@ -31646,7 +31752,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#requests_ntlm.requests_ntlm">requests_ntlm.requests_ntlm</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#requests_ntlm.requests_ntlm">requests_ntlm.requests_ntlm</a>
  &#8226;   <a href="#utils.proxy_manager">utils.proxy_manager</a>
 
   </div>
@@ -33984,6 +34091,7 @@ imported by:
  &#8226;   <a href="#tabs.exam_journal_tab">tabs.exam_journal_tab</a>
  &#8226;   <a href="#tabs.programs_dialog">tabs.programs_dialog</a>
  &#8226;   <a href="#tabs.protocol_tab">tabs.protocol_tab</a>
+ &#8226;   <a href="#tabs.single_worker_protocol_tab">tabs.single_worker_protocol_tab</a>
 
   </div>
 
@@ -34007,6 +34115,7 @@ imports:
  &#8226;   <a href="#shutil">shutil</a>
  &#8226;   <a href="#subprocess">subprocess</a>
  &#8226;   <a href="#tabs">tabs</a>
+ &#8226;   <a href="#utils.crypto">utils.crypto</a>
  &#8226;   <a href="#webbrowser">webbrowser</a>
 
   </div>
@@ -34059,6 +34168,7 @@ imports:
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#tabs">tabs</a>
  &#8226;   <a href="#unicodedata">unicodedata</a>
+ &#8226;   <a href="#utils.crypto">utils.crypto</a>
 
   </div>
   <div class="import">
@@ -34133,6 +34243,29 @@ imports:
  &#8226;   <a href="#protocol.programs_manager">protocol.programs_manager</a>
  &#8226;   <a href="#tabs">tabs</a>
  &#8226;   <a href="#tabs.programs_dialog">tabs.programs_dialog</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="tabs.single_worker_protocol_tab"></a>
+  <a target="code" href="///D:/PythonProject/Excel_to_XML/tabs/single_worker_protocol_tab.py" type="text/plain"><tt>tabs.single_worker_protocol_tab</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PySide6.QtCore">PySide6.QtCore</a>
+ &#8226;   <a href="#PySide6.QtGui">PySide6.QtGui</a>
+ &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
+ &#8226;   <a href="#exporters.protocol_exporter">exporters.protocol_exporter</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#protocol.commission_manager">protocol.commission_manager</a>
+ &#8226;   <a href="#protocol.programs_manager">protocol.programs_manager</a>
+ &#8226;   <a href="#tabs">tabs</a>
 
   </div>
   <div class="import">
@@ -34358,6 +34491,7 @@ imported by:
  &#8226;   <a href="#_strptime">_strptime</a>
  &#8226;   <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#asyncio.base_events">asyncio.base_events</a>
  &#8226;   <a href="#asyncio.windows_events">asyncio.windows_events</a>
  &#8226;   <a href="#concurrent.futures._base">concurrent.futures._base</a>
@@ -34897,6 +35031,7 @@ imported by:
  &#8226;   <a href="#urllib3.util.timeout">urllib3.util.timeout</a>
  &#8226;   <a href="#urllib3.util.url">urllib3.util.url</a>
  &#8226;   <a href="#urllib3.util.util">urllib3.util.util</a>
+ &#8226;   <a href="#utils.proxy_manager">utils.proxy_manager</a>
 
   </div>
 
@@ -35311,6 +35446,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#cgi">cgi</a>
  &#8226;   <a href="#email.utils">email.utils</a>
  &#8226;   <a href="#http.client">http.client</a>
@@ -35941,7 +36077,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#requests">requests</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#requests">requests</a>
  &#8226;   <a href="#requests.adapters">requests.adapters</a>
  &#8226;   <a href="#requests.exceptions">requests.exceptions</a>
  &#8226;   <a href="#requests.models">requests.models</a>
@@ -36588,6 +36725,9 @@ imports:
 imported by:
     <a href="#journal.journal_manager">journal.journal_manager</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#protocol.commission_manager">protocol.commission_manager</a>
+ &#8226;   <a href="#tabs.data_entry_tab">tabs.data_entry_tab</a>
+ &#8226;   <a href="#tabs.data_view_tab">tabs.data_view_tab</a>
 
   </div>
 
@@ -36619,12 +36759,16 @@ imported by:
 imports:
     <a href="#base64">base64</a>
  &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#getpass">getpass</a>
  &#8226;   <a href="#hashlib">hashlib</a>
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#pycurl">pycurl</a>
  &#8226;   <a href="#requests">requests</a>
+ &#8226;   <a href="#requests_negotiate_sspi">requests_negotiate_sspi</a>
  &#8226;   <a href="#requests_ntlm">requests_ntlm</a>
+ &#8226;   <a href="#typing">typing</a>
  &#8226;   <a href="#urllib.parse">urllib.parse</a>
  &#8226;   <a href="#utils">utils</a>
  &#8226;   <a href="#winreg">winreg</a>
@@ -36634,6 +36778,7 @@ imports:
 imported by:
     <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#tabs.data_transfer_tab">tabs.data_transfer_tab</a>
 
   </div>
@@ -37001,6 +37146,7 @@ imported by:
   <tt>winreg</tt> <span class="moduletype"><i>(builtin module)</i></span>  <div class="import">
 imported by:
     <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#importlib._bootstrap_external">importlib._bootstrap_external</a>
  &#8226;   <a href="#mimetypes">mimetypes</a>
  &#8226;   <a href="#platform">platform</a>
@@ -37534,6 +37680,7 @@ imported by:
  &#8226;   <a href="#_elementtree">_elementtree</a>
  &#8226;   <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#et_xmlfile.incremental_tree">et_xmlfile.incremental_tree</a>
  &#8226;   <a href="#et_xmlfile.xmlfile">et_xmlfile.xmlfile</a>
  &#8226;   <a href="#exporters.xml_exporter">exporters.xml_exporter</a>
@@ -37830,6 +37977,7 @@ imports:
 imported by:
     <a href="#api.mintrud_api">api.mintrud_api</a>
  &#8226;   <a href="#api.mintrud_api_urllib">api.mintrud_api_urllib</a>
+ &#8226;   <a href="#api.mintrud_api_wininet">api.mintrud_api_wininet</a>
  &#8226;   <a href="#docx.opc.phys_pkg">docx.opc.phys_pkg</a>
  &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
  &#8226;   <a href="#importlib.resources.readers">importlib.resources.readers</a>

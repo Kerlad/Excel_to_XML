@@ -3,12 +3,18 @@
 Настройки хранятся в /data/proxy_settings.json.
 Режим "auto" — автоматическое определение прокси из реестра Windows.
 Пароли и логины шифруются.
+
+Поддержка корпоративного прокси:
+- NTLM аутентификация с текущими Windows credentials
+- Kerberos/Negotiate через requests_negotiate_sspi
+- Fallback стратегия: NTLM → pycurl → WinINET
 """
 import os
 import json
 import logging
 import base64
 import hashlib
+from typing import Optional, Dict, Tuple
 
 # ============================================================================
 # TLS VERIFICATION SETTINGS
@@ -19,19 +25,32 @@ import hashlib
 ENABLE_TLS_VERIFY = False
 # ============================================================================
 
-import os
-import json
-import logging
-import base64
-import hashlib
+logger = logging.getLogger(__name__)
 
-# Принудительный импорт для NTLM (чтобы PyInstaller включил библиотеку)
+# Проверка доступности библиотек для корпоративной авторизации
+NTLM_AVAILABLE = False
+KERBEROS_AVAILABLE = False
+PYCURL_AVAILABLE = False
+
 try:
     from requests_ntlm import HttpNtlmAuth
+    NTLM_AVAILABLE = True
 except ImportError:
     pass
 
-logger = logging.getLogger(__name__)
+try:
+    from requests_negotiate_sspi import HttpNegotiateAuth
+    KERBEROS_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    import pycurl
+    PYCURL_AVAILABLE = True
+except ImportError:
+    pass
+
+logger.info(f"Прокси модуль: NTLM={NTLM_AVAILABLE}, Kerberos={KERBEROS_AVAILABLE}, pycurl={PYCURL_AVAILABLE}")
 
 PROXY_SETTINGS_FILE = "proxy_settings.json"
 
@@ -88,7 +107,8 @@ def load_proxy_settings(data_dir: str) -> dict:
         "mode": "off",
         "url": "",
         "username": "",
-        "password": ""
+        "password": "",
+        "tls_verify": False
     }
 
     if not os.path.exists(settings_file):
@@ -100,6 +120,9 @@ def load_proxy_settings(data_dir: str) -> dict:
         for key in defaults:
             if key not in data:
                 data[key] = defaults[key]
+
+        global ENABLE_TLS_VERIFY
+        ENABLE_TLS_VERIFY = data.get("tls_verify", False)
         
         username_encrypted = data.get("username_encrypted", "")
         password_encrypted = data.get("password_encrypted", "")
@@ -124,7 +147,7 @@ def save_proxy_settings(data_dir: str, settings: dict) -> tuple[bool, str]:
     """
     Сохранение настроек прокси в файл.
     Пароли и логины шифруются.
-    settings — dict: mode, url, username, password
+    settings — dict: mode, url, username, password, tls_verify
     """
     settings_file = os.path.join(data_dir, PROXY_SETTINGS_FILE)
 
@@ -133,20 +156,25 @@ def save_proxy_settings(data_dir: str, settings: dict) -> tuple[bool, str]:
 
     try:
         os.makedirs(data_dir, exist_ok=True)
-        
+
         username = settings.get("username", "").strip()
         password = settings.get("password", "").strip()
-        
+
         data = {
             "mode": settings.get("mode", "off"),
             "url": settings.get("url", "").strip(),
             "username_encrypted": _encrypt_value(username),
             "password_encrypted": _encrypt_value(password),
             "username": "",
-            "password": ""
+            "password": "",
+            "tls_verify": settings.get("tls_verify", False)
         }
         with open(settings_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+        global ENABLE_TLS_VERIFY
+        ENABLE_TLS_VERIFY = settings.get("tls_verify", False)
+
         return True, "Настройки прокси сохранены"
     except Exception as e:
         logger.error(f"Ошибка сохранения настроек прокси: {e}")
@@ -197,6 +225,181 @@ def detect_windows_proxy() -> str | None:
         return None
     except Exception as e:
         logger.error(f"Ошибка чтения реестра Windows: {e}")
+        return None
+
+
+def get_current_windows_credentials() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Получение текущих Windows credentials для SSO.
+    Возвращает (username, domain) или (None, None) если недоступно.
+    """
+    try:
+        import getpass
+        username = os.environ.get('USERNAME', '')
+        domain = os.environ.get('USERDOMAIN', '')
+        logon_user = os.environ.get('LOGON_USER', '')
+
+        if logon_user and '\\' in logon_user:
+            parts = logon_user.split('\\')
+            return parts[1], parts[0]
+        elif domain and username:
+            return username, domain
+    except Exception as e:
+        logger.debug(f"Не удалось получить Windows credentials: {e}")
+
+    return None, None
+
+
+def detect_proxy_auth_type(proxy_url: str) -> Dict[str, any]:
+    """
+    Определение типа авторизации, поддерживаемого прокси.
+    Делает предварительный запрос для получения Proxy-Authenticate заголовков.
+    """
+    result = {
+        "supported": [],
+        "ntlm": False,
+        "negotiate": False,
+        "basic": False,
+        "digest": False
+    }
+
+    if not proxy_url:
+        return result
+
+    try:
+        import requests
+        test_url = "http://" + proxy_url.split("://")[-1].split("/")[0]
+        response = requests.head(test_url, timeout=5, proxies={"http": test_url, "https": test_url})
+    except Exception as e:
+        logger.debug(f"Не удалось определить тип авторизации прокси: {e}")
+        return result
+
+    proxy_auth = response.headers.get('Proxy-Authenticate', '')
+    logger.info(f"Прокси предлагает авторизацию: {proxy_auth}")
+
+    if 'NTLM' in proxy_auth.upper():
+        result['ntlm'] = True
+        result['supported'].append('NTLM')
+    if 'NEGOTIATE' in proxy_auth.upper() or 'KERBEROS' in proxy_auth.upper():
+        result['negotiate'] = True
+        result['supported'].append('Negotiate/Kerberos')
+    if 'Basic' in proxy_auth:
+        result['basic'] = True
+        result['supported'].append('Basic')
+    if 'Digest' in proxy_auth:
+        result['digest'] = True
+        result['supported'].append('Digest')
+
+    return result
+
+
+def create_session_with_negotiate(settings: dict) -> Optional[object]:
+    """
+    Создание сессии с Negotiate (Kerberos) авторизацией.
+    """
+    if not KERBEROS_AVAILABLE:
+        return None
+
+    try:
+        import requests
+        from requests_negotiate_sspi import HttpNegotiateAuth
+
+        mode = settings.get("mode", "off")
+        if mode == "off":
+            return None
+
+        proxy_url = None
+        if mode == "auto":
+            proxy_url = detect_windows_proxy()
+        elif mode == "manual":
+            proxy_url = settings.get("url", "").strip()
+
+        if not proxy_url:
+            return None
+
+        session = requests.Session()
+        session.proxies = {"http": proxy_url, "https": proxy_url}
+        session.auth = HttpNegotiateAuth()
+
+        logger.info("Создана сессия с Negotiate (Kerberos) авторизацией")
+        return session
+    except Exception as e:
+        logger.error(f"Ошибка создания сессии с Negotiate: {e}")
+        return None
+
+
+def create_session_with_ntlm_current_user(settings: dict) -> Optional[object]:
+    """
+    Создание сессии с NTLM авторизацией используя текущие Windows credentials.
+    """
+    if not NTLM_AVAILABLE:
+        return None
+
+    try:
+        from requests_ntlm import HttpNtlmAuth
+
+        mode = settings.get("mode", "off")
+        if mode == "off":
+            return None
+
+        proxy_url = None
+        if mode == "auto":
+            proxy_url = detect_windows_proxy()
+        elif mode == "manual":
+            proxy_url = settings.get("url", "").strip()
+
+        if not proxy_url:
+            return None
+
+        username, domain = get_current_windows_credentials()
+
+        session = requests.Session()
+        session.proxies = {"http": proxy_url, "https": proxy_url}
+
+        if username and domain:
+            full_username = f"{domain}\\{username}"
+            session.auth = HttpNtlmAuth(full_username, "")
+            logger.info(f"NTLM с текущими credentials: {full_username}")
+        else:
+            session.auth = HttpNtlmAuth("", "")
+            logger.info("NTLM с пустыми credentials (SSPI)")
+
+        return session
+    except Exception as e:
+        logger.error(f"Ошибка создания сессии с NTLM: {e}")
+        return None
+
+
+def create_session_ntlm_with_credentials(settings: dict) -> Optional[object]:
+    """
+    Создание сессии с NTLM авторизацией используя явно указанные логин/пароль.
+    """
+    if not NTLM_AVAILABLE:
+        return None
+
+    try:
+        from requests_ntlm import HttpNtlmAuth
+
+        mode = settings.get("mode", "off")
+        if mode != "manual":
+            return None
+
+        proxy_url = settings.get("url", "").strip()
+        username = settings.get("username", "").strip()
+        password = settings.get("password", "").strip()
+
+        if not proxy_url or not username:
+            return None
+
+        session = requests.Session()
+        session.proxies = {"http": proxy_url, "https": proxy_url}
+
+        session.auth = HttpNtlmAuth(username, password)
+        logger.info(f"NTLM с указанными credentials: {username}")
+
+        return session
+    except Exception as e:
+        logger.error(f"Ошибка создания сессии NTLM с credentials: {e}")
         return None
 
 
@@ -276,83 +479,87 @@ def build_proxy_headers(settings: dict) -> dict | None:
     return None
 
 
-def create_proxy_session(settings: dict):
+def create_proxy_session(settings: dict, prefer_auth: str = "auto") -> Tuple[Optional[object], str]:
     """
     Создание requests.Session с корректной настройкой прокси-аутентификации.
 
-    Для HTTPS-сайтов (как edu.rosmintrud.ru) прокси использует CONNECT туннель.
-    При этом заголовок Proxy-Authorization из session.headers НЕ отправляется,
-    потому что соединение устанавливается напрямую с целевым сервером.
+    Стратегия авторизации (prefer_auth):
+      "auto"    - пробуем все методы: Negotiate → NTLM → Basic → fallback
+      "negotiate" - только Kerberos/Negotiate
+      "ntlm"    - только NTLM
+      "basic"   - только Basic (в URL)
+      "none"    - без авторизации (для прокси без auth)
 
-    Решение:
-    1. Встраиваем credentials прямо в URL прокси (user:pass@proxy:port)
-    2. Для auto-режима: пытаемся извлечь credentials из системного прокси
-    3. Настраиваем HTTPAdapter с отключением verify=False на уровне сессии
-
-    Возвращает настроенный requests.Session или None если прокси отключен.
+    Возвращает tuple (session, auth_method) или (None, error_message)
     """
     import requests
-    from urllib.parse import urlparse, urlunparse, quote
 
     mode = settings.get("mode", "off")
+    logger.info(f"Создание прокси-сессии: mode={mode}, prefer_auth={prefer_auth}")
 
     if mode == "off":
-        # Прямое подключение без прокси
         session = requests.Session()
-        return session
+        return session, "direct"
 
-    # Определяем URL прокси
     proxy_url = None
-    ntlm_available = False
-    
-    # Пробуем импортировать requests-ntlm для NTLM-аутентификации
-    try:
-        from requests_ntlm import HttpNtlmAuth
-        ntlm_available = True
-    except ImportError:
-        pass
-    
     if mode == "auto":
         proxy_url = detect_windows_proxy()
+        logger.info(f"Автоопределенный прокси: {proxy_url}")
         if not proxy_url:
-            return None
+            return None, "auto"
     elif mode == "manual":
         proxy_url = settings.get("url", "").strip()
         if not proxy_url:
-            return None
-        # Добавляем credentials из настроек
-        username = settings.get("username", "").strip()
-        password = settings.get("password", "").strip()
-        if username and password:
-            # Пробуем NTLM если доступна
-            if ntlm_available and '\\' in username:
-                # DOMAIN\login - используем NTLM
-                try:
-                    auth = HttpNtlmAuth(username, password)
-                    # Сессия с NTLM будет настроена ниже
-                    settings['_ntlm_auth'] = auth
-                except:
-                    pass
-            
-            # Стандартный подход: встраиваем credentials в URL
-            proxy_url = _build_proxy_url_with_auth(proxy_url, username, password)
+            return None, "no_url"
 
     if not proxy_url:
-        return None
+        return None, "no_proxy"
 
-    # Создаем сессию с прокси
-    session = requests.Session()
-    session.proxies = {
-        "http": proxy_url,
-        "https": proxy_url,
-    }
-    
-    # Если есть NTLM auth - применяем
-    ntlm_auth = settings.get("_ntlm_auth")
-    if ntlm_auth:
-        session.auth = ntlm_auth
-        logger.info("Используется NTLM-аутентификация")
+    # Стратегия: auto - пробуем разные методы
+    if prefer_auth == "auto" or prefer_auth == "negotiate":
+        # Пробуем Negotiate/Kerberos (приоритет для корпоративных прокси)
+        if KERBEROS_AVAILABLE:
+            session = create_session_with_negotiate({"mode": mode, "url": proxy_url})
+            if session:
+                logger.info("Успешно: Negotiate/Kerberos")
+                return session, "negotiate"
 
+    if prefer_auth == "auto" or prefer_auth == "ntlm":
+        # Пробуем NTLM с текущими Windows credentials (SSPI)
+        if NTLM_AVAILABLE:
+            session = create_session_with_ntlm_current_user({"mode": mode, "url": proxy_url})
+            if session:
+                logger.info("Успешно: NTLM (Windows credentials)")
+                return session, "ntlm_current"
+
+        # Пробуем NTLM с явно указанными credentials
+        if mode == "manual" and settings.get("username"):
+            session = create_session_ntlm_with_credentials(settings)
+            if session:
+                logger.info("Успешно: NTLM (указанные credentials)")
+                return session, "ntlm_manual"
+
+    if prefer_auth == "auto" or prefer_auth == "basic":
+        # Fallback на Basic auth через URL
+        username = settings.get("username", "").strip()
+        password = settings.get("password", "").strip()
+        proxy_with_auth = _build_proxy_url_with_auth(proxy_url, username, password)
+
+        session = requests.Session()
+        session.proxies = {"http": proxy_with_auth, "https": proxy_with_auth}
+        logger.info(f"Используем Basic auth: {proxy_with_auth[:50]}...")
+        return session, "basic"
+
+    # Ничего не сработало
+    return None, "all_methods_failed"
+
+
+def create_proxy_session_legacy(settings: dict):
+    """
+    Устаревшая функция для обратной совместимости.
+    Использует новую create_proxy_session.
+    """
+    session, method = create_proxy_session(settings, prefer_auth="auto")
     return session
 
 
@@ -436,18 +643,24 @@ def test_proxy_connection(settings: dict) -> tuple[bool, str]:
     """
     import requests
 
-    # Сначала проверяем режим
     mode = settings.get("mode", "off")
     if mode == "off":
         return True, "Прокси отключён — используется прямое подключение"
 
-    # Используем новый create_proxy_session
-    session = create_proxy_session(settings)
+    session, method = create_proxy_session(settings, prefer_auth="auto")
     if not session:
         if mode == "auto":
             return False, "Системный прокси не найден или отключён в Windows"
         else:
             return False, "Адрес прокси не указан"
+
+    auth_methods = {
+        "negotiate": "Negotiate/Kerberos",
+        "ntlm_current": "NTLM (Windows credentials)",
+        "ntlm_manual": "NTLM (указанные)",
+        "basic": "Basic (URL)",
+        "direct": "Без авторизации"
+    }
 
     try:
         response = session.get(
@@ -458,14 +671,15 @@ def test_proxy_connection(settings: dict) -> tuple[bool, str]:
         )
 
         if response.status_code in (200, 404, 403, 301, 302):
-            # Скрываем пароль для безопасности
             proxy_url = session.proxies.get('https', 'N/A')
             safe_url = proxy_url
             if '@' in proxy_url:
                 from urllib.parse import urlparse
                 parsed = urlparse(proxy_url)
                 safe_url = f"{parsed.scheme}://***:***@{parsed.netloc.split('@')[-1]}"
-            return True, f"Подключение успешно\nПрокси: {safe_url}"
+
+            method_name = auth_methods.get(method, method)
+            return True, f"Подключение успешно\nМетод: {method_name}\nПрокси: {safe_url}"
         else:
             return False, f"HTTP {response.status_code}"
     except requests.exceptions.ProxyError as e:
@@ -476,3 +690,90 @@ def test_proxy_connection(settings: dict) -> tuple[bool, str]:
         return False, "Таймаут подключения"
     except Exception as e:
         return False, f"Ошибка: {e}"
+
+
+def diagnose_407_error(response, proxy_settings: dict) -> str:
+    """
+    Диагностика ошибки 407 Proxy Authentication Required.
+    Возвращает подробное описание проблемы и рекомендации.
+    """
+    diagnostics = []
+
+    proxy_auth = response.headers.get('Proxy-Authenticate', 'unknown')
+
+    diagnostics.append("=== Диагностика ошибки 407 ===")
+    diagnostics.append(f"Proxy-Authenticate: {proxy_auth}")
+    diagnostics.append(f"Прокси URL: {proxy_settings.get('url', 'N/A')}")
+    diagnostics.append(f"Режим: {proxy_settings.get('mode', 'off')}")
+
+    username = proxy_settings.get('username', '')
+    if username:
+        if '\\' in username:
+            diagnostics.append("Тип логина: DOMAIN\\username (возможно NTLM)")
+        elif '@' in username:
+            diagnostics.append("Тип логина: username@domain (возможно Kerberos)")
+        else:
+            diagnostics.append("Тип логина: простой username")
+
+    if 'NTLM' in proxy_auth.upper() or 'Negotiate' in proxy_auth.upper():
+        diagnostics.append("")
+        diagnostics.append("Рекомендации:")
+        if not NTLM_AVAILABLE:
+            diagnostics.append("  - Установите requests-ntlm: pip install requests-ntlm")
+        if not KERBEROS_AVAILABLE:
+            diagnostics.append("  - Установите requests-negotiate-sspi: pip install requests-negotiate-sspi")
+        diagnostics.append("  - Попробуйте режим 'auto' для автоматического использования Windows credentials")
+        diagnostics.append("  - Убедитесь что вы авторизованы в домене Windows")
+
+    if 'Basic' in proxy_auth:
+        diagnostics.append("")
+        diagnostics.append("Рекомендации:")
+        diagnostics.append("  - Проверьте правильность логина и пароля")
+        diagnostics.append("  - Убедите что формат логина соответствует требованиям прокси")
+
+    diagnostics.append("")
+    diagnostics.append("Доступные методы авторизации в системе:")
+    diagnostics.append(f"  - NTLM: {'Да' if NTLM_AVAILABLE else 'Нет (pip install requests-ntlm)'}")
+    diagnostics.append(f"  - Kerberos: {'Да' if KERBEROS_AVAILABLE else 'Нет (pip install requests-negotiate-sspi)'}")
+    diagnostics.append(f"  - pycurl: {'Да' if PYCURL_AVAILABLE else 'Нет'}")
+
+    return "\n".join(diagnostics)
+
+
+def try_fallback_connection(proxy_settings: dict, last_error: str) -> Tuple[Optional[object], str]:
+    """
+    Fallback стратегия при ошибке подключения.
+    Пробует: NTLM → pycurl → WinINET
+
+    Возвращает tuple (session, method) или (None, error)
+    """
+    logger.info(f"Fallback стратегия после ошибки: {last_error}")
+
+    # 1. Пробуем NTLM с текущими credentials
+    if NTLM_AVAILABLE:
+        session = create_session_with_ntlm_current_user(proxy_settings)
+        if session:
+            logger.info("Fallback: NTLM с Windows credentials")
+            return session, "ntlm_fallback"
+
+    # 2. Пробуем NTLM с указанными credentials
+    if NTLM_AVAILABLE and proxy_settings.get('username'):
+        session = create_session_ntlm_with_credentials(proxy_settings)
+        if session:
+            logger.info("Fallback: NTLM с указанными credentials")
+            return session, "ntlm_manual_fallback"
+
+    # 3. Пробуем Kerberos/Negotiate
+    if KERBEROS_AVAILABLE:
+        session = create_session_with_negotiate(proxy_settings)
+        if session:
+            logger.info("Fallback: Negotiate/Kerberos")
+            return session, "negotiate_fallback"
+
+    # 4. Fallback на Basic (через URL)
+    logger.info("Fallback: Basic auth через URL")
+    session, method = create_proxy_session(proxy_settings, prefer_auth="basic")
+    if session:
+        return session, "basic_fallback"
+
+    return None, "all_fallbacks_failed"
