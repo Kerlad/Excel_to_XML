@@ -14,6 +14,12 @@ from utils.proxy_manager import (
     load_proxy_settings, save_proxy_settings, test_proxy_connection,
     detect_windows_proxy
 )
+from network.client import (
+    get_network_diagnostics,
+    test_external_access,
+    NetworkStatus,
+    get_windows_proxy
+)
 
 
 class DataTransferTab(QWidget):
@@ -594,41 +600,37 @@ class DataTransferTab(QWidget):
             QMessageBox.warning(self, "Ошибка", msg)
 
     def test_proxy(self):
-        """Тестирование подключения через прокси."""
-        mode_id = self.proxy_mode_group.checkedId()
-        mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
-        mode = mode_map.get(mode_id, 'off')
-        
+        """Тестирование подключения к edu.rosmintrud.ru через Windows Integrated Authentication."""
         # Получаем TLS настройку из чекбокса
         from utils.proxy_manager import ENABLE_TLS_VERIFY
         from utils import proxy_manager
         proxy_manager.ENABLE_TLS_VERIFY = self.tls_checkbox.isChecked()
 
-        settings = {
-            'mode': mode,
-            'url': self.proxy_url_input.text().strip(),
-            'username': self.proxy_user_input.text().strip(),
-            'password': self.proxy_pass_input.text().strip()
-        }
+        # Сначала покажем диагностику сети
+        diag = get_network_diagnostics()
+        
+        # Тестируем внешний доступ (прокси определяется автоматически)
+        status, msg = test_external_access(
+            url="https://edu.rosmintrud.ru",
+            timeout=30
+        )
+        
+        # Формируем результат
+        result_text = f"""Диагностика сети:
 
-        if mode == 'off':
-            QMessageBox.information(self, "Информация", "Режим 'Без прокси' — будет использовано прямое подключение.")
-            return
+Обнаруженный прокси: {diag.get('detected_proxy', 'Не обнаружен')}
+Метод авторизации: {diag.get('auth_method', 'Нет')}
+Windows пользователь: {diag.get('windows_user', 'Не определен')}
+Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Нет'}
 
-        if mode == 'auto':
-            sys_proxy = detect_windows_proxy()
-            if not sys_proxy:
-                QMessageBox.warning(self, "Ошибка", "Системный прокси не обнаружен.\nПроверьте настройки прокси в Windows (Параметры → Сеть → Прокси-сервер).")
-                return
-
-        QMessageBox.information(self, "Информация", "Тестирование подключения...")
-        QApplication.processEvents()
-
-        ok, msg = test_proxy_connection(settings)
-        if ok:
-            QMessageBox.information(self, "Успех", msg)
+Результат теста:
+Статус: {status.value}
+Сообщение: {msg}"""
+        
+        if status == NetworkStatus.SUCCESS:
+            QMessageBox.information(self, "Успех", result_text)
         else:
-            QMessageBox.critical(self, "Ошибка", msg)
+            QMessageBox.warning(self, "Проблема с доступом", result_text)
 
     def _get_proxy_settings(self):
         """Получение текущих настроек прокси для передачи в API."""

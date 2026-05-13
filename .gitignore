@@ -17,4 +17,12 @@ env/
 venv/
 data/*.json
 !data/__init__.py
+data/*.db
+data/*.db.backup
 log/
+
+# ТЗ и документация
+Техническое_задание*.pdf
+Техническое_задание_2.md
+Doclad.MD
+ReadmeV2.md

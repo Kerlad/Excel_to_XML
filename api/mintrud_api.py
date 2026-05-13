@@ -51,6 +51,15 @@ from utils.proxy_manager import (
     KERBEROS_AVAILABLE
 )
 
+# Импортируем network модуль для Windows Integrated Authentication
+from network.client import (
+    create_negotiate_session,
+    get_network_diagnostics,
+    test_external_access,
+    NetworkStatus,
+    get_windows_proxy
+)
+
 
 # ============ Сохранение API-ключа ============
 
