@@ -34,8 +34,9 @@ class DataEntryTab(QWidget):
         self._last_duplicate_map = {}
 
         # Пути
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.data_dir = os.path.join(self.base_dir, "data")
+        from utils.app_paths import get_app_data_dir, get_base_dir
+        self.base_dir = get_base_dir()
+        self.data_dir = get_app_data_dir()
         self.schema_dir = os.path.join(self.base_dir, "schema")
         self.settings_file = os.path.join(self.data_dir, "org_settings.json")
         
@@ -84,7 +85,7 @@ class DataEntryTab(QWidget):
                 border-radius: 10px;
                 margin-top: 10px;
                 padding: 15px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #4169E1;
@@ -106,50 +107,50 @@ class DataEntryTab(QWidget):
 
         # === Строка 0: ИНН УЦ и Название УЦ ===
         self.tc_inn_label = QLabel("ИНН УЦ:")
-        self.tc_inn_label.setStyleSheet("color: black; font-weight: bold;")
+        self.tc_inn_label.setStyleSheet("color: inherit; font-weight: bold;")
         self.tc_inn_label.setFixedWidth(110)
         grid.addWidget(self.tc_inn_label, 0, 0)
 
         self.tc_inn_input = QLineEdit()
         self.tc_inn_input.setFixedWidth(160)
         self.tc_inn_input.setPlaceholderText("10 или 12 цифр")
-        self.tc_inn_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        self.tc_inn_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         grid.addWidget(self.tc_inn_input, 0, 1)
 
         # Фиксированный отступ 2 см (~75px)
         grid.setColumnMinimumWidth(2, 75)
 
         self.tc_title_label = QLabel("Название УЦ:")
-        self.tc_title_label.setStyleSheet("color: black; font-weight: bold;")
+        self.tc_title_label.setStyleSheet("color: inherit; font-weight: bold;")
         self.tc_title_label.setFixedWidth(120)
         grid.addWidget(self.tc_title_label, 0, 3)
 
         self.tc_title_input = QLineEdit()
-        self.tc_title_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        self.tc_title_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         self.tc_title_input.setPlaceholderText("Полное наименование")
         grid.addWidget(self.tc_title_input, 0, 4)
 
         # === Строка 1: ИНН Заказчика и Название Заказчика ===
         self.employer_inn_label = QLabel("ИНН Заказчика:")
-        self.employer_inn_label.setStyleSheet("color: black; font-weight: bold;")
+        self.employer_inn_label.setStyleSheet("color: inherit; font-weight: bold;")
         self.employer_inn_label.setFixedWidth(110)
         grid.addWidget(self.employer_inn_label, 1, 0)
 
         self.employer_inn_input = QLineEdit()
         self.employer_inn_input.setFixedWidth(160)
         self.employer_inn_input.setPlaceholderText("10 или 12 цифр")
-        self.employer_inn_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        self.employer_inn_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         grid.addWidget(self.employer_inn_input, 1, 1)
 
         # Колонка-разделитель уже создана
 
         self.employer_title_label = QLabel("Название Заказчика:")
-        self.employer_title_label.setStyleSheet("color: black; font-weight: bold;")
+        self.employer_title_label.setStyleSheet("color: inherit; font-weight: bold;")
         self.employer_title_label.setFixedWidth(120)
         grid.addWidget(self.employer_title_label, 1, 3)
 
         self.employer_title_input = QLineEdit()
-        self.employer_title_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        self.employer_title_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         self.employer_title_input.setPlaceholderText("Полное наименование")
         grid.addWidget(self.employer_title_input, 1, 4)
 
@@ -189,7 +190,7 @@ class DataEntryTab(QWidget):
                 border-radius: 10px;
                 margin-top: 10px;
                 padding: 15px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #4169E1;
@@ -208,11 +209,11 @@ class DataEntryTab(QWidget):
         # Строка 1: XSD файл
         xsd_row = QHBoxLayout()
         self.xsd_label = QLabel("XSD схема:")
-        self.xsd_label.setStyleSheet("color: black;")
+        self.xsd_label.setStyleSheet("color: inherit;")
         self.xsd_file_input = QLineEdit()
         self.xsd_file_input.setPlaceholderText("Не выбран")
         self.xsd_file_input.setReadOnly(True)
-        self.xsd_file_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.xsd_file_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.upload_xsd_btn = QPushButton("Загрузить XSD")
         self.upload_xsd_btn.setStyleSheet("""
             QPushButton {
@@ -253,11 +254,11 @@ class DataEntryTab(QWidget):
         # Строка 2: Выбранный файл
         file_row = QHBoxLayout()
         self.file_path_label = QLabel("Выбранный файл:")
-        self.file_path_label.setStyleSheet("color: black;")
+        self.file_path_label.setStyleSheet("color: inherit;")
         self.file_path_input = QLineEdit()
         self.file_path_input.setPlaceholderText("Файл не выбран")
         self.file_path_input.setReadOnly(True)
-        self.file_path_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.file_path_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         file_row.addWidget(self.file_path_label)
         file_row.addWidget(self.file_path_input)
         layout.addLayout(file_row)
@@ -325,7 +326,7 @@ class DataEntryTab(QWidget):
                 border-radius: 10px;
                 margin-top: 10px;
                 padding: 15px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #4169E1;
@@ -352,23 +353,23 @@ class DataEntryTab(QWidget):
         col1.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         self.last_name_input = QLineEdit()
-        self.last_name_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.last_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         col1.addRow("Фамилия:", self.last_name_input)
 
         self.first_name_input = QLineEdit()
-        self.first_name_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.first_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         col1.addRow("Имя:", self.first_name_input)
 
         self.middle_name_input = QLineEdit()
-        self.middle_name_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.middle_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         col1.addRow("Отчество:", self.middle_name_input)
 
         self.position_input = QLineEdit()
-        self.position_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.position_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         col1.addRow("Должность:", self.position_input)
 
         self.snils_input = QLineEdit()
-        self.snils_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.snils_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.snils_input.setPlaceholderText("123-456-789 00")
         self.snils_input.setMaxLength(15)  # 123-456-789 00
         self.snils_input.textChanged.connect(self._format_snils_input)
@@ -384,7 +385,7 @@ class DataEntryTab(QWidget):
 
         program_row = QHBoxLayout()
         self.program_input = QLineEdit()
-        self.program_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.program_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.program_input.setPlaceholderText("Например: 1,2,3")
         self.help_btn = QPushButton("Справка")
         self.help_btn.setStyleSheet("""
@@ -405,16 +406,16 @@ class DataEntryTab(QWidget):
         col2.addRow("Номер программы:", program_row)
 
         self.protocol_input = QLineEdit()
-        self.protocol_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.protocol_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         col2.addRow("Номер протокола:", self.protocol_input)
 
         self.result_combo = QComboBox()
         self.result_combo.addItems(["Удовлетворительно", "Неудовлетворительно"])
-        self.result_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.result_combo.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         col2.addRow("Результат:", self.result_combo)
 
         self.date_input = QLineEdit()
-        self.date_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.date_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.date_input.setPlaceholderText("ДД.ММ.ГГГГ или ДДММГГГГ")
         col2.addRow("Дата:", self.date_input)
 
@@ -753,11 +754,10 @@ class DataEntryTab(QWidget):
                 background-color: white;
             }
             QLabel {
-                color: black;
+                color: inherit;
                 font-size: 13px;
             }
-            QLineEdit {
-                color: black;
+            QLineEdit { color: black;
                 border: 1px solid #CCCCCC;
                 padding: 5px;
                 background-color: white;
@@ -811,7 +811,7 @@ class DataEntryTab(QWidget):
                 background-color: white;
             }
             QLabel {
-                color: black;
+                color: inherit;
                 font-size: 13px;
             }
             QPushButton {
@@ -1039,16 +1039,16 @@ class DataEntryTab(QWidget):
     def _set_field_error(self, widget, is_error):
         """Подсветка поля красной рамкой при ошибке валидации."""
         if is_error:
-            widget.setStyleSheet("color: black; border: 2px solid red; padding: 4px;")
+            widget.setStyleSheet("color: inherit; border: 2px solid red; padding: 4px;")
         else:
-            widget.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+            widget.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
 
     def _clear_field_errors(self):
         """Сброс подсветки ошибок на всех полях."""
         for w in [self.last_name_input, self.first_name_input, self.middle_name_input,
                    self.position_input, self.snils_input, self.program_input,
                    self.protocol_input, self.result_combo, self.date_input]:
-            w.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+            w.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
 
     def save_manual_data(self):
         """Сохранение данных ручного ввода"""

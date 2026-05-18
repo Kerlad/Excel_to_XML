@@ -1,7 +1,3 @@
-# UTF-8
-#
-# For more details about fixed file info 'ffi' see:
-# https://msdn.microsoft.com/en-us/library/ms646997.aspx
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(2, 0, 0, 0),
@@ -19,12 +15,12 @@ VSVersionInfo(
       StringTable(
         u'040904B0',
         [StringStruct(u'CompanyName', u'Denis-krv'),
-        StringStruct(u'FileDescription', u'Excel-XML для передачи данных в Минтруд'),
+        StringStruct(u'FileDescription', u'ExcelXML Mintrud'),
         StringStruct(u'FileVersion', u'2.0.0.0'),
         StringStruct(u'InternalName', u'ExcelXML-Mintrud'),
-        StringStruct(u'LegalCopyright', u'© 2026'),
+        StringStruct(u'LegalCopyright', u'(c) 2026'),
         StringStruct(u'OriginalFilename', u'ExcelXML-Mintrud.exe'),
-        StringStruct(u'ProductName', u'Excel-XML для передачи данных в Минтруд'),
+        StringStruct(u'ProductName', u'ExcelXML-Mintrud'),
         StringStruct(u'ProductVersion', u'2.0.0.0')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [0x0409, 0x04B0])])

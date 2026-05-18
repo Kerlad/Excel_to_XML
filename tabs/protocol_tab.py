@@ -147,7 +147,7 @@ class ProtocolTab(QWidget):
                 border-radius: 10px;
                 margin-top: 10px;
                 padding: 15px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #4169E1;
@@ -209,9 +209,9 @@ class ProtocolTab(QWidget):
         row1 = QHBoxLayout()
         form1 = QFormLayout()
         self.org_name_label = QLabel("Название организации:")
-        self.org_name_label.setStyleSheet("color: black;")
+        self.org_name_label.setStyleSheet("color: inherit;")
         self.org_name_input = QLineEdit()
-        self.org_name_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.org_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.org_name_input.setPlaceholderText("ООО \"Организация\"")
         form1.addRow(self.org_name_label, self.org_name_input)
         row1.addLayout(form1)
@@ -224,19 +224,19 @@ class ProtocolTab(QWidget):
 
         proto_form = QFormLayout()
         self.protocol_label = QLabel("№ протокола:")
-        self.protocol_label.setStyleSheet("color: black;")
+        self.protocol_label.setStyleSheet("color: inherit;")
         self.protocol_combo = QComboBox()
         self.protocol_combo.setFixedWidth(200)
-        self.protocol_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px; background-color: white;")
+        self.protocol_combo.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px; background-color: white;")
         proto_form.addRow(self.protocol_label, self.protocol_combo)
         row2.addLayout(proto_form)
 
         exam_form = QFormLayout()
         self.exam_date_label = QLabel("Дата проверки знаний:")
-        self.exam_date_label.setStyleSheet("color: black;")
+        self.exam_date_label.setStyleSheet("color: inherit;")
         self.exam_date_input = QLineEdit()
         self.exam_date_input.setFixedWidth(160)
-        self.exam_date_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.exam_date_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.exam_date_input.setPlaceholderText("ДД.ММ.ГГГГ")
         exam_form.addRow(self.exam_date_label, self.exam_date_input)
         row2.addLayout(exam_form)
@@ -248,17 +248,17 @@ class ProtocolTab(QWidget):
         row3 = QHBoxLayout()
         form2 = QFormLayout()
         self.order_label = QLabel("Приказ о создании комиссии:")
-        self.order_label.setStyleSheet("color: black;")
+        self.order_label.setStyleSheet("color: inherit;")
 
         order_row = QHBoxLayout()
         self.order_number_input = QLineEdit()
         self.order_number_input.setFixedWidth(120)
-        self.order_number_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.order_number_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.order_number_input.setPlaceholderText("№ приказа")
 
         self.order_date_input = QLineEdit()
         self.order_date_input.setFixedWidth(140)
-        self.order_date_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.order_date_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.order_date_input.setPlaceholderText("ДД.ММ.ГГГГ")
 
         order_row.addWidget(self.order_number_input)
@@ -278,7 +278,7 @@ class ProtocolTab(QWidget):
                 border-radius: 8px;
                 margin-top: 8px;
                 padding: 10px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #4169E1;
@@ -297,16 +297,16 @@ class ProtocolTab(QWidget):
         chairman_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         chairman_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.chairman_fio_label = QLabel("ФИО:")
-        self.chairman_fio_label.setStyleSheet("color: black;")
+        self.chairman_fio_label.setStyleSheet("color: inherit;")
         self.chairman_fio_input = QLineEdit()
-        self.chairman_fio_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        self.chairman_fio_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         self.chairman_fio_input.setPlaceholderText("Иванов И.И.")
         chairman_layout.addRow(self.chairman_fio_label, self.chairman_fio_input)
 
         self.chairman_pos_label = QLabel("Должность:")
-        self.chairman_pos_label.setStyleSheet("color: black;")
+        self.chairman_pos_label.setStyleSheet("color: inherit;")
         self.chairman_pos_input = QLineEdit()
-        self.chairman_pos_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        self.chairman_pos_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         self.chairman_pos_input.setPlaceholderText("Директор")
         chairman_layout.addRow(self.chairman_pos_label, self.chairman_pos_input)
         layout.addWidget(chairman_group)
@@ -319,7 +319,7 @@ class ProtocolTab(QWidget):
                 border-radius: 8px;
                 margin-top: 8px;
                 padding: 10px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #4169E1;
@@ -394,7 +394,7 @@ class ProtocolTab(QWidget):
                 border-radius: 6px;
                 margin-top: 5px;
                 padding: 8px 12px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #666;
@@ -415,16 +415,16 @@ class ProtocolTab(QWidget):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         fio_label = QLabel("ФИО:")
-        fio_label.setStyleSheet("color: black;")
+        fio_label.setStyleSheet("color: inherit;")
         fio_input = QLineEdit()
-        fio_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        fio_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         fio_input.setPlaceholderText("Петров П.П.")
         form.addRow(fio_label, fio_input)
 
         pos_label = QLabel("Должность:")
-        pos_label.setStyleSheet("color: black;")
+        pos_label.setStyleSheet("color: inherit;")
         pos_input = QLineEdit()
-        pos_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
+        pos_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         pos_input.setPlaceholderText("Инженер по ОТ")
         form.addRow(pos_label, pos_input)
 

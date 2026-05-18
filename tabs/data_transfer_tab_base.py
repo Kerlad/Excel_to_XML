@@ -31,7 +31,8 @@ class BaseDataTransferTab(QWidget):
 
         # Пути
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.data_dir = os.path.join(self.base_dir, "data")
+        from utils.app_paths import get_app_data_dir
+        self.data_dir = get_app_data_dir()
         self.schema_dir = os.path.join(self.base_dir, "schema")
         os.makedirs(self.data_dir, exist_ok=True)
 

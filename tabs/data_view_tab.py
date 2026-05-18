@@ -194,18 +194,18 @@ class DataViewTab(QWidget):
         menu.setStyleSheet("""
             QMenu {
                 background-color: white;
-                color: black;
+                color: inherit;
                 border: 1px solid #CCCCCC;
                 padding: 5px;
             }
             QMenu::item {
                 background-color: white;
-                color: black;
+                color: inherit;
                 padding: 5px 25px 5px 20px;
             }
             QMenu::item:selected {
                 background-color: #E8E8FF;
-                color: black;
+                color: inherit;
             }
         """)
         edit_action = menu.addAction("Редактировать")
@@ -271,7 +271,8 @@ class DataViewTab(QWidget):
             QMessageBox.warning(self, "Предупреждение", "Нет данных для конвертации")
             return
 
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        from utils.app_paths import get_base_dir, get_app_data_dir
+        base_dir = get_base_dir()
         schema_dir = os.path.join(base_dir, "schema")
         os.makedirs(schema_dir, exist_ok=True)
         xsd_files = [f for f in os.listdir(schema_dir) if f.endswith('.xsd')]
@@ -280,7 +281,7 @@ class DataViewTab(QWidget):
             QMessageBox.warning(self, "Предупреждение", "XSD отсутствует")
             return
 
-        data_dir = os.path.join(base_dir, "data")
+        data_dir = get_app_data_dir()
         settings_file = os.path.join(data_dir, "org_settings.json")
         org_settings = {}
         if os.path.exists(settings_file):
@@ -329,17 +330,15 @@ class EditDialog(QDialog):
                 background-color: white;
             }
             EditDialog QLabel {
-                color: black;
+                color: inherit;
                 background: transparent;
             }
-            EditDialog QLineEdit {
-                color: black;
+            EditDialog QLineEdit { color: black;
                 background-color: white;
                 border: 1px solid #CCCCCC;
                 padding: 4px;
             }
-            EditDialog QComboBox {
-                color: black;
+            EditDialog QComboBox { color: black;
                 background-color: white;
                 border: 1px solid #CCCCCC;
                 padding: 4px;
@@ -383,7 +382,7 @@ class EditDialog(QDialog):
             else:
                 line_edit = QLineEdit()
                 line_edit.setText(row_data.get(col_idx, ""))
-                line_edit.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+                line_edit.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
                 form_layout.addRow(label, line_edit)
                 self.fields[col_idx] = line_edit
                 self.field_widgets[col_idx] = {'widget': line_edit, 'label': label}
@@ -403,11 +402,11 @@ class EditDialog(QDialog):
     def _set_error(self, col_idx):
         info = self.field_widgets.get(col_idx)
         if info:
-            info['widget'].setStyleSheet("color: black; border: 2px solid red; padding: 4px;")
+            info['widget'].setStyleSheet("color: inherit; border: 2px solid red; padding: 4px;")
 
     def _clear_errors(self):
         for info in self.field_widgets.values():
-            info['widget'].setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+            info['widget'].setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
 
     def validate_and_save(self):
         self._clear_errors()

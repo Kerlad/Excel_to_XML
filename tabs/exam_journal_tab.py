@@ -98,7 +98,7 @@ class ExamJournalTab(QWidget):
                 border-radius: 8px;
                 margin-top: 8px;
                 padding: 10px 15px;
-                background-color: white;
+                background-color: transparent;
                 font-weight: bold;
                 color: #4169E1;
             }
@@ -117,10 +117,10 @@ class ExamJournalTab(QWidget):
 
         # Поиск по ФИО/СНИЛС
         search_label = QLabel("Поиск:")
-        search_label.setStyleSheet("color: black; font-weight: normal;")
+        search_label.setStyleSheet("color: inherit; font-weight: normal;")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Фамилия, Имя или СНИЛС")
-        self.search_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.search_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.search_input.textChanged.connect(self._apply_filters)
         row1.addWidget(search_label)
         row1.addWidget(self.search_input)
@@ -129,10 +129,10 @@ class ExamJournalTab(QWidget):
 
         # Фильтр по SetId
         setid_label = QLabel("SetId:")
-        setid_label.setStyleSheet("color: black; font-weight: normal;")
+        setid_label.setStyleSheet("color: inherit; font-weight: normal;")
         self.setid_combo = QComboBox()
         self.setid_combo.setMinimumWidth(250)
-        self.setid_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.setid_combo.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.setid_combo.addItem("Все")
         self.setid_combo.currentTextChanged.connect(self._apply_filters)
         row1.addWidget(setid_label)
@@ -142,10 +142,10 @@ class ExamJournalTab(QWidget):
 
         # Фильтр по номеру протокола
         protocol_label = QLabel("Протокол:")
-        protocol_label.setStyleSheet("color: black; font-weight: normal;")
+        protocol_label.setStyleSheet("color: inherit; font-weight: normal;")
         self.protocol_combo = QComboBox()
         self.protocol_combo.setMinimumWidth(150)
-        self.protocol_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.protocol_combo.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.protocol_combo.addItem("Все")
         self.protocol_combo.currentTextChanged.connect(self._apply_filters)
         row1.addWidget(protocol_label)
@@ -158,10 +158,10 @@ class ExamJournalTab(QWidget):
 
         # Фильтр по статусу
         status_label = QLabel("Статус:")
-        status_label.setStyleSheet("color: black; font-weight: normal;")
+        status_label.setStyleSheet("color: inherit; font-weight: normal;")
         self.status_combo = QComboBox()
         self.status_combo.addItems(["Все", "ожидает", "получен"])
-        self.status_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.status_combo.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.status_combo.currentTextChanged.connect(self._apply_filters)
         row2.addWidget(status_label)
         row2.addWidget(self.status_combo)
@@ -170,7 +170,7 @@ class ExamJournalTab(QWidget):
 
         # Фильтр по дате (с)
         date_from_label = QLabel("Дата с:")
-        date_from_label.setStyleSheet("color: black; font-weight: normal;")
+        date_from_label.setStyleSheet("color: inherit; font-weight: normal;")
         self.date_from = QDateEdit()
         self.date_from.setCalendarPopup(True)
         self.date_from.setDisplayFormat("dd.MM.yyyy")
@@ -178,7 +178,7 @@ class ExamJournalTab(QWidget):
         self.date_from.setDate(QDate(2023, 1, 1))
         self.date_from.blockSignals(False)
         self.date_from.setStyleSheet("""
-            color: black; 
+            color: inherit; 
             border: 1px solid #CCCCCC; 
             padding: 4px;
             background-color: white;
@@ -191,7 +191,7 @@ class ExamJournalTab(QWidget):
 
         # Фильтр по дате (по)
         date_to_label = QLabel("Дата по:")
-        date_to_label.setStyleSheet("color: black; font-weight: normal;")
+        date_to_label.setStyleSheet("color: inherit; font-weight: normal;")
         self.date_to = QDateEdit()
         self.date_to.setCalendarPopup(True)
         self.date_to.setDisplayFormat("dd.MM.yyyy")
@@ -199,7 +199,7 @@ class ExamJournalTab(QWidget):
         self.date_to.setDate(self.date_to.maximumDate())
         self.date_to.blockSignals(False)
         self.date_to.setStyleSheet("""
-            color: black; 
+            color: inherit; 
             border: 1px solid #CCCCCC; 
             padding: 4px;
             background-color: white;
@@ -979,7 +979,8 @@ class ExamJournalTab(QWidget):
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "Protokol_proverki_znanii_OT.docx"
         )
-        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+        from utils.app_paths import get_app_data_dir
+        data_dir = get_app_data_dir()
 
         if protocol_number == "Все":
             # Генерируем все протоколы - каждый в отдельный файл
@@ -1088,7 +1089,7 @@ class ExamJournalTab(QWidget):
         menu.setStyleSheet("""
             QMenu {
                 background-color: white;
-                color: black;
+                color: inherit;
             }
             QMenu::item:selected {
                 background-color: #4169E1;

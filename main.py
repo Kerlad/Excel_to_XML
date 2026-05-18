@@ -1,6 +1,7 @@
 import sys
 import os
 import logging
+import traceback
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QFont, QPalette, QColor
@@ -16,6 +17,7 @@ from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from utils.logger import setup_logging
 from utils.tahoe_style import get_global_stylesheet, apply_mica, load_theme, save_theme
+from utils.app_paths import get_app_data_dir, get_app_log_dir, get_base_dir
 from db import DatabaseManager, create_schema
 
 
@@ -44,7 +46,7 @@ class MainWindow(QMainWindow):
         self.data_transfer_tab = DataTransferTab()
 
         # Журнал проверки знаний
-        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        data_dir = get_app_data_dir()
         self.journal_manager = JournalManager(data_dir)
         self.exam_journal_tab = ExamJournalTab(self.journal_manager, data_dir)
 
@@ -256,6 +258,61 @@ class MainWindow(QMainWindow):
         </ul>
         <p><b>Обязательные поля:</b> номер протокола, название организации,
         номер приказа, ФИО председателя.</p>
+
+        <h3 style="color: #4169E1;">Протокол одиночного работника</h3>
+        <p>На вкладке «Протокол одиночного» можно быстро сформировать протокол
+        проверки знаний для одного работника без использования данных журнала.
+        Заполните ФИО, должность, программу, дату, результат. Данные комиссии
+        подгружаются из сохранённых на вкладке «Протокол».</p>
+
+        <h3 style="color: #4169E1;">Хранение данных</h3>
+        <p>Все данные приложения хранятся в папке <code>data/</code> рядом с программой:
+        SQLite-база <code>app_data.db</code> (ФИО, СНИЛС, программы, журнал),
+        зашифрованные JSON для API-ключа, настроек УЦ, данных комиссии.
+        Файл базы данных шифруется на диске (AES/Fernet) и расшифровывается
+        при запуске. Логи — в папке <code>log/</code>.</p>
+
+        <h3 style="color: #4169E1;">Сводка по сотрудникам</h3>
+        <p>На вкладке «Сводка по сотрудникам» ведётся учёт и анализ статуса обучения
+        всех сотрудников по программам охраны труда.</p>
+        <p><b>Источники данных:</b> ручной ввод, импорт из XLSX, результаты запросов
+        из реестра Минтруда по СНИЛС.</p>
+        <p><b>Ручной ввод:</b> заполните ФИО, СНИЛС, должность и номера программ
+        (через запятую). Кнопка «Справка» покажет перечень программ — двойной клик
+        добавляет номер. Нажмите «Добавить запись». Кнопка «Отмена» очищает форму.</p>
+        <p><b>Таблица:</b> отображает выбранные программы (по умолчанию №1, 2, 3, 4, 18, 23).
+        Для каждой программы — четыре подколонки: Потребность, Дата обучения, Протокол,
+        Рег. номер. Ячейки подсвечиваются цветом: зелёный — обучен, красный — не обучен,
+        жёлтый — просрочено. Двойной клик по колонке «Потребность» переключает
+        значение Да/Нет.</p>
+        <p><b>Выбор программ-колонок:</b> нажмите кнопку «Выбрать программы»
+        (фиолетовая) на панели инструментов. Отметьте нужные программы (макс. 6)
+        и нажмите «Применить». Выбор сохраняется между сессиями.</p>
+        <p><b>Фильтры:</b> фильтрация по программе (выпадающий список),
+        статусу (все/обучен/не обучен/просрочено), должности (текстовый поиск),
+        галочка «Только проблемные» показывает не обученных и просроченных.</p>
+        <p><b>Статистика:</b> в верхней панели отображаются карточки: всего сотрудников,
+        всего записей, обучено, не обучено, просрочено, дата последнего обновления
+        из реестра.</p>
+        <p><b>Запрос из реестра Минтруда:</b> кнопка «Запросить из реестра» отправляет
+        запрос по СНИЛС всех сотрудников (с паузой 0.5 сек между запросами).
+        Полученные данные (даты, протоколы, рег. номера) обновляются в таблице.
+        Контекстное меню → «Запросить из реестра» — для одного сотрудника.</p>
+        <p><b>Редактирование:</b> контекстное меню → «Редактировать» — диалог
+        изменения ФИО, СНИЛС, должности, списка программ. Двойной клик по колонке
+        «Потребность» переключает Да/Нет.</p>
+        <p><b>Импорт/экспорт XLSX:</b> кнопка «Импорт .xlsx» загружает данные
+        из Excel-файла (обязателен столбец СНИЛС). «Экспорт .xlsx» выгружает
+        текущее отображение с учётом фильтров. «Экспорт .xlsx (все)» — все данные
+        без фильтров. Пустая таблица → шаблон для заполнения.</p>
+        <p><b>Удаление:</b> контекстное меню → «Удалить» — удаляет выбранного
+        сотрудника. Кнопка «Удалить данные» (красная) — удаляет ВСЕ записи
+        из сводки с подтверждением.</p>
+        <p><b>Планы обучения:</b> кнопки «Сформировать план на текущий год»
+        и «Сформировать план на следующий год» открывают диалог с настройками.
+        Выберите, кого включить (не обученных, просроченных, истекающих,
+        не сдавших), и нажмите «Сформировать». Откроется окно плана с карточками
+        статистики, таблицей и кнопками «Экспорт XLSX», «Печать».</p>
         """)
 
         layout.addWidget(help_text)
@@ -325,24 +382,51 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
 
+def global_exception_handler(exc_type, exc_value, exc_tb):
+    logger = logging.getLogger(__name__)
+    logger.critical("Unhandled exception",
+                    exc_info=(exc_type, exc_value, exc_tb))
+    try:
+        from PySide6.QtWidgets import QMessageBox
+        msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        error_box = QMessageBox()
+        error_box.setIcon(QMessageBox.Icon.Critical)
+        error_box.setWindowTitle("Критическая ошибка")
+        error_box.setText("Произошла неожиданная ошибка. Приложение будет закрыто.")
+        error_box.setDetailedText(msg)
+        error_box.exec()
+    except Exception:
+        pass
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+
+sys.excepthook = global_exception_handler
+
+
 if __name__ == "__main__":
     # Настройка логирования
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    log_dir = os.path.join(base_dir, "log")
+    log_dir = get_app_log_dir()
     setup_logging(log_dir)
     logging.getLogger(__name__).info("=== Приложение запущено ===")
 
-    # Инициализация БД (с расшифровкой и бэкапом)
-    data_dir = os.path.join(base_dir, "data")
-    os.makedirs(data_dir, exist_ok=True)
+    # Инициализация БД (в %APPDATA%/Excel_to_XML/)
+    data_dir = get_app_data_dir()
     db_path = os.path.join(data_dir, "app_data.db")
     db = DatabaseManager.get_instance(db_path)
     db.initialize()
     create_schema()
-    logging.getLogger(__name__).info(f"БД инициализирована: {db_path}")
+    # Проверка целостности БД
+    try:
+        integrity = db.fetchone("PRAGMA integrity_check")
+        if integrity and integrity[0] == "ok":
+            logging.getLogger(__name__).info(f"БД инициализирована: {db_path}")
+        else:
+            logging.getLogger(__name__).warning(f"Integrity check: {integrity}")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Could not check DB integrity: {e}")
 
     # Загрузка темы
-    theme = load_theme(base_dir)
+    theme = load_theme(data_dir)
 
     app = QApplication(sys.argv)
 

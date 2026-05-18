@@ -10,6 +10,7 @@ build/ExcelXML/*
 build/ExcelXML/
 dist/
 dist/*
+dist
 *.egg-info/
 .pytest_cache/
 .coverage
@@ -28,7 +29,11 @@ log/
 # ТЗ и документация
 Техническое_задание*.pdf
 Техническое_задание_2.md
+Техническое_задание_2.pdf
 Doclad.MD
 ReadmeV2.md
 TZ#2.md
 curl.txt
+test_journal.xlsx
+test_workers_valid.xlsx
+test_workers_with_errors.xlsx

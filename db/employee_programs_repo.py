@@ -32,6 +32,12 @@ class EmployeeProgramsRepo:
         program_id = program_data.get('program_id', 0)
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+        if 'status' not in program_data or program_data.get('status') is None:
+            program_data['status'] = EmployeeProgramsRepo._calc_status(
+                program_data.get('exam_date'),
+                program_data.get('result')
+            )
+
         existing = EmployeeProgramsRepo.get(employee_id, program_id)
         with db.transaction() as conn:
             if existing:
@@ -46,7 +52,7 @@ class EmployeeProgramsRepo:
                     program_data.get('protocol', existing['protocol']),
                     program_data.get('base_no', existing['base_no']),
                     program_data.get('result', existing['result']),
-                    program_data.get('status', existing['status']),
+                    program_data.get('status', existing.get('status')),
                     now,
                     employee_id, program_id,
                 ))
@@ -80,11 +86,12 @@ class EmployeeProgramsRepo:
                     WHERE employee_id=? AND program_id=?
                 """, (value, now, employee_id, program_id))
             else:
+                status = 'not_trained' if value == 1 else None
                 conn.execute(f"""
                     INSERT INTO {EmployeeProgramsRepo.TABLE}
-                    (employee_id, program_id, need_training, updated_at)
-                    VALUES (?, ?, ?, ?)
-                """, (employee_id, program_id, value, now))
+                    (employee_id, program_id, need_training, status, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (employee_id, program_id, value, status, now))
 
     @staticmethod
     def update_from_api(employee_id: int, program_id: int,

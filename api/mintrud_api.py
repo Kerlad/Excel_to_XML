@@ -32,7 +32,7 @@ API_URL = "https://edu.rosmintrud.ru/api/set/push"
 GET_URL = "https://edu.rosmintrud.ru/api/GetEducatedPersonXML"
 
 # Default backend order for auto selection
-DEFAULT_BACKEND_ORDER = ["requests", "httpx", "urllib", "pycurl", "wininet"]
+DEFAULT_BACKEND_ORDER = ["requests", "wininet"]
 
 # SSL/TLS error markers for automatic fallback detection
 SSL_ERROR_MARKERS = [
@@ -116,7 +116,7 @@ class MintrudClient:
         Initialize client.
         
         Args:
-            backend: Transport backend ("auto", "requests", "httpx", "urllib", "pycurl", "wininet")
+            backend: Transport backend ("auto", "requests", "wininet")
             proxy_settings: Proxy configuration dict
         """
         self.proxy_settings = proxy_settings or {}
@@ -212,8 +212,11 @@ class MintrudClient:
         return proxies if proxies else None
     
     def _get_verify(self) -> bool:
-        """Get SSL verification setting."""
-        return bool(self.proxy_settings.get("tls_verify", False))
+        """Get SSL verification setting. Default is True (secure)."""
+        verify = self.proxy_settings.get("tls_verify", True)
+        if not verify:
+            logger.warning("TLS verification is DISABLED - connection is insecure")
+        return bool(verify)
     
     # ============ API Methods ============
     

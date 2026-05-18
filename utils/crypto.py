@@ -10,10 +10,7 @@ logger = logging.getLogger(__name__)
 try:
     from cryptography.fernet import Fernet, InvalidToken
 except ImportError:
-    raise ImportError(
-        "Библиотека 'cryptography' не установлена. "
-        "Установите её: pip install cryptography"
-    )
+    raise ImportError("pip install cryptography")
 
 
 def _get_derive_key():
@@ -76,4 +73,4 @@ def backup_file(file_path: str, max_backups: int = 5):
             shutil.move(src, dst)
     if os.path.exists(file_path):
         shutil.copy2(file_path, backup_pattern.format(1))
-        logger.info(f"Backup created: {backup_pattern.format(1)}")
+        logger.info(f"Backup: {backup_pattern.format(1)}")

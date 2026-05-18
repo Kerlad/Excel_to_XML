@@ -29,8 +29,9 @@ class DataTransferTab(QWidget):
         self.setStyleSheet("background-color: transparent;")
 
         # Пути
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.data_dir = os.path.join(self.base_dir, "data")
+        from utils.app_paths import get_app_data_dir, get_base_dir
+        self.base_dir = get_base_dir()
+        self.data_dir = get_app_data_dir()
         self.schema_dir = os.path.join(self.base_dir, "schema")
         os.makedirs(self.data_dir, exist_ok=True)
 
@@ -91,7 +92,7 @@ class DataTransferTab(QWidget):
                 border-radius: 10px;
                 margin-top: 10px;
                 padding: 15px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #4169E1;
@@ -129,11 +130,11 @@ class DataTransferTab(QWidget):
 
         row = QHBoxLayout()
         self.api_key_label = QLabel("API ключ:")
-        self.api_key_label.setStyleSheet("color: black;")
+        self.api_key_label.setStyleSheet("color: inherit;")
         self.api_key_input = QLineEdit()
         self.api_key_input.setMaxLength(32)
         self.api_key_input.setFixedWidth(350)
-        self.api_key_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.api_key_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.api_key_input.setPlaceholderText("32 символа")
         
         # Кнопка показать/скрыть API (зажать = показать)
@@ -194,7 +195,7 @@ class DataTransferTab(QWidget):
         # Стиль для радиокнопок — видимый кружок
         rb_style = """
             QRadioButton {
-                color: black;
+                color: inherit;
                 spacing: 6px;
                 font-size: 13px;
             }
@@ -251,10 +252,10 @@ class DataTransferTab(QWidget):
         # Адрес прокси
         row1 = QHBoxLayout()
         self.proxy_url_label = QLabel("Адрес прокси:")
-        self.proxy_url_label.setStyleSheet("color: black;")
+        self.proxy_url_label.setStyleSheet("color: inherit;")
         self.proxy_url_input = QLineEdit()
         self.proxy_url_input.setFixedWidth(400)
-        self.proxy_url_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_url_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.proxy_url_input.setPlaceholderText("http://proxy.example.com:3128")
         row1.addWidget(self.proxy_url_label)
         row1.addWidget(self.proxy_url_input)
@@ -264,10 +265,10 @@ class DataTransferTab(QWidget):
         # Логин и пароль
         row2 = QHBoxLayout()
         self.proxy_user_label = QLabel("Логин:")
-        self.proxy_user_label.setStyleSheet("color: black;")
+        self.proxy_user_label.setStyleSheet("color: inherit;")
         self.proxy_user_input = QLineEdit()
         self.proxy_user_input.setFixedWidth(150)
-        self.proxy_user_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_user_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.proxy_user_input.setPlaceholderText("Если прокси требует авторизацию")
         row2.addWidget(self.proxy_user_label)
         row2.addWidget(self.proxy_user_input)
@@ -275,10 +276,10 @@ class DataTransferTab(QWidget):
         row2.addSpacing(20)
 
         self.proxy_pass_label = QLabel("Пароль:")
-        self.proxy_pass_label.setStyleSheet("color: black;")
+        self.proxy_pass_label.setStyleSheet("color: inherit;")
         self.proxy_pass_input = QLineEdit()
         self.proxy_pass_input.setFixedWidth(150)
-        self.proxy_pass_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_pass_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.proxy_pass_input.setPlaceholderText("Если прокси требует авторизацию")
         self.proxy_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
         row2.addWidget(self.proxy_pass_label)
@@ -303,11 +304,11 @@ class DataTransferTab(QWidget):
         
         # Переключатель TLS с стилями
         tls_row = QHBoxLayout()
-        self.tls_checkbox = QCheckBox("TLS верификация (включить для прода)")
-        self.tls_checkbox.setToolTip("Включите для безопасного соединения. Отключите для работы через корпоративный прокси с SSL-инспекцией")
+        self.tls_checkbox = QCheckBox("TLS верификация (рекомендуется)")
+        self.tls_checkbox.setToolTip("Проверка SSL-сертификата. Отключайте только при работе через корпоративный прокси с SSL-инспекцией")
         self.tls_checkbox.setStyleSheet("""
             QCheckBox {
-                color: black;
+                color: inherit;
             }
             QCheckBox::indicator {
                 border: 1px solid #888888;
@@ -321,7 +322,7 @@ class DataTransferTab(QWidget):
                 border: 1px solid #4169E1;
             }
             QToolTip {
-                color: black;
+                color: inherit;
                 background-color: white;
                 border: 1px solid #CCCCCC;
                 padding: 4px;
@@ -335,7 +336,7 @@ class DataTransferTab(QWidget):
         # Transport backend selection
         backend_row = QHBoxLayout()
         backend_label = QLabel("Transport backend:")
-        backend_label.setStyleSheet("color: black;")
+        backend_label.setStyleSheet("color: inherit;")
         backend_row.addWidget(backend_label)
 
         from api.mintrud_api import get_available_backends
@@ -346,7 +347,7 @@ class DataTransferTab(QWidget):
         for be in available_backends:
             self.backend_combo.addItem(be.capitalize(), be)
         self.backend_combo.setFixedWidth(150)
-        self.backend_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.backend_combo.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         backend_row.addWidget(self.backend_combo)
         backend_row.addStretch()
         layout.addLayout(backend_row)
@@ -409,10 +410,10 @@ class DataTransferTab(QWidget):
         # Строка 1: Выбор файла
         file_row = QHBoxLayout()
         self.xml_file_label = QLabel("XML файл:")
-        self.xml_file_label.setStyleSheet("color: black;")
+        self.xml_file_label.setStyleSheet("color: inherit;")
         self.xml_file_input = QLineEdit()
         self.xml_file_input.setReadOnly(True)
-        self.xml_file_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.xml_file_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.xml_file_input.setPlaceholderText("Файл не выбран")
 
         select_xml_btn = QPushButton("Выбрать")
@@ -433,10 +434,10 @@ class DataTransferTab(QWidget):
         # Строка 3: Последний SetId
         setid_row = QHBoxLayout()
         self.last_setid_label = QLabel("Последний SetId:")
-        self.last_setid_label.setStyleSheet("color: black;")
+        self.last_setid_label.setStyleSheet("color: inherit;")
         self.last_setid_display = QLineEdit()
         self.last_setid_display.setReadOnly(True)
-        self.last_setid_display.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.last_setid_display.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         setid_row.addWidget(self.last_setid_label)
         setid_row.addWidget(self.last_setid_display)
         layout.addLayout(setid_row)
@@ -453,9 +454,9 @@ class DataTransferTab(QWidget):
 
         row = QHBoxLayout()
         self.query_setid_label = QLabel("Введите номер набора (SetId):")
-        self.query_setid_label.setStyleSheet("color: black;")
+        self.query_setid_label.setStyleSheet("color: inherit;")
         self.query_setid_input = QLineEdit()
-        self.query_setid_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.query_setid_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.query_setid_input.setPlaceholderText("SetId из ответа сервера")
 
         query_btn = QPushButton("Запросить номера")
@@ -479,9 +480,9 @@ class DataTransferTab(QWidget):
 
         row = QHBoxLayout()
         self.query_snils_label = QLabel("Введите СНИЛС:")
-        self.query_snils_label.setStyleSheet("color: black;")
+        self.query_snils_label.setStyleSheet("color: inherit;")
         self.query_snils_input = QLineEdit()
-        self.query_snils_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.query_snils_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.query_snils_input.setPlaceholderText("123-456-789 00 или 12345678900")
 
         query_btn = QPushButton("Отправить запрос")
@@ -507,9 +508,9 @@ class DataTransferTab(QWidget):
         # Строка 1: OrgId
         row1 = QHBoxLayout()
         self.query_orgid_label = QLabel("ID организации:")
-        self.query_orgid_label.setStyleSheet("color: black;")
+        self.query_orgid_label.setStyleSheet("color: inherit;")
         self.query_orgid_input = QLineEdit()
-        self.query_orgid_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.query_orgid_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.query_orgid_input.setPlaceholderText("00000000-0000-0000-0000-000000000001")
 
         row1.addWidget(self.query_orgid_label)
@@ -520,9 +521,9 @@ class DataTransferTab(QWidget):
         # Строка 2: Лимит записей
         row2 = QHBoxLayout()
         self.query_limit_label = QLabel("Лимит записей:")
-        self.query_limit_label.setStyleSheet("color: black;")
+        self.query_limit_label.setStyleSheet("color: inherit;")
         self.query_limit_input = QLineEdit()
-        self.query_limit_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.query_limit_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.query_limit_input.setPlaceholderText("0 = без ограничения")
         self.query_limit_input.setFixedWidth(150)
         self.query_limit_input.setText("0")

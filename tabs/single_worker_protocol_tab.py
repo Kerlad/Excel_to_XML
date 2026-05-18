@@ -53,7 +53,7 @@ class SingleWorkerProtocolTab(QWidget):
                 border-radius: 10px;
                 margin-top: 10px;
                 padding: 15px;
-                background-color: white;
+                background-color: transparent;
             }
             QGroupBox::title {
                 color: #4169E1;
@@ -99,7 +99,7 @@ class SingleWorkerProtocolTab(QWidget):
         row1.addWidget(label1)
         self.last_name_input = QLineEdit()
         self.last_name_input.setPlaceholderText("Иванов")
-        self.last_name_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px;")
+        self.last_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px;")
         row1.addWidget(self.last_name_input)
         row1.addStretch()
         layout.addLayout(row1)
@@ -112,7 +112,7 @@ class SingleWorkerProtocolTab(QWidget):
         row2.addWidget(label2)
         self.first_name_input = QLineEdit()
         self.first_name_input.setPlaceholderText("Иван")
-        self.first_name_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px;")
+        self.first_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px;")
         row2.addWidget(self.first_name_input)
         row2.addStretch()
         layout.addLayout(row2)
@@ -125,7 +125,7 @@ class SingleWorkerProtocolTab(QWidget):
         row3.addWidget(label3)
         self.middle_name_input = QLineEdit()
         self.middle_name_input.setPlaceholderText("Иванович")
-        self.middle_name_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px;")
+        self.middle_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px;")
         row3.addWidget(self.middle_name_input)
         row3.addStretch()
         layout.addLayout(row3)
@@ -138,7 +138,7 @@ class SingleWorkerProtocolTab(QWidget):
         row4.addWidget(label4)
         self.position_input = QLineEdit()
         self.position_input.setPlaceholderText("Слесарь")
-        self.position_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px;")
+        self.position_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px;")
         row4.addWidget(self.position_input)
         row4.addStretch()
         layout.addLayout(row4)
@@ -151,7 +151,7 @@ class SingleWorkerProtocolTab(QWidget):
         row5.addWidget(label5)
         self.programs_input = QLineEdit()
         self.programs_input.setPlaceholderText("1, 3, 18 (через запятую)")
-        self.programs_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px;")
+        self.programs_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px;")
         self.programs_input.setMinimumWidth(200)
         row5.addWidget(self.programs_input)
 
@@ -170,7 +170,7 @@ class SingleWorkerProtocolTab(QWidget):
         row6.addWidget(label6)
         self.exam_date_input = QLineEdit()
         self.exam_date_input.setPlaceholderText("21.08.2025")
-        self.exam_date_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px;")
+        self.exam_date_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px;")
         row6.addWidget(self.exam_date_input)
         row6.addStretch()
         layout.addLayout(row6)
@@ -183,7 +183,7 @@ class SingleWorkerProtocolTab(QWidget):
         row7.addWidget(label7)
         self.protocol_input = QLineEdit()
         self.protocol_input.setPlaceholderText("1")
-        self.protocol_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px;")
+        self.protocol_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px;")
         row7.addWidget(self.protocol_input)
         row7.addStretch()
         layout.addLayout(row7)
@@ -196,7 +196,7 @@ class SingleWorkerProtocolTab(QWidget):
         row8.addWidget(label8)
         self.base_no_input = QLineEdit()
         self.base_no_input.setPlaceholderText("12345 (если получен)")
-        self.base_no_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 5px;")
+        self.base_no_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px;")
         row8.addWidget(self.base_no_input)
         row8.addStretch()
         layout.addLayout(row8)

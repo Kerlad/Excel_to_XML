@@ -54,15 +54,30 @@ class DatabaseManager:
             logger.error(f"Failed to encrypt DB on shutdown: {e}")
 
     def _get_connection(self) -> sqlite3.Connection:
-        if not hasattr(self._local, 'conn') or self._local.conn is None:
+        conn = getattr(self._local, 'conn', None)
+        if conn is None:
             if not self.db_path:
                 raise RuntimeError("Database path not set")
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-            self._local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            self._local.conn.row_factory = sqlite3.Row
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-            self._local.conn.execute("PRAGMA foreign_keys=ON")
-        return self._local.conn
+            conn = sqlite3.connect(
+                self.db_path, check_same_thread=False, timeout=5.0
+            )
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            self._local.conn = conn
+        else:
+            try:
+                conn.execute("SELECT 1")
+            except sqlite3.ProgrammingError:
+                conn = sqlite3.connect(
+                    self.db_path, check_same_thread=False, timeout=5.0
+                )
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA foreign_keys=ON")
+                self._local.conn = conn
+        return conn
 
     @contextmanager
     def get_conn(self):
@@ -72,8 +87,6 @@ class DatabaseManager:
         except Exception:
             conn.rollback()
             raise
-        finally:
-            pass
 
     @contextmanager
     def transaction(self):
@@ -95,15 +108,20 @@ class DatabaseManager:
 
     def fetchone(self, sql: str, params: tuple = ()):
         with self.get_conn() as conn:
-            return conn.execute(sql, params).fetchone()
+            row = conn.execute(sql, params).fetchone()
+            return dict(row) if row else None
 
     def fetchall(self, sql: str, params: tuple = ()) -> list:
         with self.get_conn() as conn:
-            return conn.execute(sql, params).fetchall()
+            return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
     def close(self):
-        if hasattr(self._local, 'conn') and self._local.conn:
-            self._local.conn.close()
+        conn = getattr(self._local, 'conn', None)
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
             self._local.conn = None
 
     def close_all(self):

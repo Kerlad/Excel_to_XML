@@ -17,25 +17,10 @@ class BaseBackend(ABC):
         files: Dict[str, Any],
         headers: Optional[Dict[str, str]] = None,
         timeout: int = 60,
-        verify: bool = False,
+        verify: bool = True,
         proxies: Optional[Dict[str, str]] = None,
         **kwargs
     ) -> tuple[bool, int, bytes, str]:
-        """
-        Send HTTP POST request with multipart/form-data.
-        
-        Args:
-            url: Target URL
-            files: Files dict for multipart body
-            headers: Additional HTTP headers
-            timeout: Request timeout in seconds
-            verify: SSL verification flag
-            proxies: Proxy configuration dict
-            **kwargs: Backend-specific options
-        
-        Returns:
-            Tuple of (success, status_code, response_bytes, error_message)
-        """
         raise NotImplementedError
     
     @abstractmethod
@@ -45,7 +30,7 @@ class BaseBackend(ABC):
         headers: Optional[Dict[str, str]] = None,
         params: Optional[Dict[str, str]] = None,
         timeout: int = 60,
-        verify: bool = False,
+        verify: bool = True,
         proxies: Optional[Dict[str, str]] = None,
         **kwargs
     ) -> tuple[bool, int, bytes, str]:
