@@ -3,6 +3,8 @@
 Отображение истории отправок, поиск, фильтрация, экспорт, удаление
 """
 import os
+import json
+import logging
 from datetime import datetime, date
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
@@ -12,6 +14,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSortFilterProxyModel, QDate
 from PySide6.QtGui import QColor, QFont
 from journal.journal_manager import JournalRecord
+
+logger = logging.getLogger(__name__)
 
 
 class ExamJournalTab(QWidget):
@@ -60,8 +64,8 @@ class ExamJournalTab(QWidget):
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
                     return settings.get('last_save_path', '')
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not load last_save_path: {e}")
         return ''
     
     def _save_last_save_path(self, path):
@@ -75,14 +79,14 @@ class ExamJournalTab(QWidget):
             try:
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not load settings: {e}")
         settings['last_save_path'] = path  # Полный путь
         try:
             with open(settings_file, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, ensure_ascii=False, indent=2)
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Could not save settings: {e}")
 
     def _create_search_panel(self) -> QGroupBox:
         """Панель поиска и фильтрации."""
@@ -770,7 +774,6 @@ class ExamJournalTab(QWidget):
                             result = "Удовлетворительно"
 
                     # Создаем запись
-                    from journal.journal_manager import JournalRecord
                     import uuid
                     record = JournalRecord(
                         uuid=str(uuid.uuid4()),
@@ -1007,9 +1010,9 @@ class ExamJournalTab(QWidget):
                                     dt = datetime.strptime(date_part, fmt)
                                     exam_date_str = "_" + dt.strftime("%d-%m-%Y")
                                     break
-                                except:
+                                except ValueError:
                                     continue
-                        except:
+                        except ValueError:
                             pass
                         break
                 

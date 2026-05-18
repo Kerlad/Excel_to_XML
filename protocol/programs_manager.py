@@ -85,11 +85,18 @@ class ProgramsManager:
         """Получение всех программ."""
         return self.programs.copy()
 
-    def update_program(self, program_id: str, doc: str = None, hours: str = None):
-        """Обновление номера документа и/или часов программы (без сохранения)."""
+    def update_program(self, program_id: str, doc: str = None, hours: str = None, autosave: bool = True):
+        """
+        Обновление номера документа и/или часов программы.
+        По умолчанию автоматически сохраняет данные.
+        Для пакетного обновления используйте autosave=False
+        и вызывайте save() вручную после всех изменений.
+        """
         if program_id not in self.programs:
             return
         if doc is not None:
             self.programs[program_id]["doc"] = doc
         if hours is not None:
             self.programs[program_id]["hours"] = hours
+        if autosave:
+            self.save()

@@ -1,108 +1,87 @@
 """
-Модуль работы с API Минтруда
-Отправка наборов записей и получение регистрационных номеров
+Unified Mintrud API client.
+Main entry point for all API operations.
 """
-# ============================================================================
-# TLS VERIFICATION SETTINGS
-# ============================================================================
-# Импортируем из proxy_manager - значение переопределяется чекбоксом в интерфейсе
-from utils.proxy_manager import ENABLE_TLS_VERIFY
-# ============================================================================
-
 import os
 import io
-import time
-import base64
 import json
+import time
 import zipfile
 import logging
 import hashlib
+import base64
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from typing import Dict, Any, Optional
 
-import requests
-import urllib3
+# Import payload builder
+from .payload_builder import build_request_xml, build_olot_archive, build_multipart_payload, API_URL, GET_URL, HEADERS
 
-# Suppress InsecureRequestWarning only when TLS verification is disabled
-if not ENABLE_TLS_VERIFY:
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# Import response parser
+from .response_parser import parse_send_response, parse_setid_response, parse_snils_response
+
+# Import backends
+from .backends import BackendRegistry
+
+# Import proxy manager
+import utils.proxy_manager as proxy_manager
 
 logger = logging.getLogger(__name__)
 
-error_log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "log")
-os.makedirs(error_log_path, exist_ok=True)
-error_log_file = os.path.join(error_log_path, "error_response.txt")
-
+# API endpoints
 API_URL = "https://edu.rosmintrud.ru/api/set/push"
 GET_URL = "https://edu.rosmintrud.ru/api/GetEducatedPersonXML"
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-}
+# Default backend order for auto selection
+DEFAULT_BACKEND_ORDER = ["requests", "httpx", "urllib", "pycurl", "wininet"]
 
-# Импортируем функцию прокси из utils.proxy_manager
-from utils.proxy_manager import (
-    build_proxies_for_requests,
-    build_proxy_headers,
-    create_proxy_session,
-    diagnose_407_error,
-    try_fallback_connection,
-    NTLM_AVAILABLE,
-    KERBEROS_AVAILABLE
-)
-
-# Импортируем network модуль для Windows Integrated Authentication
-from network.client import (
-    create_negotiate_session,
-    get_network_diagnostics,
-    test_external_access,
-    NetworkStatus,
-    get_windows_proxy
-)
+# SSL/TLS error markers for automatic fallback detection
+SSL_ERROR_MARKERS = [
+    "ssl", "tls", "handshake", "schannel", "sec_e",
+    "certificate verify failed", "certificate_verify_failed",
+    "ssl_error", "sslerror", "ssl alert",
+    "illegal_message", "unable to get local issuer certificate",
+]
 
 
-# ============ Сохранение API-ключа ============
+def _is_ssl_error(error_message: str) -> bool:
+    """Check if error indicates SSL/TLS problem (for fallback logic)."""
+    if not error_message:
+        return False
+    msg = error_message.lower()
+    return any(marker in msg for marker in SSL_ERROR_MARKERS)
 
-try:
-    from cryptography.fernet import Fernet
-except ImportError:
-    raise ImportError(
-        "Библиотека 'cryptography' не установлена. "
-        "Установите её: pip install cryptography"
-    )
 
+# ============ API Key Management ============
 
 def _get_derive_key():
-    """Получение ключа шифрования на основе имени пользователя системы."""
+    """Get encryption key based on system username."""
     username = os.environ.get('USERNAME', 'default_user').encode('utf-8')
     return hashlib.sha256(username).digest()
 
 
 def _fernet():
-    """Создание объекта Fernet с ключом из имени пользователя."""
+    """Create Fernet cipher with system-derived key."""
+    from cryptography.fernet import Fernet
     key = _get_derive_key()
     fernet_key = base64.urlsafe_b64encode(key)
     return Fernet(fernet_key)
 
 
-def save_api_key(api_key, data_dir):
-    """Сохранение API-ключа в зашифрованном виде (AES/Fernet)."""
+def save_api_key(api_key: str, data_dir: str) -> tuple[bool, str]:
+    """Save encrypted API key."""
     try:
-        encrypted = _fernet().encrypt(api_key.encode('utf-8'))
-
+        os.makedirs(data_dir, exist_ok=True)
         key_file = os.path.join(data_dir, "api_key.json")
+        encrypted = _fernet().encrypt(api_key.encode('utf-8')).decode('utf-8')
         with open(key_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "key": encrypted.decode('utf-8'),
-                "created": datetime.now().isoformat()
-            }, f, ensure_ascii=False, indent=2)
-        return True, "Ключ сохранён"
+            json.dump({"key": encrypted}, f)
+        return True, "API ключ сохранён"
     except Exception as e:
         return False, f"Ошибка сохранения: {e}"
 
 
-def load_api_key(data_dir):
-    """Загрузка API-ключа из файла."""
+def load_api_key(data_dir: str) -> Optional[str]:
+    """Load decrypted API key."""
     key_file = os.path.join(data_dir, "api_key.json")
     if not os.path.exists(key_file):
         return None
@@ -115,8 +94,8 @@ def load_api_key(data_dir):
         return None
 
 
-def validate_api_key(api_key):
-    """Проверка корректности API-ключа (32 символа)."""
+def validate_api_key(api_key: str) -> tuple[bool, str]:
+    """Validate API key format."""
     if not api_key:
         return False, "API ключ не введён"
     if len(api_key) != 32:
@@ -124,312 +103,305 @@ def validate_api_key(api_key):
     return True, ""
 
 
-# ============ Отправка XML на сервер ============
+# ============ Unified Transport Client ============
 
-def push_xml(api_key, xml_file_path, xsd_path=None, proxy_settings=None):
+class MintrudClient:
     """
-    Отправка XML файла на сервер Минтруда.
-
-    Алгоритм (BR-2):
-    1. Создаётся Request.xml с ApiKey и NeedSend=false
-    2. Файл данных упаковывается в .olot архив
-    3. Отправляются два файла: Request.xml и .olot через multipart/form-data
-
-    proxy_settings — dict с полями: enabled, url, username, password
-
-    Возвращает dict:
-        success: bool
-        set_id: str (при успехе)
-        message: str
-        error: str (при ошибке)
+    Unified client for Mintrud API operations.
+    Supports multiple transport backends with automatic fallback.
     """
-    # Валидация ключа
-    ok, err = validate_api_key(api_key)
-    if not ok:
-        return {"success": False, "error": err}
-
-    if not os.path.exists(xml_file_path):
-        return {"success": False, "error": "Файл XML не найден"}
-
-    proxies = build_proxies_for_requests(proxy_settings)
-    proxy_headers = build_proxy_headers(proxy_settings)
-
-    try:
-        # Читаем XML данных
-        with open(xml_file_path, 'rb') as f:
-            data_xml_content = f.read()
-
-        # Формируем Request.xml
-        request_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
-<Request>
-    <ApiKey>{api_key}</ApiKey>
-    <NeedSend>false</NeedSend>
-</Request>'''
-
-        # Создаём .olot архив (ZIP с Data.xml внутри — сервер требует именно Data.xml с заглавной D)
-        olot_buffer = io.BytesIO()
-        with zipfile.ZipFile(olot_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr('Data.xml', data_xml_content)
-        olot_data = olot_buffer.getvalue()
-
-        # Формируем multipart/form-data с двумя файлами
-        # Используем create_proxy_session для корректной proxy-аутентификации
-        logger.info(f"Отправка XML на {API_URL}")
-        if proxies:
-            logger.info(f"Используется прокси: {proxies.get('https', 'N/A')}")
-
-        # Создаем сессию через create_proxy_session для корректной работы с прокси
-        session, auth_method = create_proxy_session(proxy_settings, prefer_auth="auto")
-        if not session:
-            error_msg = "Не удалось создать сессию с прокси"
-            if proxy_settings and proxy_settings.get("mode") != "off":
-                error_msg += f"\n\nПопробуйте: pip install requests-ntlm requests-negotiate-sspi"
-            return {"success": False, "error": error_msg}
-
-        logger.info(f"Используется метод авторизации прокси: {auth_method}")
-
-        try:
-            response = session.post(
-                API_URL,
-                files={
-                    'xml': ('Request.xml', request_xml.encode('utf-8'), 'text/xml'),
-                    'olot': ('data.olot', olot_data, 'application/octet-stream'),
-                },
-                headers=HEADERS,
-                # TLS verification - set to True for production, False for dev/testing with self-signed certs
-                # WARNING: Disabling verification exposes you to MITM attacks!
-                # To quickly disable: set verify=False
-                verify=ENABLE_TLS_VERIFY,
-                timeout=60
-            )
-        finally:
-            session.close()
-
-        response_text = response.text
-        # Если response.text содержит кракозябры — декодируем вручную
-        try:
-            response_bytes = response.content
-            response_text = response_bytes.decode('utf-8')
-        except Exception:
-            pass
-
-        logger.info(f"Ответ сервера: HTTP {response.status_code}")
-        logger.info(f"Полный ответ: {response_text}")
-        logger.info(f"Response headers: {dict(response.headers)}")
-
-        # Парсим ответ
-        try:
-            root = ET.fromstring(response_text)
-        except ET.ParseError:
-            if response.status_code == 200:
-                return {"success": True, "set_id": "unknown", "message": response_text[:200]}
-            _save_error_log(response_text)
-            return {
-                "success": False,
-                "error": f"HTTP {response.status_code}: Не удалось разобрать ответ",
-                "raw_response": response_text[:1000]
-            }
-
-        if root.tag == "Response":
-            set_id_elem = root.find("SetId")
-            send_elem = root.find("SendEducatedPerson")
-            msg_elem = root.find("Message")
-
-            set_id = set_id_elem.text if set_id_elem is not None else ""
-            send_edu = send_elem.text if send_elem is not None else "false"
-            msg = msg_elem.text if msg_elem is not None else ""
-
-            logger.info(f"Успех: SetId={set_id}, SendEducatedPerson={send_edu}")
-
-            return {
-                "success": True,
-                "set_id": set_id,
-                "send_educated_person": send_edu.lower() == "true",
-                "message": msg
-            }
-
-        elif root.tag == "Error":
-            status_code_elem = root.find("StatusCode")
-            msg_elem = root.find("Message")
-
-            status_code = status_code_elem.text if status_code_elem is not None else "unknown"
-            msg = msg_elem.text if msg_elem is not None else ""
-
-            error_msg = _format_error(status_code, msg)
-            logger.error(f"Ошибка: {status_code} - {msg}")
-            _save_error_log(response_text)
-
-            return {"success": False, "error": error_msg, "raw_response": response_text[:1000]}
-
+    
+    def __init__(self, backend: str = "auto", proxy_settings: Optional[Dict] = None):
+        """
+        Initialize client.
+        
+        Args:
+            backend: Transport backend ("auto", "requests", "httpx", "urllib", "pycurl", "wininet")
+            proxy_settings: Proxy configuration dict
+        """
+        self.proxy_settings = proxy_settings or {}
+        # Read backend from proxy_settings if not explicitly set
+        if backend == "auto" and "backend" in self.proxy_settings:
+            backend = self.proxy_settings["backend"]
+        self.backend_name = backend
+        self._backend = None
+        self._init_backend()
+    
+    def _init_backend(self):
+        """Initialize transport backend."""
+        import utils.proxy_manager as pm
+        
+        if self.backend_name == "auto":
+            self._backend = self._create_auto_backend()
         else:
-            _save_error_log(response_text)
-            return {"success": False, "error": f"Неизвестный формат ответа: {root.tag}", "raw_response": response_text[:500]}
-
-    except requests.exceptions.Timeout:
-        return {"success": False, "error": "Таймаут соединения. Повторите попытку."}
-    except requests.exceptions.ConnectionError as e:
-        # Пробуем fallback при ошибке подключения
-        logger.warning(f"Ошибка подключения, пробуем fallback: {e}")
-        session, method = try_fallback_connection(proxy_settings, str(e))
-        if session:
-            logger.info(f"Fallback успешен: {method}")
-            try:
-                response = session.post(
-                    API_URL,
-                    files={
-                        'xml': ('Request.xml', request_xml.encode('utf-8'), 'text/xml'),
-                        'olot': ('data.olot', olot_data, 'application/octet-stream'),
-                    },
-                    headers=HEADERS,
-                    verify=ENABLE_TLS_VERIFY,
-                    timeout=60
-                )
-
-                response_text = response.text
+            backend_class = BackendRegistry.get_backend(self.backend_name)
+            if backend_class:
+                self._backend = backend_class()
+            else:
+                logger.warning(f"Backend {self.backend_name} not found, using auto")
+                self._backend = self._create_auto_backend()
+    
+    def _create_auto_backend(self):
+        """Create first available backend in fallback order."""
+        for backend_name in DEFAULT_BACKEND_ORDER:
+            backend_class = BackendRegistry.get_backend(backend_name)
+            if backend_class:
                 try:
-                    response_bytes = response.content
-                    response_text = response_bytes.decode('utf-8')
+                    instance = backend_class()
+                    if instance.is_available():
+                        logger.info(f"Using backend: {backend_name}")
+                        return instance
+                except Exception as e:
+                    logger.warning(f"Backend {backend_name} not available: {e}")
+        
+        # Fallback to urllib (always available)
+        logger.info("Falling back to urllib backend")
+        return BackendRegistry.get_backend("urllib")()
+    
+    def _get_backend_fallback_list(self):
+        """
+        Get ordered list of (backend_instance, name) tuples for fallback.
+        The first entry is the initially selected backend or auto-selected one.
+        Subsequent entries are other available backends for SSL fallback.
+        """
+        backends = []
+        seen = set()
+        
+        # 1. Current backend first
+        if self._backend:
+            name = getattr(self._backend, 'name', 'unknown')
+            backends.append((self._backend, name))
+            seen.add(name)
+        
+        # 2. Other available backends for fallback
+        for backend_name in DEFAULT_BACKEND_ORDER:
+            if backend_name in seen:
+                continue
+            backend_class = BackendRegistry.get_backend(backend_name)
+            if backend_class:
+                try:
+                    instance = backend_class()
+                    if instance.is_available():
+                        backends.append((instance, backend_name))
+                        seen.add(backend_name)
                 except Exception:
                     pass
+        
+        return backends
+    
+    def _get_proxies(self) -> Optional[Dict[str, str]]:
+        """Get proxy configuration from settings."""
+        mode = self.proxy_settings.get("mode", "off")
+        
+        if mode == "off":
+            return None
+        
+        proxies = {}
+        
+        if mode == "auto":
+            proxy_url = proxy_manager.detect_windows_proxy()
+            if proxy_url:
+                proxies['http'] = proxy_url
+                proxies['https'] = proxy_url
+        elif mode == "manual":
+            proxy_url = self.proxy_settings.get("url", "").strip()
+            if proxy_url:
+                proxies['http'] = proxy_url
+                proxies['https'] = proxy_url
+        
+        return proxies if proxies else None
+    
+    def _get_verify(self) -> bool:
+        """Get SSL verification setting."""
+        return bool(self.proxy_settings.get("tls_verify", False))
+    
+    # ============ API Methods ============
+    
+    def send_xml(self, api_key: str, xml_file_path: str) -> Dict[str, Any]:
+        """
+        Send XML file to server.
+        
+        Args:
+            api_key: API key
+            xml_file_path: Path to XML data file
+        
+        Returns:
+            Dict with success, set_id, send_educated_person, message, error
+        """
+        ok, err = validate_api_key(api_key)
+        if not ok:
+            return {"success": False, "error": err}
+        
+        if not os.path.exists(xml_file_path):
+            return {"success": False, "error": "Файл XML не найден"}
+        
+        # Build payload
+        files, headers = build_multipart_payload(api_key, xml_file_path)
+        proxies = self._get_proxies()
+        verify = self._get_verify()
+        
+        logger.info(f"Sending XML to {API_URL}")
+        logger.info(f"Proxies: {proxies}")
+        logger.info(f"Initial backend: {self.backend_name}")
+        
+        # Try backends with SSL fallback
+        backends_to_try = self._get_backend_fallback_list()
+        last_error = ""
+        
+        for backend_instance, backend_name in backends_to_try:
+            try:
+                logger.info(f"Trying backend: {backend_name}")
+                success, status_code, response_bytes, error_msg = backend_instance.send(
+                    url=API_URL,
+                    files=files,
+                    headers=headers,
+                    timeout=60,
+                    verify=verify,
+                    proxies=proxies
+                )
+                
+                if success:
+                    return parse_send_response(response_bytes, status_code)
+                
+                last_error = error_msg
+                logger.warning(f"Backend {backend_name} failed: {error_msg}")
+                
+                # Only fallback on SSL errors
+                if not _is_ssl_error(error_msg):
+                    return {"success": False, "error": error_msg}
+                    
+                logger.info(f"SSL error detected, trying next backend...")
+                
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Backend {backend_name} exception: {e}")
+                if not _is_ssl_error(str(e)):
+                    return {"success": False, "error": str(e)}
+        
+        return {"success": False, "error": last_error or "All backends failed"}
+    
+    def _try_backends(self, api_key: str, xml_content: str, url: str) -> Dict[str, Any]:
+        """Try sending request through backends with SSL fallback."""
+        files = {'file': ('request.xml', xml_content.encode('utf-8'), 'text/xml')}
+        proxies = self._get_proxies()
+        verify = self._get_verify()
+        
+        backends_to_try = self._get_backend_fallback_list()
+        last_error = ""
+        
+        for backend_instance, backend_name in backends_to_try:
+            try:
+                logger.info(f"Trying backend {backend_name} for {url}")
+                success, status_code, response_bytes, error_msg = backend_instance.send(
+                    url=url,
+                    files=files,
+                    headers=HEADERS,
+                    timeout=60,
+                    verify=verify,
+                    proxies=proxies
+                )
+                
+                if success:
+                    return {"success": True, "status_code": status_code, "response_bytes": response_bytes}
+                
+                last_error = error_msg
+                logger.warning(f"Backend {backend_name} failed: {error_msg}")
+                
+                if not _is_ssl_error(error_msg):
+                    return {"success": False, "error": error_msg}
+                
+                logger.info(f"SSL error, trying next backend...")
+                
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Backend {backend_name} exception: {e}")
+                if not _is_ssl_error(str(e)):
+                    return {"success": False, "error": str(e)}
+        
+        return {"success": False, "error": last_error or "All backends failed"}
 
-                logger.info(f"Fallback ответ сервера: HTTP {response.status_code}")
-
-                # Парсим ответ после fallback
-                try:
-                    root = ET.fromstring(response_text)
-                except ET.ParseError:
-                    if response.status_code == 200:
-                        return {"success": True, "set_id": "unknown", "message": response_text[:200]}
-                    _save_error_log(response_text)
-                    return {"success": False, "error": f"Fallback HTTP {response.status_code}: Не удалось разобрать ответ", "raw_response": response_text[:1000]}
-
-                if root.tag == "Response":
-                    set_id_elem = root.find("SetId")
-                    send_elem = root.find("SendEducatedPerson")
-                    msg_elem = root.find("Message")
-                    set_id = set_id_elem.text if set_id_elem is not None else ""
-                    send_edu = send_elem.text if send_elem is not None else "false"
-                    msg = msg_elem.text if msg_elem is not None else ""
-                    return {"success": True, "set_id": set_id, "send_educated_person": send_edu.lower() == "true", "message": msg}
-                elif root.tag == "Error":
-                    status_code_elem = root.find("StatusCode")
-                    msg_elem = root.find("Message")
-                    status_code = status_code_elem.text if status_code_elem is not None else "unknown"
-                    msg = msg_elem.text if msg_elem is not None else ""
-                    error_msg = _format_error(status_code, msg)
-                    return {"success": False, "error": error_msg, "raw_response": response_text[:1000]}
-                else:
-                    return {"success": False, "error": f"Неизвестный формат ответа: {root.tag}", "raw_response": response_text[:500]}
-
-            except Exception as fallback_error:
-                logger.error(f"Fallback не удался: {fallback_error}")
-                return {"success": False, "error": f"Ошибка подключения: {e}\n\nПопробуйте установить: pip install requests-ntlm requests-negotiate-sspi"}
-        else:
-            return {"success": False, "error": "Нет соединения с сервером Минтруда\n\nПопробуйте: pip install requests-ntlm requests-negotiate-sspi"}
-    except Exception as e:
-        logger.error(f"Критическая ошибка отправки: {e}")
-        return {"success": False, "error": f"Ошибка: {e}"}
-
-
-def _save_error_log(text):
-    """Сохранение полного ответа сервера в файл лога."""
-    try:
-        with open(error_log_file, 'w', encoding='utf-8-sig') as f:
-            f.write(text)
-    except Exception as e:
-        logger.error(f"Ошибка записи лога: {e}")
-
-
-def _format_error(status_code, message):
-    """Форматирование сообщения об ошибке."""
-    error_map = {
-        "400": "Ошибка валидации XML. Проверьте соответствие схеме XSD",
-        "401": "Ошибка авторизации. Проверьте API ключ",
-        "403": "Доступ запрещён",
-        "500": "Ошибка сервера Минтруда. Повторите попытку позже",
-        "502": "Шлюз недоступен",
-        "503": "Сервис временно недоступен",
-    }
-    user_msg = error_map.get(str(status_code), message)
-    return f"[{status_code}] {user_msg}"
-
-
-# ============ Запрос данных по SetId ============
-
-def get_by_set_id(api_key, set_id, page_size=5000, proxy_settings=None):
-    """
-    Запрос регистрационных номеров по SetId.
-
-    POST на GET_URL с фильтром SetId.
-    Поддерживает пагинацию — собирает все страницы.
-
-    proxy_settings — dict с полями: enabled, url, username, password
-
-    Возвращает:
-        {"success": bool, "records": list, "error": str}
-    """
-    ok, err = validate_api_key(api_key)
-    if not ok:
-        return {"success": False, "error": err}
-
-    if not set_id:
-        return {"success": False, "error": "SetId не введён"}
-
-    all_records = []
-    page_no = 1
-
-    while True:
-        # Строгий порядок тегов: ApiKey, PageNo, PageSize, SetId
-        xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
+    def query_by_setid(self, api_key: str, set_id: str, page_size: int = 5000) -> Dict[str, Any]:
+        """
+        Query records by SetId.
+        
+        Args:
+            api_key: API key
+            set_id: Set ID to query
+            page_size: Page size for pagination
+        
+        Returns:
+            Dict with success, records, error
+        """
+        ok, err = validate_api_key(api_key)
+        if not ok:
+            return {"success": False, "records": [], "error": err}
+        
+        if not set_id:
+            return {"success": False, "records": [], "error": "SetId не введён"}
+        
+        all_records = []
+        page_no = 1
+        
+        while True:
+            xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
 <EducatedPersonFilter>
     <ApiKey>{api_key}</ApiKey>
     <PageNo>{page_no}</PageNo>
     <PageSize>{page_size}</PageSize>
     <SetId>{set_id}</SetId>
 </EducatedPersonFilter>'''
+            
+            logger.info(f"Querying SetId {set_id}, page {page_no}")
+            
+            try_result = self._try_backends(api_key, xml_content, GET_URL)
+            
+            if not try_result.get("success"):
+                logger.error(f"Query failed: {try_result.get('error')}")
+                return {"success": False, "records": [], "error": try_result.get("error", "Unknown error")}
+            
+            response_bytes = try_result["response_bytes"]
+            status_code = try_result["status_code"]
+            
+            parse_result = parse_setid_response(response_bytes, status_code)
 
-        result = _fetch_page(xml_content, f"стр. {page_no}", page_size, proxy_settings)
-        if result is None:
-            break
-
-        records = result.get("records", [])
-        all_records.extend(records)
-
-        if not result.get("has_more", False):
-            break
-
-        page_no += 1
-        time.sleep(0.5)
-
-    return {"success": True, "records": all_records}
-
-
-# ============ Запрос данных по СНИЛС ============
-
-def get_by_snils(api_key, snils, page_size=100, proxy_settings=None):
-    """
-    Запрос регистрационных номеров по СНИЛС.
-
-    POST на GET_URL с фильтром Snils.
-    Поддерживает пагинацию.
-
-    proxy_settings — dict с полями: enabled, url, username, password
-
-    Возвращает:
-        {"success": bool, "records": list, "error": str}
-    """
-    ok, err = validate_api_key(api_key)
-    if not ok:
-        return {"success": False, "error": err}
-
-    if not snils:
-        return {"success": False, "error": "СНИЛС не введён"}
-
-    all_records = []
-    page_no = 1
-
-    while True:
-        xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
+            if not parse_result.get("success"):
+                return {"success": False, "records": [], "error": parse_result.get("error", "Unknown error")}
+            
+            records = parse_result.get("records", [])
+            all_records.extend(records)
+            
+            if len(records) < page_size:
+                break
+            
+            page_no += 1
+            time.sleep(0.5)
+        
+        return {"success": True, "records": all_records}
+    
+    def query_by_snils(self, api_key: str, snils: str, page_size: int = 100) -> Dict[str, Any]:
+        """
+        Query records by SNILS.
+        
+        Args:
+            api_key: API key
+            snils: SNILS number
+            page_size: Page size for pagination
+        
+        Returns:
+            Dict with success, records, error
+        """
+        ok, err = validate_api_key(api_key)
+        if not ok:
+            return {"success": False, "records": [], "error": err}
+        
+        if not snils:
+            return {"success": False, "records": [], "error": "СНИЛС не введён"}
+        
+        all_records = []
+        page_no = 1
+        
+        while True:
+            xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
 <EducatedPersonFilter>
     <ApiKey>{api_key}</ApiKey>
     <PageNo>{page_no}</PageNo>
@@ -437,186 +409,86 @@ def get_by_snils(api_key, snils, page_size=100, proxy_settings=None):
     <Snils>{snils}</Snils>
 </EducatedPersonFilter>'''
 
-        result = _fetch_page(xml_content, f"стр. {page_no}", page_size, proxy_settings)
-        if result is None:
-            break
+            logger.info(f"Querying by SNILS, page {page_no}")
 
-        records = result.get("records", [])
-        all_records.extend(records)
+            try_result = self._try_backends(api_key, xml_content, GET_URL)
+            
+            if not try_result.get("success"):
+                logger.error(f"Query failed: {try_result.get('error')}")
+                return {"success": False, "records": [], "error": try_result.get("error", "Unknown error")}
 
-        if not result.get("has_more", False):
-            break
+            response_bytes = try_result["response_bytes"]
+            status_code = try_result["status_code"]
 
-        page_no += 1
-        time.sleep(0.5)
+            parse_result = parse_snils_response(response_bytes, status_code)
 
-    return {"success": True, "records": all_records}
-
-
-def _fetch_page(xml_content, page_label="", page_size=100, proxy_settings=None):
-    """
-    Выполнение одного POST-запроса к GetEducatedPersonXML.
-    Возвращает {"records": [...], "has_more": bool} или None при ошибке.
-    """
-    files = {'file': ('request.xml', xml_content, 'text/xml')}
-    proxies = build_proxies_for_requests(proxy_settings)
-    proxy_headers = build_proxy_headers(proxy_settings)
-
-    try:
-        if proxies:
-            logger.info(f"Запрос {page_label} через прокси: {proxies.get('https', 'N/A')}")
-
-        # Используем create_proxy_session для корректной proxy-аутентификации
-        session, auth_method = create_proxy_session(proxy_settings, prefer_auth="auto")
-        if not session:
-            logger.error(f"Не удалось создать сессию с прокси для {page_label}")
-            return None
-
-        logger.info(f"Метод авторизации для {page_label}: {auth_method}")
-
-        try:
-            response = session.post(
-                GET_URL,
-                files=files,
-                headers=HEADERS,
-                verify=ENABLE_TLS_VERIFY,
-                timeout=60
-            )
-        finally:
-            session.close()
+            if not parse_result.get("success"):
+                return {"success": False, "records": [], "error": parse_result.get("error", "Unknown error")}
+            
+            records = parse_result.get("records", [])
+            all_records.extend(records)
+            
+            if len(records) < page_size:
+                break
+            
+            page_no += 1
+            time.sleep(0.5)
         
-        response.encoding = 'utf-8'
-        response_text = response.text
-
-        if response.status_code == 500:
-            logger.error(f"Ошибка 500 при запросе {page_label}: {response_text[:300]}")
-            return None
-
-        if response.status_code != 200:
-            logger.error(f"Ошибка HTTP {response.status_code} при запросе {page_label}")
-            return None
-
-        # Проверка на <Error> в теле
-        if "<Error>" in response_text:
-            try:
-                root = ET.fromstring(response_text)
-                if root.tag == "Error":
-                    sc = root.find("StatusCode")
-                    msg = root.find("Message")
-                    sc_text = sc.text if sc is not None else ""
-                    msg_text = msg.text if msg is not None else ""
-                    logger.error(f"Логическая ошибка: {sc_text} - {msg_text}")
-                    return None
-            except ET.ParseError:
-                pass
-
-        # Проверка на наличие записей
-        if "<RegistryRecord" not in response_text:
-            return {"records": [], "has_more": False}
-
-        # Парсинг записей
-        records = _parse_registry_records(response_text)
-
-        return {"records": records, "has_more": len(records) == page_size}
-
-    except Exception as e:
-        logger.error(f"Критическая ошибка запроса {page_label}: {e}")
-        return None
+        return {"success": True, "records": all_records}
 
 
-def _parse_registry_records(response_text):
-    """Парсинг RegistryRecord из ответа."""
-    records = []
-    try:
-        root = ET.fromstring(response_text)
-        for record in root.findall('.//RegistryRecord'):
-            rec = {}
-            # Атрибуты RegistryRecord
-            rec['baseNo'] = record.get('baseNo', '')
-            rec['internalExamination'] = record.get('internalExamination', '')
-            rec['setId'] = record.get('setId', '')
-            rec['baseDateCreated'] = record.get('baseDateCreated', '')
-            rec['outerId'] = record.get('outerId', '')
+# ============ Legacy API Functions (for backward compatibility) ============
 
-            # Worker
-            worker = record.find('Worker')
-            if worker is not None:
-                rec['LastName'] = _tag_text(worker, 'LastName')
-                rec['FirstName'] = _tag_text(worker, 'FirstName')
-                rec['MiddleName'] = _tag_text(worker, 'MiddleName')
-                rec['Snils'] = _tag_text(worker, 'Snils')
-                rec['Position'] = _tag_text(worker, 'Position')
-
-            # Test
-            test = record.find('Test')
-            if test is not None:
-                rec['learnProgramId'] = test.get('learnProgramId', '')
-                rec['isPassed'] = test.get('isPassed', '')
-                rec['Date'] = _tag_text(test, 'Date')
-                rec['ProtocolNumber'] = _tag_text(test, 'ProtocolNumber')
-                rec['LearnProgramTitle'] = _tag_text(test, 'LearnProgramTitle')
-
-            records.append(rec)
-    except ET.ParseError as e:
-        logger.error(f"Ошибка парсинга записей: {e}")
-
-    return records
+def push_xml(api_key: str, xml_file_path: str, xsd_path=None, proxy_settings=None):
+    """Legacy function for sending XML."""
+    client = MintrudClient(backend="auto", proxy_settings=proxy_settings)
+    return client.send_xml(api_key, xml_file_path)
 
 
-def _tag_text(parent, tag_name):
-    """Получение текста дочернего элемента."""
-    elem = parent.find(tag_name)
-    return elem.text.strip() if elem is not None and elem.text else ''
+def get_by_set_id(api_key: str, set_id: str, page_size=5000, proxy_settings=None):
+    """Legacy function for querying by SetId."""
+    client = MintrudClient(backend="auto", proxy_settings=proxy_settings)
+    return client.query_by_setid(api_key, set_id, page_size)
 
 
-# ============ Экспорт результатов в XLSX ============
+def get_by_snils(api_key: str, snils: str, page_size=100, proxy_settings=None):
+    """Legacy function for querying by SNILS."""
+    client = MintrudClient(backend="auto", proxy_settings=proxy_settings)
+    return client.query_by_snils(api_key, snils, page_size)
+
+
+def get_by_org_id(api_key: str, org_id: str, limit: int = 0, proxy_settings=None):
+    """
+    Query records by Organization ID (НСПР).
+    
+    Note: This endpoint may not be available in all API versions.
+    """
+    return {
+        "success": False,
+        "records": [],
+        "error": "Запрос по OrgId не поддерживается. Используйте запрос по SetId или СНИЛС."
+    }
+
 
 def export_records_to_xlsx(records, file_path):
-    """
-    Экспорт записей из API в XLSX файл.
-    
-    Столбцы: Номер записи в реестре (baseNo), Фамилия, Имя, Отчество,
-             СНИЛС, Номер программы, Название программы, Номер протокола, Дата
-    """
+    """Export records to Excel file."""
     try:
         from openpyxl import Workbook
     except ImportError:
         return False, "Установите openpyxl: pip install openpyxl"
-
+    
     try:
         wb = Workbook()
         ws = wb.active
         ws.title = "Регистрационные номера"
-
+        
         headers = [
             "Номер записи в реестре", "Фамилия", "Имя", "Отчество",
-            "СНИЛС", "Номер программы", "Название программы",
-            "Номер протокола", "Дата"
+            "СНИЛС", "Должность", "ИНН работодателя", "Наименование работодателя",
+            "Номер программы", "Название программы",
+            "Номер протокола", "Дата", "Зачёт"
         ]
         ws.append(headers)
-
-        # Стилизация заголовков
-        from openpyxl.styles import Font, PatternFill, Alignment
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
-        for cell in ws[1]:
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center")
-
-        def _format_date(date_val):
-            """Конвертация даты из YYYY-MM-DD или YYYY-MM-DDTHH:MM:SS в ДД.ММ.ГГГГ."""
-            if not date_val:
-                return ''
-            try:
-                from datetime import datetime
-                if 'T' in date_val:
-                    dt = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
-                else:
-                    dt = datetime.strptime(date_val[:10], "%Y-%m-%d")
-                return dt.strftime("%d.%m.%Y")
-            except (ValueError, TypeError):
-                return date_val
 
         for rec in records:
             row = [
@@ -625,86 +497,25 @@ def export_records_to_xlsx(records, file_path):
                 rec.get('FirstName', ''),
                 rec.get('MiddleName', ''),
                 rec.get('Snils', ''),
+                rec.get('Position', ''),
+                rec.get('EmployerInn', ''),
+                rec.get('EmployerTitle', ''),
                 rec.get('learnProgramId', ''),
                 rec.get('LearnProgramTitle', ''),
                 rec.get('ProtocolNumber', ''),
-                _format_date(rec.get('Date', ''))
+                rec.get('Date', ''),
+                rec.get('isPassed', ''),
             ]
             ws.append(row)
-
-        # Автоширина столбцов
-        for col in ws.columns:
-            max_len = 0
-            col_letter = col[0].column_letter
-            for cell in col:
-                if cell.value:
-                    max_len = max(max_len, len(str(cell.value)))
-            ws.column_dimensions[col_letter].width = min(max_len + 2, 40)
-
+        
         wb.save(file_path)
         return True, f"Файл сохранён: {file_path}"
-
     except Exception as e:
-        logger.error(f"Ошибка экспорта XLSX: {e}")
         return False, f"Ошибка экспорта: {e}"
 
 
-# ============ Запрос данных по OrgId (НСПР) ============
-
-def get_by_org_id(api_key, org_id, page_size=5000, proxy_settings=None, limit=0):
-    """
-    Запрос всех обученных лиц по ID организации (для НСПР - реестр обученных лиц).
-    
-    POST на GET_URL с фильтром OrgId.
-    Поддерживает пагинацию — собирает все страницы.
-    
-    proxy_settings — dict с полями: mode, url, username, password
-    
-    limit — ограничение количества записей (0 = без ограничения)
-    
-    Возвращает:
-        {"success": bool, "records": list, "error": str}
-    """
-    ok, err = validate_api_key(api_key)
-    if not ok:
-        return {"success": False, "error": err}
-
-    if not org_id:
-        return {"success": False, "error": "OrgId не введён"}
-
-    all_records = []
-    page_no = 1
-
-    while True:
-        # Проверка лимита
-        if limit > 0 and len(all_records) >= limit:
-            break
-        
-        # Вычисляем размер страницы с учётом лимита
-        current_page_size = page_size
-        if limit > 0 and len(all_records) + current_page_size > limit:
-            current_page_size = limit - len(all_records)
-        
-        # Строгий порядок тегов: ApiKey, PageNo, PageSize, OrgId
-        xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
-<EducatedPersonFilter>
-    <ApiKey>{api_key}</ApiKey>
-    <PageNo>{page_no}</PageNo>
-    <PageSize>{current_page_size}</PageSize>
-    <OrgId>{org_id}</OrgId>
-</EducatedPersonFilter>'''
-
-        result = _fetch_page(xml_content, f"стр. {page_no}", current_page_size, proxy_settings)
-        if result is None:
-            break
-
-        records = result.get("records", [])
-        all_records.extend(records)
-
-        if not result.get("has_more", False):
-            break
-
-        page_no += 1
-        time.sleep(0.5)
-
-    return {"success": True, "records": all_records}
+def get_available_backends() -> list:
+    """Get list of available transport backends."""
+    # Import all backends to register them
+    from . import backends
+    return BackendRegistry.get_available_backends()

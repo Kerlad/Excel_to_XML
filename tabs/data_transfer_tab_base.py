@@ -2,6 +2,7 @@
 Базовый класс для вкладок передачи данных с различными HTTP-библиотеками.
 """
 import os
+import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
     QLabel, QMessageBox, QFileDialog, QCheckBox, QScrollArea, QFrame, QRadioButton, QButtonGroup, QApplication
@@ -13,6 +14,8 @@ from utils.proxy_manager import (
     load_proxy_settings, save_proxy_settings, test_proxy_connection,
     detect_windows_proxy
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BaseDataTransferTab(QWidget):
@@ -566,7 +569,7 @@ class BaseDataTransferTab(QWidget):
                     records = convert_xml_to_records(xml_file)
                     self._journal_add_callback(records, set_id, xml_file)
                 except Exception as e:
-                    pass
+                    logger.debug(f"Could not update journal: {e}")
         else:
             error = result.get("error", "Неизвестная ошибка")
             QMessageBox.critical(self, "Ошибка загрузки", f"Ошибка: {error}")
@@ -619,7 +622,7 @@ class BaseDataTransferTab(QWidget):
             try:
                 self._journal_update_callback(set_id, records)
             except Exception as e:
-                pass
+                logger.debug(f"Could not add records to journal: {e}")
 
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить XLSX", f"{set_id}.xlsx", "Excel Files (*.xlsx)"

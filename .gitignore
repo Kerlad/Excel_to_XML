@@ -5,7 +5,11 @@ __pycache__/
 *.so
 .Python
 build/
+build/*
+build/ExcelXML/*
+build/ExcelXML/
 dist/
+dist/*
 *.egg-info/
 .pytest_cache/
 .coverage
@@ -26,3 +30,5 @@ log/
 Техническое_задание_2.md
 Doclad.MD
 ReadmeV2.md
+TZ#2.md
+curl.txt

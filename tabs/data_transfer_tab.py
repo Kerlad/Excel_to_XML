@@ -1,7 +1,10 @@
 import os
+import logging
+import unicodedata
+import xml.etree.ElementTree as ET
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
-    QLabel, QMessageBox, QFileDialog, QCheckBox, QScrollArea, QFrame, QRadioButton, QButtonGroup, QApplication
+    QLabel, QMessageBox, QFileDialog, QCheckBox, QScrollArea, QFrame, QRadioButton, QButtonGroup, QApplication, QComboBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -11,15 +14,13 @@ from api.mintrud_api import (
     get_by_set_id, get_by_snils, get_by_org_id, export_records_to_xlsx
 )
 from utils.proxy_manager import (
-    load_proxy_settings, save_proxy_settings, test_proxy_connection,
-    detect_windows_proxy
+    load_proxy_settings, save_proxy_settings, detect_windows_proxy
 )
 from network.client import (
-    get_network_diagnostics,
-    test_external_access,
-    NetworkStatus,
-    get_windows_proxy
+    get_network_diagnostics, test_external_access, NetworkStatus
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DataTransferTab(QWidget):
@@ -326,11 +327,30 @@ class DataTransferTab(QWidget):
                 padding: 4px;
             }
         """)
-        self.tls_checkbox.setChecked(False)  # По умолчанию выключено для корпоративных сетей
+        self.tls_checkbox.setChecked(True)  # TLS verify enabled by default
         tls_row.addWidget(self.tls_checkbox)
         tls_row.addStretch()
         layout.addLayout(tls_row)
-        
+
+        # Transport backend selection
+        backend_row = QHBoxLayout()
+        backend_label = QLabel("Transport backend:")
+        backend_label.setStyleSheet("color: black;")
+        backend_row.addWidget(backend_label)
+
+        from api.mintrud_api import get_available_backends
+        available_backends = get_available_backends()
+
+        self.backend_combo = QComboBox()
+        self.backend_combo.addItem("Auto", "auto")
+        for be in available_backends:
+            self.backend_combo.addItem(be.capitalize(), be)
+        self.backend_combo.setFixedWidth(150)
+        self.backend_combo.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        backend_row.addWidget(self.backend_combo)
+        backend_row.addStretch()
+        layout.addLayout(backend_row)
+
         # Кнопка показа пароль прокси (зажать = показать)
         pass_row = QHBoxLayout()
         self.proxy_pass_toggle_btn = QPushButton("👁 Показать пароль прокси")
@@ -568,7 +588,7 @@ class DataTransferTab(QWidget):
         self.proxy_pass_input.setText(settings.get('password', ''))
 
         # Загрузить TLS настройку
-        self.tls_checkbox.setChecked(settings.get('tls_verify', False))
+        self.tls_checkbox.setChecked(settings.get('tls_verify', True))
 
         # Обновить видимость полей
         if mode == 'auto':
@@ -601,18 +621,13 @@ class DataTransferTab(QWidget):
 
     def test_proxy(self):
         """Тестирование подключения к edu.rosmintrud.ru через Windows Integrated Authentication."""
-        # Получаем TLS настройку из чекбокса
-        from utils.proxy_manager import ENABLE_TLS_VERIFY
-        from utils import proxy_manager
-        proxy_manager.ENABLE_TLS_VERIFY = self.tls_checkbox.isChecked()
-
-        # Сначала покажем диагностику сети
         diag = get_network_diagnostics()
-        
-        # Тестируем внешний доступ (прокси определяется автоматически)
+
+        tls_verify = self.tls_checkbox.isChecked()
         status, msg = test_external_access(
             url="https://edu.rosmintrud.ru",
-            timeout=30
+            timeout=30,
+            tls_verify=tls_verify
         )
         
         # Формируем результат
@@ -642,7 +657,9 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
             'mode': mode,
             'url': self.proxy_url_input.text().strip(),
             'username': self.proxy_user_input.text().strip(),
-            'password': self.proxy_pass_input.text().strip()
+            'password': self.proxy_pass_input.text().strip(),
+            'tls_verify': self.tls_checkbox.isChecked(),
+            'backend': self.backend_combo.currentData()
         }
 
     # ============ Логика отправки XML ============
@@ -652,23 +669,47 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Выберите XML файл", "", "XML Files (*.xml)"
         )
-        if file_path:
-            # Валидация по XSD
-            xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
-            if xsd_files:
-                xsd_path = os.path.join(self.schema_dir, xsd_files[0])
-                try:
-                    schema_doc = etree.parse(xsd_path)
-                    schema = etree.XMLSchema(schema_doc)
-                    xml_doc = etree.parse(file_path)
-                    schema.assertValid(xml_doc)
-                    self.xml_file_input.setText(file_path)
-                except etree.DocumentInvalid as e:
-                    QMessageBox.warning(self, "Ошибка", f"Файл не соответствует схеме:\n{e}")
-                    return
-            else:
-                # XSD нет — просто принимаем файл
-                self.xml_file_input.setText(file_path)
+        if not file_path:
+            return
+
+        # Проверяем что файл существует
+        if not os.path.exists(file_path):
+            QMessageBox.warning(self, "Ошибка", "Файл не найден")
+            return
+
+        # Проверяем что файл не пустой
+        if os.path.getsize(file_path) == 0:
+            QMessageBox.warning(self, "Ошибка", "Файл пустой")
+            return
+
+        # Проверяем XML на валидность
+        try:
+            tree = etree.parse(file_path)
+            root = tree.getroot()
+            logger.info(f"XML loaded: root={root.tag}, children={len(root)}")
+        except etree.XMLSyntaxError as e:
+            QMessageBox.warning(self, "Ошибка", f"Невалидный XML:\n{e}")
+            return
+        except Exception as e:
+            QMessageBox.warning(self, "Ошибка", f"Ошибка чтения файла:\n{e}")
+            return
+
+        # Валидация по XSD
+        xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
+        if xsd_files:
+            xsd_path = os.path.join(self.schema_dir, xsd_files[0])
+            try:
+                schema_doc = etree.parse(xsd_path)
+                schema = etree.XMLSchema(schema_doc)
+                schema.assertValid(tree)
+            except etree.DocumentInvalid as e:
+                QMessageBox.warning(self, "Ошибка валидации", f"Файл не соответствует схеме XSD:\n{e}")
+                return
+            except Exception as e:
+                QMessageBox.warning(self, "Ошибка", f"Ошибка валидации по XSD:\n{e}")
+                return
+
+        self.xml_file_input.setText(file_path)
 
     def send_xml(self):
         """Отправка XML на сервер."""
@@ -688,9 +729,6 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
         xml_records_data = self._parse_xml_for_journal(xml_file)
 
         proxy_settings = self._get_proxy_settings()
-
-        QMessageBox.information(self, "Информация", "Отправка данных...")
-        QApplication.processEvents()
 
         result = push_xml(api_key, xml_file, proxy_settings=proxy_settings)
 
@@ -733,9 +771,6 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
             QMessageBox.warning(self, "Ошибка", "Введите SetId")
             return
 
-        QMessageBox.information(self, "Информация", f"Запрос данных по SetId: {set_id}...")
-        QApplication.processEvents()
-
         proxy_settings = self._get_proxy_settings()
         result = get_by_set_id(api_key, set_id, proxy_settings=proxy_settings)
 
@@ -750,8 +785,6 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
 
         # Обновляем baseNo в журнале
         if self._journal_update_callback:
-            # Строим карту {snils_clean: baseNo}
-            import unicodedata
             base_no_map = {}
             for rec in records:
                 snils_raw = rec.get('Snils', '')
@@ -814,8 +847,7 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
                 }
                 records.append(rec)
         except Exception as e:
-            # При ошибке парсинга — журнал просто не обновится
-            pass
+            logger.warning(f"Failed to parse XML for journal: {e}")
 
         return records
 
@@ -833,16 +865,12 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
             return
 
         # Форматирование СНИЛС в вид "123-456-789 00"
-        import unicodedata
         snils_clean = ''.join(c for c in snils_raw if unicodedata.category(c) != 'Zs')
         snils_clean = snils_clean.replace('-', '')  # Удаляем дефисы перед проверкой
         if not snils_clean.isdigit() or len(snils_clean) != 11:
             QMessageBox.warning(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
             return
         snils = f"{snils_clean[0:3]}-{snils_clean[3:6]}-{snils_clean[6:9]} {snils_clean[9:11]}"
-
-        QMessageBox.information(self, "Информация", f"Запрос данных по СНИЛС: {snils}...")
-        QApplication.processEvents()
 
         proxy_settings = self._get_proxy_settings()
         result = get_by_snils(api_key, snils, proxy_settings=proxy_settings)
@@ -855,6 +883,10 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
         if not records:
             QMessageBox.information(self, "Информация", "Записей не найдено")
             return
+
+        first = records[0]
+        name = f"{first.get('LastName', '')} {first.get('FirstName', '')} {first.get('MiddleName', '')}".strip()
+        QMessageBox.information(self, "Найдено", f"Записей: {len(records)}\n{name}")
 
         # Сохранение XLSX
         snils_file = snils.replace('-', '').replace(' ', '')
@@ -870,8 +902,6 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
 
     def query_by_orgid(self):
         """Запрос данных по OrgId (НСПР)."""
-        from api.mintrud_api import get_by_org_id
-
         api_key = self.api_key_input.text().strip()
         org_id = self.query_orgid_input.text().strip()
         limit_text = self.query_limit_input.text().strip()
@@ -884,13 +914,14 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
             QMessageBox.warning(self, "Ошибка", "Введите OrgId")
             return
 
-        try:
-            limit = int(limit_text) if limit_text else 0
-        except ValueError:
+        if limit_text:
+            try:
+                limit = int(limit_text)
+            except ValueError:
+                QMessageBox.warning(self, "Ошибка", f"Limit must be a number: '{limit_text}'")
+                return
+        else:
             limit = 0
-
-        QMessageBox.information(self, "Информация", f"Загрузка данных по OrgId: {org_id}...")
-        QApplication.processEvents()
 
         proxy_settings = self._get_proxy_settings()
         result = get_by_org_id(api_key, org_id, proxy_settings=proxy_settings, limit=limit)
@@ -909,7 +940,6 @@ Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Н�
             self, "Сохранить XLSX", f"org_{org_id}.xlsx", "Excel Files (*.xlsx)"
         )
         if file_path:
-            from api.mintrud_api import export_records_to_xlsx
             ok, msg = export_records_to_xlsx(records, file_path)
             if ok:
                 QMessageBox.information(self, "Успех", f"Сохранено {len(records)} записей\n{msg}")

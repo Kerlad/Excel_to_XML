@@ -221,7 +221,7 @@ class JournalManager:
                         continue
                 results = results_filtered
             except ValueError:
-                pass
+                logger.debug(f"Invalid date_from format: '{date_from}'")
 
         if date_to:
             try:
@@ -237,7 +237,7 @@ class JournalManager:
                         continue
                 results = results_filtered
             except ValueError:
-                pass
+                logger.debug(f"Invalid date_to format: '{date_to}'")
 
         return results
 

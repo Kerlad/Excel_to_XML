@@ -8,8 +8,11 @@ from PySide6.QtGui import QColor
 from datetime import datetime
 import os
 import json
+import logging
 from exporters.xml_exporter import export_to_xml
 from utils.crypto import encrypt_data, decrypt_data
+
+logger = logging.getLogger(__name__)
 
 
 class DataViewTab(QWidget):
@@ -286,8 +289,8 @@ class DataViewTab(QWidget):
                     org_settings = decrypt_data(encrypted)
                 else:
                     org_settings = wrapper
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not load org settings: {e}")
 
         # Диалог сохранения
         file_path, _ = QFileDialog.getSaveFileName(
@@ -327,7 +330,7 @@ class DataViewTab(QWidget):
                 if isinstance(records, list):
                     self.add_data(records, replace=False)
         except Exception as e:
-            pass
+            logger.debug(f"Could not load workers: {e}")
 
 
 class EditDialog(QDialog):

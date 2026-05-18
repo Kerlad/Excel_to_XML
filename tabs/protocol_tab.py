@@ -4,6 +4,7 @@
 Кнопки: Сохранить, Загрузить, Программы обучения, Сгенерировать протокол
 """
 import os
+import logging
 from copy import deepcopy
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
@@ -15,6 +16,8 @@ from PySide6.QtGui import QFont
 from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from tabs.programs_dialog import ProgramsDialog
+
+logger = logging.getLogger(__name__)
 
 
 class ProtocolTab(QWidget):
@@ -106,8 +109,8 @@ class ProtocolTab(QWidget):
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
                     return settings.get('last_save_path', '')
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not load last_save_path: {e}")
         return ''
     
     def _save_last_save_path(self, path):
@@ -119,15 +122,15 @@ class ProtocolTab(QWidget):
             try:
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not load settings: {e}")
         # Сохраняем полный путь, а не только директорию
         settings['last_save_path'] = path
         try:
             with open(settings_file, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, ensure_ascii=False, indent=2)
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Could not save settings: {e}")
 
     def set_data_source(self, data_view_tab):
         """Установка источника данных для протокола (DataViewTab)."""
@@ -563,9 +566,9 @@ class ProtocolTab(QWidget):
                         dt = datetime.strptime(date_part, fmt)
                         date_for_filename = dt.strftime("%d-%m-%Y")
                         break
-                    except:
+                    except ValueError:
                         continue
-            except:
+            except ValueError:
                 pass
         
         # Если date_for_filename пустой, пытаемся хоть как-то обработать
@@ -684,9 +687,9 @@ class ProtocolTab(QWidget):
                                 dt = datetime.strptime(date_part, fmt)
                                 date_str = "_" + dt.strftime("%d-%m-%Y")
                                 break
-                            except:
+                            except ValueError:
                                 continue
-                    except:
+                    except ValueError:
                         pass
                 
                 output_file = os.path.join(save_dir, f"Протокол {protocol_number}{date_str}.docx")

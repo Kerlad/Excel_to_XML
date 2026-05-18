@@ -530,31 +530,10 @@ class ProtocolExporter:
             if not records:
                 return False, "Нет записей для формирования протокола"
 
-            # Загружаем данные комиссии из файла
-            commission_file = os.path.join(data_dir, "commission_data.json")
-            import json
-            commission_data = {
-                'org_name': '',
-                'order_number': '',
-                'order_date': '',
-                'exam_date': '',
-                'chairman_fio': '',
-                'chairman_position': '',
-                'member1_fio': '',
-                'member1_position': '',
-                'member2_fio': '',
-                'member2_position': '',
-                'member3_fio': '',
-                'member3_position': '',
-                'union_fio': '',
-                'union_position': ''
-            }
-            if os.path.exists(commission_file):
-                try:
-                    with open(commission_file, 'r', encoding='utf-8') as f:
-                        commission_data = json.load(f)
-                except Exception as e:
-                    logger.warning(f"Не удалось загрузить данные комиссии: {e}")
+            # Загружаем данные комиссии через CommissionManager
+            from protocol.commission_manager import CommissionManager
+            commission_manager = CommissionManager(data_dir)
+            commission_data = commission_manager.load()
 
             # Получаем ProgramsManager для данных о программах
             programs_manager = None

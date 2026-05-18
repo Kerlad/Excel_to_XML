@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import webbrowser
 import subprocess
 import shutil
@@ -14,6 +15,8 @@ from PySide6.QtGui import QFont
 from importers.xlsx_importer import load_xlsx
 from importers.xml_importer import load_xml
 from utils.crypto import encrypt_data, decrypt_data
+
+logger = logging.getLogger(__name__)
 
 
 class DataEntryTab(QWidget):
@@ -636,8 +639,8 @@ class DataEntryTab(QWidget):
                     tabs_widget = main_window.findChild(type(self.data_view_tab.table))
                     # Проще — получим через callback
                     pass
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not get table: {e}")
 
             # Альтернативный подход: передаём таблицу через callback
             # Но пока используем то, что есть — добавим callback get_existing_rows

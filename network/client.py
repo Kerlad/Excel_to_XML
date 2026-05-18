@@ -8,9 +8,8 @@ Requirements:
 - pywin32 (for Windows API access)
 """
 import os
-import sys
 import logging
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Any
 from enum import Enum
 
 # Network diagnostics
@@ -20,6 +19,7 @@ class NetworkStatus(Enum):
     TIMEOUT = "TIMEOUT"
     NETWORK_ERROR = "NETWORK_ERROR"
     NEGOTIATE_NOT_AVAILABLE = "NEGOTIATE_NOT_AVAILABLE"
+    AUTH_REQUIRED = "AUTH_REQUIRED"
     UNKNOWN_ERROR = "UNKNOWN_ERROR"
 
 # Create logs directory
@@ -31,11 +31,12 @@ network_logger = logging.getLogger("network")
 network_logger.setLevel(logging.INFO)
 
 # File handler for network logs
-network_handler = logging.FileHandler(os.path.join(LOG_DIR, "network.log"), encoding='utf-8')
-network_handler.setLevel(logging.INFO)
-network_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-network_handler.setFormatter(network_formatter)
-network_logger.addHandler(network_handler)
+if not network_logger.handlers:
+    network_handler = logging.FileHandler(os.path.join(LOG_DIR, "network.log"), encoding='utf-8')
+    network_handler.setLevel(logging.INFO)
+    network_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    network_handler.setFormatter(network_formatter)
+    network_logger.addHandler(network_handler)
 
 # Check for required libraries
 KERBEROS_AVAILABLE = False
@@ -120,8 +121,9 @@ def get_windows_user() -> Optional[str]:
     return None
 
 
-def test_external_access(url: str = "https://edu.rosmintrud.ru", 
-                         timeout: int = 30) -> Tuple[NetworkStatus, str]:
+def test_external_access(url: str = "https://edu.rosmintrud.ru",
+                         timeout: int = 30,
+                         tls_verify: bool = True) -> Tuple[NetworkStatus, str]:
     """
     Test external network access using Windows Integrated Authentication.
     
@@ -159,7 +161,10 @@ def test_external_access(url: str = "https://edu.rosmintrud.ru",
     # Configure Negotiate authentication
     auth = NegotiateAuth()
     network_logger.info("Using Negotiate authentication (Windows SSO)")
-    
+
+    # Suppress SSL warnings only when TLS verification is disabled
+    suppress_ssl_warnings(not tls_verify)
+
     try:
         network_logger.info(f"GET {url}")
         response = session.get(
@@ -167,11 +172,11 @@ def test_external_access(url: str = "https://edu.rosmintrud.ru",
             proxies=proxies,
             auth=auth,
             timeout=timeout,
-            verify=False  # Disable SSL verification for corporate proxies with SSL inspection
+            verify=tls_verify
         )
-        
+
         network_logger.info(f"Response: {response.status_code}")
-        
+
         if response.status_code in [200, 201]:
             network_logger.info("Connection successful")
             return NetworkStatus.SUCCESS, f"HTTP {response.status_code} - Connection successful"
@@ -179,13 +184,12 @@ def test_external_access(url: str = "https://edu.rosmintrud.ru",
             network_logger.error("Proxy authentication failed (407)")
             return NetworkStatus.PROXY_AUTH_FAILED, "Proxy authentication failed (407)"
         elif response.status_code == 401:
-            # 401 means we reached the server but auth is needed
             network_logger.warning("Server requires authentication (401)")
-            return NetworkStatus.SUCCESS, f"HTTP {response.status_code} - Server reached"
+            return NetworkStatus.AUTH_REQUIRED, f"HTTP {response.status_code} - Authentication required"
         else:
             network_logger.warning(f"Unexpected status: {response.status_code}")
             return NetworkStatus.SUCCESS, f"HTTP {response.status_code}"
-            
+
     except requests.exceptions.Timeout:
         network_logger.error("Request timeout")
         return NetworkStatus.TIMEOUT, "Connection timeout"
@@ -196,10 +200,22 @@ def test_external_access(url: str = "https://edu.rosmintrud.ru",
             return NetworkStatus.PROXY_AUTH_FAILED, "Proxy authentication failed (407)"
         return NetworkStatus.PROXY_AUTH_FAILED, f"Proxy error: {error_str}"
     except requests.exceptions.ConnectionError as e:
-        network_logger.error(f"Connection error: {e}")
-        return NetworkStatus.NETWORK_ERROR, f"Connection error: {str(e)}"
+        error_str = str(e)
+        network_logger.error(f"Connection error: {error_str}")
+        # Detect SSL/TLS handshake failures
+        if "SEC_E_ILLEGAL_MESSAGE" in error_str or "schannel" in error_str.lower():
+            msg = (
+                f"Ошибка SSL/TLS рукопожатия с сервером.\n"
+                f"Сервер отклонил TLS-соединение (SEC_E_ILLEGAL_MESSAGE).\n\n"
+                f"Рекомендации:\n"
+                f"1. Попробуйте другой Transport backend в настройках прокси (WinINET или pycurl)\n"
+                f"2. Убедитесь что адрес edu.rosmintrud.ru доступен с вашего рабочего места\n"
+                f"3. Возможно, сервер временно недоступен или требует определённую версию TLS"
+            )
+            return NetworkStatus.NETWORK_ERROR, msg
+        return NetworkStatus.NETWORK_ERROR, f"Connection error: {error_str}"
     except Exception as e:
-        network_logger.error(f"Unexpected error: {type(e).__name__}: {e}")
+        network_logger.exception(f"Unexpected error: {type(e).__name__}: {e}")
         return NetworkStatus.UNKNOWN_ERROR, f"Error: {str(e)}"
 
 
@@ -207,21 +223,23 @@ class NegotiateSession:
     """
     HTTP session with Windows Integrated Authentication (Negotiate/Kerberos).
     """
-    
-    def __init__(self, timeout: int = 60):
+
+    def __init__(self, timeout: int = 60, tls_verify: bool = True):
         """
         Initialize session with Windows SSO.
-        
+
         Args:
             timeout: Request timeout in seconds
+            tls_verify: SSL certificate verification (default True)
         """
         self.timeout = timeout
+        self.tls_verify = tls_verify
         self.session = requests.Session()
         self.session.trust_env = False  # Disable environment proxy detection
-        
-        # Disable SSL verification for corporate proxies with SSL inspection
-        self.session.verify = False
-        
+
+        # SSL verification setting
+        self.session.verify = tls_verify
+
         # Detect proxy
         self.proxy_url = get_windows_proxy()
         if self.proxy_url:
@@ -230,7 +248,7 @@ class NegotiateSession:
         else:
             self.session.proxies = None
             network_logger.info("No proxy detected")
-        
+
         # Configure Negotiate authentication
         if KERBEROS_AVAILABLE and NegotiateAuth:
             self.auth = NegotiateAuth()
@@ -238,28 +256,31 @@ class NegotiateSession:
         else:
             self.auth = None
             network_logger.warning("Negotiate not available")
-        
+
         # Windows user
         self.windows_user = get_windows_user()
         network_logger.info(f"Windows user: {self.windows_user}")
+
+        # Suppress SSL warnings only when TLS verification is disabled
+        suppress_ssl_warnings(not tls_verify)
     
     def get(self, url: str, **kwargs) -> requests.Response:
         """Send GET request."""
         kwargs.setdefault('timeout', self.timeout)
         kwargs.setdefault('auth', self.auth)
-        kwargs.setdefault('verify', False)
-        
+        kwargs.setdefault('verify', self.tls_verify)
+
         network_logger.info(f"GET {url}")
-        
+
         response = self.session.get(url, **kwargs)
         network_logger.info(f"GET {url} -> {response.status_code}")
         return response
-    
+
     def post(self, url: str, **kwargs) -> requests.Response:
         """Send POST request."""
         kwargs.setdefault('timeout', self.timeout)
         kwargs.setdefault('auth', self.auth)
-        kwargs.setdefault('verify', False)
+        kwargs.setdefault('verify', self.tls_verify)
         
         network_logger.info(f"POST {url}")
         
@@ -292,7 +313,7 @@ def create_negotiate_session() -> Tuple[Optional[NegotiateSession], str]:
         return None, str(e)
 
 
-def get_network_diagnostics() -> Dict[str, any]:
+def get_network_diagnostics() -> Dict[str, Any]:
     """
     Get current network diagnostics information.
     
@@ -311,12 +332,15 @@ def get_network_diagnostics() -> Dict[str, any]:
     return diagnostics
 
 
-# Suppress SSL warnings for corporate proxies
-try:
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-except ImportError:
-    pass
+def suppress_ssl_warnings(suppress: bool = False):
+    """Suppress SSL warnings only when verify=False (for corporate proxies with SSL inspection)."""
+    if not suppress:
+        return
+    try:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    except ImportError:
+        pass
 
 
 if __name__ == "__main__":
