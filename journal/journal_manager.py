@@ -1,113 +1,23 @@
-"""
-Менеджер журнала проверок знаний
-CRUD операции + поиск/фильтрация + обновление baseNo
-Данные шифруются (AES/Fernet) — аналогично API-ключу
-"""
 import os
-import json
 import uuid
 import logging
 from datetime import datetime
-from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict
 
-from utils.crypto import encrypt_data, decrypt_data
+from db.exam_journal_repo import ExamJournalRepo, JournalRecord
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class JournalRecord:
-    """Одна запись в журнале (один работник)."""
-    uuid: str
-    send_date: str                # Дата/время отправки на сервер
-    set_id: str                   # SetId от сервера
-    xml_file: str                 # Путь к отправленному XML файлу
-    last_name: str
-    first_name: str
-    middle_name: str
-    snils: str                    # Формат: "123-456-789 00"
-    position: str
-    program_id: str               # Номер программы: "1"-"29"
-    program_title: str            # Название программы
-    exam_date: str                # Дата экзамена: "ДД.ММ.ГГГГ"
-    protocol: str                 # Номер протокола
-    result: str                   # Результат: "Удовлетворительно" или "Неудовлетворительно"
-    base_no: str = ""             # Регистрационный номер (заполняется позже)
-    status: str = "pending"       # "pending" | "received"
-
-
 class JournalManager:
-    """Управление журналом проверок знаний."""
-
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
-        os.makedirs(self.data_dir, exist_ok=True)
-        self.journal_file = os.path.join(self.data_dir, "exam_journal.json")
-        self.records: List[JournalRecord] = []
-        self._load()
-
-    # ============ CRUD ============
-
-    def _load(self):
-        """Загрузка журнала из зашифрованного файла."""
-        if os.path.exists(self.journal_file):
-            try:
-                with open(self.journal_file, 'r', encoding='utf-8') as f:
-                    encrypted = f.read()
-                data = decrypt_data(encrypted)
-                self.records = []
-                for item in data:
-                    record = JournalRecord(
-                uuid=item.get('uuid', str(uuid.uuid4())),
-                send_date=item.get('send_date', ''),
-                set_id=item.get('set_id', ''),
-                xml_file=item.get('xml_file', ''),
-                last_name=item.get('last_name', ''),
-                first_name=item.get('first_name', ''),
-                middle_name=item.get('middle_name', ''),
-                snils=item.get('snils', ''),
-                position=item.get('position', ''),
-                program_id=item.get('program_id', ''),
-                program_title=item.get('program_title', ''),
-                exam_date=item.get('exam_date', ''),
-                protocol=item.get('protocol', ''),
-                result=item.get('result', ''),
-                base_no=item.get('base_no', ''),
-                status=item.get('status', 'pending')
-            )
-                    self.records.append(record)
-            except Exception as e:
-                logger.error(f"Ошибка загрузки журнала: {e}")
-                self.records = []
-
-    def _save(self):
-        """Сохранение журнала в зашифрованном виде."""
-        try:
-            data = [asdict(r) for r in self.records]
-            encrypted = encrypt_data(data)
-            with open(self.journal_file, 'w', encoding='utf-8') as f:
-                f.write(encrypted)
-        except Exception as e:
-            logger.error(f"Ошибка сохранения журнала: {e}")
 
     def add_records(self, records_data: List[Dict], set_id: str, xml_file: str) -> int:
-        """
-        Добавление записей в журнал (при успешной отправке XML).
-
-        records_data — список словарей с полями работника (как для XML экспорта)
-        set_id — идентификатор набора от сервера
-        xml_file — путь к отправленному XML файлу
-
-        Возвращает количество добавленных записей.
-        """
         send_date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-        added = 0
-
+        records = []
         for rec in records_data:
             program_id = str(rec.get('program', ''))
-            program_title = self._get_program_title(program_id)
-
             record = JournalRecord(
                 uuid=str(uuid.uuid4()),
                 send_date=send_date,
@@ -119,147 +29,48 @@ class JournalManager:
                 snils=rec.get('snils', ''),
                 position=rec.get('position', ''),
                 program_id=program_id,
-                program_title=program_title,
+                program_title=self._get_program_title(program_id),
                 exam_date=rec.get('date', ''),
                 protocol=rec.get('protocol', ''),
-                result=rec.get('result', ''),  # Add result field
+                result=rec.get('result', ''),
                 base_no="",
                 status="pending"
             )
-            self.records.append(record)
-            added += 1
+            records.append(record)
 
-        self._save()
-        return added
+        ExamJournalRepo.add_records(records)
+        return len(records)
 
     def update_base_no_by_set_id(self, set_id: str, base_no_map: Dict[str, str]) -> int:
-        """
-        Обновление baseNo для всех записей с данным SetId.
-
-        set_id — идентификатор набора
-        base_no_map — словарь {snils: baseNo} из ответа сервера
-
-        Возвращает количество обновлённых записей.
-        """
-        updated = 0
-        for record in self.records:
-            if record.set_id == set_id and record.status == "pending":
-                # Ищем baseNo по СНИЛС
-                snils_clean = record.snils.replace('-', '').replace(' ', '')
-                if snils_clean in base_no_map:
-                    record.base_no = base_no_map[snils_clean]
-                    record.status = "received"
-                    updated += 1
-
-        if updated > 0:
-            self._save()
-        return updated
+        return ExamJournalRepo.update_base_no(set_id, base_no_map)
 
     def delete_by_uuid(self, uuids: List[str]) -> int:
-        """
-        Удаление записей по UUID.
-
-        uuids — список UUID для удаления
-        Возвращает количество удалённых записей.
-        """
-        original_count = len(self.records)
-        self.records = [r for r in self.records if r.uuid not in uuids]
-        deleted = original_count - len(self.records)
-
-        if deleted > 0:
-            self._save()
-        return deleted
-
-    # ============ Поиск и фильтрация ============
+        return ExamJournalRepo.delete_by_uuid(uuids)
 
     def search(self, query: str = "", set_id: str = "",
                status: str = "all", date_from: str = "", date_to: str = "") -> List[JournalRecord]:
-        """
-        Поиск и фильтрация записей.
-
-        query — поиск по ФИО/СНИЛС (вхождение, регистронезависимо)
-        set_id — фильтр по SetId (точное совпадение)
-        status — "pending", "received", "all"
-        date_from — дата отправки с (ДД.ММ.ГГГГ)
-        date_to — дата отправки по (ДД.ММ.ГГГГ)
-
-        Возвращает отфильтрованный список записей.
-        """
-        results = self.records
-
-        # Поиск по ФИО/СНИЛС
-        if query.strip():
-            q = query.strip().lower()
-            results = [
-                r for r in results
-                if q in r.last_name.lower()
-                or q in r.first_name.lower()
-                or q in r.middle_name.lower()
-                or q in r.snils.replace('-', '').replace(' ', '')
-            ]
-
-        # Фильтр по SetId
-        if set_id.strip():
-            results = [r for r in results if r.set_id == set_id.strip()]
-
-        # Фильтр по статусу
-        if status != "all":
-            results = [r for r in results if r.status == status]
-
-        # Фильтр по дате
-        if date_from:
-            try:
-                df = datetime.strptime(date_from, "%d.%m.%Y")
-                results_filtered = []
-                for r in results:
-                    try:
-                        date_part = r.send_date.split()[0] if ' ' in r.send_date else r.send_date[:10]
-                        if datetime.strptime(date_part, "%d.%m.%Y") >= df:
-                            results_filtered.append(r)
-                    except (ValueError, TypeError, IndexError):
-                        logger.warning(f"Ошибка парсинга даты send_date='{r.send_date}'")
-                        continue
-                results = results_filtered
-            except ValueError:
-                logger.debug(f"Invalid date_from format: '{date_from}'")
-
-        if date_to:
-            try:
-                dt = datetime.strptime(date_to, "%d.%m.%Y")
-                results_filtered = []
-                for r in results:
-                    try:
-                        date_part = r.send_date.split()[0] if ' ' in r.send_date else r.send_date[:10]
-                        if datetime.strptime(date_part, "%d.%m.%Y") <= dt:
-                            results_filtered.append(r)
-                    except (ValueError, TypeError, IndexError):
-                        logger.warning(f"Ошибка парсинга даты send_date='{r.send_date}'")
-                        continue
-                results = results_filtered
-            except ValueError:
-                logger.debug(f"Invalid date_to format: '{date_to}'")
-
-        return results
+        return ExamJournalRepo.search(
+            query=query, set_id=set_id,
+            status=status, date_from=date_from, date_to=date_to
+        )
 
     def get_unique_set_ids(self) -> List[str]:
-        """Возвращает список уникальных SetId из журнала."""
-        return list(dict.fromkeys(r.set_id for r in self.records if r.set_id))
+        return ExamJournalRepo.get_unique_set_ids()
 
     def get_records_by_protocol(self, protocol_number: str) -> List[JournalRecord]:
-        """Получение записей по номеру протокола."""
-        if not protocol_number:
-            return []
-        return [r for r in self.records if r.protocol == protocol_number]
-    
-    def get_all_records(self) -> List[JournalRecord]:
-        """Возвращает все записи журнала."""
-        return self.records
+        return ExamJournalRepo.get_records_by_protocol(protocol_number)
 
-    # ============ Внутренние методы ============
+    def get_all_records(self) -> List[JournalRecord]:
+        return ExamJournalRepo.get_all()
+
+    def add_journal_records_directly(self, records: List[JournalRecord]):
+        ExamJournalRepo.add_records(records)
+
+    def get_record_count(self) -> int:
+        return ExamJournalRepo.count()
 
     @staticmethod
     def _get_program_title(program_id: str) -> str:
-        """Получение названия программы по номеру."""
         titles = {
             "1": "Оказание первой помощи пострадавшим",
             "2": "Использование (применение) средств индивидуальной защиты",

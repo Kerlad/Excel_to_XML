@@ -10,11 +10,13 @@ from tabs.data_transfer_tab import DataTransferTab
 from tabs.exam_journal_tab import ExamJournalTab
 from tabs.protocol_tab import ProtocolTab
 from tabs.single_worker_protocol_tab import SingleWorkerProtocolTab
+from tabs.employee_summary_tab import EmployeeSummaryTab
 from journal.journal_manager import JournalManager
 from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from utils.logger import setup_logging
 from utils.tahoe_style import get_global_stylesheet, apply_mica, load_theme, save_theme
+from db import DatabaseManager, create_schema
 
 
 class MainWindow(QMainWindow):
@@ -61,6 +63,10 @@ class MainWindow(QMainWindow):
         # Вкладка "Протокол одиночного работника"
         self.single_worker_tab = SingleWorkerProtocolTab(self.programs_manager, data_dir)
         self.tabs.addTab(self.single_worker_tab, "Протокол одиночного")
+
+        # Вкладка "Сводка по сотрудникам"
+        self.employee_summary_tab = EmployeeSummaryTab()
+        self.tabs.addTab(self.employee_summary_tab, "Сводка по сотрудникам")
 
         # Подключение сигнала передачи данных
         self.data_entry_tab.data_loaded.connect(self.data_view_tab.add_data)
@@ -325,6 +331,15 @@ if __name__ == "__main__":
     log_dir = os.path.join(base_dir, "log")
     setup_logging(log_dir)
     logging.getLogger(__name__).info("=== Приложение запущено ===")
+
+    # Инициализация БД (с расшифровкой и бэкапом)
+    data_dir = os.path.join(base_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    db_path = os.path.join(data_dir, "app_data.db")
+    db = DatabaseManager.get_instance(db_path)
+    db.initialize()
+    create_schema()
+    logging.getLogger(__name__).info(f"БД инициализирована: {db_path}")
 
     # Загрузка темы
     theme = load_theme(base_dir)

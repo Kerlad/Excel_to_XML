@@ -10,7 +10,8 @@ from openpyxl import load_workbook
 project_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(project_dir, "data")
 
-from journal.journal_manager import JournalManager, JournalRecord
+from journal.journal_manager import JournalManager
+from db.exam_journal_repo import JournalRecord
 from utils.crypto import encrypt_data, decrypt_data
 
 def import_journal_from_excel(file_path: str) -> tuple[int, list]:
@@ -54,6 +55,7 @@ def import_journal_from_excel(file_path: str) -> tuple[int, list]:
         
         added_count = 0
         errors = []
+        records_to_add = []
         
         for row_num in range(2, ws.max_row + 1):
             try:
@@ -94,7 +96,7 @@ def import_journal_from_excel(file_path: str) -> tuple[int, list]:
                     status="pending" if not row_dict.get('Рег. номер') else "received"
                 )
                 
-                journal.records.append(record)
+                records_to_add.append(record)
                 added_count += 1
                 
             except Exception as e:
@@ -102,7 +104,7 @@ def import_journal_from_excel(file_path: str) -> tuple[int, list]:
         
         # Сохраняем журнал
         if added_count > 0:
-            journal._save()
+            journal.add_journal_records_directly(records_to_add)
         
         return added_count, errors
         
@@ -139,4 +141,4 @@ if __name__ == "__main__":
     
     # Проверяем журнал
     journal = JournalManager(data_dir)
-    print(f"\nВсего записей в журнале: {len(journal.records)}")
+    print(f"\nВсего записей в журнале: {journal.get_record_count()}")

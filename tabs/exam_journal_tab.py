@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QSortFilterProxyModel, QDate
 from PySide6.QtGui import QColor, QFont
-from journal.journal_manager import JournalRecord
+from db.exam_journal_repo import JournalRecord
 
 logger = logging.getLogger(__name__)
 
@@ -811,8 +811,7 @@ class ExamJournalTab(QWidget):
                 return
                  
             # Добавляем записи в журнал
-            self.journal.records.extend(records_to_add)
-            self.journal._save()
+            self.journal.add_journal_records_directly(records_to_add)
              
             QMessageBox.information(
                 self, "Успех", 
