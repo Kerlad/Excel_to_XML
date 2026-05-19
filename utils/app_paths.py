@@ -3,13 +3,19 @@ from pathlib import Path
 
 
 def get_app_data_dir() -> str:
-    path = Path.home() / "AppData" / "Roaming" / "Excel_to_XML"
+    base = os.environ.get('APPDATA')
+    if not base:
+        base = str(Path.home() / 'AppData' / 'Roaming')
+    path = Path(base) / "Excel_to_XML"
     os.makedirs(str(path), exist_ok=True)
     return str(path)
 
 
 def get_app_log_dir() -> str:
-    path = Path.home() / "AppData" / "Roaming" / "Excel_to_XML" / "log"
+    base = os.environ.get('APPDATA')
+    if not base:
+        base = str(Path.home() / 'AppData' / 'Roaming')
+    path = Path(base) / "Excel_to_XML" / "log"
     os.makedirs(str(path), exist_ok=True)
     return str(path)
 

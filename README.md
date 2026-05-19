@@ -29,7 +29,7 @@
 - 📓 **Журнал проверки знаний** — история всех отправок с отслеживанием статусов
 - 📄 **Формирование протокола** — автоматическое заполнение шаблона протокола проверки знаний
 - 📄 **Протокол одиночного работника** — создание протокола без использования данных журнала
-- 🔐 **Безопасное хранение** — шифрование API-ключа и настроек прокси (AES/Fernet)
+- 🔐 **Безопасное хранение** — полевое шифрование персональных данных (ФИО, СНИЛС) + шифрование API-ключа и настроек прокси (AES/Fernet, DPAPI)
 - 🎨 **Современный UI** — интерфейс на PySide6 с интуитивной навигацией и темами
 - 🌐 **Windows Integrated Authentication** — поддержка Negotiate/Kerberos для корпоративных прокси
 
@@ -115,6 +115,10 @@ cd Excel_to_XML
 # Установка зависимостей
 pip install -r requirements.txt
 ```
+
+### Runtime
+
+После установки все данные хранятся в `%APPDATA%/Excel_to_XML/`. Ничего не записывается рядом с исполняемым файлом.
 
 ### Зависимости
 
@@ -239,39 +243,72 @@ python main.py
 
 ### Безопасность
 
-#### Шифрование данных
+#### Модель шифрования
 
-Приложение использует **AES (Fernet)** с ключом, производным от имени пользователя Windows (`SHA256(USERNAME)`).
+Приложение использует **двухуровневую модель защиты персональных данных**:
 
-| Что шифруется | Как | Файл |
-|---------------|-----|------|
-| SQLite-БД (ФИО, СНИЛС, программы, журнал) | File-level AES/Fernet | `data/app_data.db.enc` |
-| API-ключ Минтруда | Post-message AES/Fernet | `data/api_key.json` |
-| Настройки УЦ и работодателя | Post-message AES/Fernet | `data/org_settings.json` |
-| Данные комиссии | Post-message AES/Fernet | `data/commission_data.json` |
-| Пароль прокси | Post-message AES/Fernet | `data/proxy_settings.json` |
+1. **Полевое шифрование** (AES/Fernet) — чувствительные поля (ФИО, СНИЛС) шифруются по отдельности перед записью в SQLite (`encrypt_value`/`decrypt_value`)
+2. **Шифрование настроек** (AES/Fernet) — API-ключ, данные УЦ, комиссии, пароль прокси шифруются в JSON-файлах (`encrypt_data`/`decrypt_data`)
+3. **Поисковые хеши** (SHA256) — для поиска по СНИЛС используется хеш, поиск по зашифрованным полям не производится
 
-#### Жизненный цикл базы данных
+#### Ключ шифрования
 
-1. **Запуск**: `app_data.db.enc` → расшифровка → `app_data.db`
-2. **Работа**: SQLite в открытом виде (только в памяти процесса)
-3. **Бэкап**: автоматическое копирование зашифрованной БД (ротация 5 копий)
-4. **Закрытие**: `app_data.db` → шифрование → `app_data.db.enc`, исходный файл удаляется
+- **Основной:** DPAPI (`CryptProtectData`) + 32-байтовый случайный ключ (`os.urandom(32)`) в `%APPDATA%/Excel_to_XML/master.key`
+- **Резервный (без DPAPI):** ключ сохраняется напрямую в `master.key`
+- Ключ привязан к учётной записи Windows
 
-#### Маскировка в логах
+| Что шифруется | Метод | Хранение |
+|---------------|-------|----------|
+| ФИО, СНИЛС (БД) | Полевое AES/Fernet | SQLite (`_enc` поля) |
+| API-ключ Минтруда | AES/Fernet | `%APPDATA%/Excel_to_XML/api_key.json` |
+| Настройки УЦ и Заказчика | AES/Fernet | `%APPDATA%/Excel_to_XML/org_settings.json` |
+| Данные комиссии | AES/Fernet | `%APPDATA%/Excel_to_XML/commission_data.json` |
+| Пароль прокси | AES/Fernet | `%APPDATA%/Excel_to_XML/proxy_settings.json` |
 
-Все логи фильтруются через **SensitiveDataFilter**:
-- СНИЛС (`123-456-789 00` → `***-***-*** **`, `12345678900` → `***********`)
+#### Хранение данных
+
+Все данные приложения хранятся в `%APPDATA%/Excel_to_XML/`:
+
+```
+%APPDATA%/Excel_to_XML/
+ ├── app_data.db                # SQLite (полевое шифрование)
+ ├── master.key                 # Ключ шифрования (DPAPI или raw)
+ ├── backups/                   # Бэкапы БД (ротация 5 шт.)
+ ├── log/                       # Логи приложения
+ │   ├── app.log               # Основной лог (INFO+)
+ │   ├── error.log             # Только ошибки (ERROR+)
+ │   └── audit.log             # Аудит действий
+ ├── settings/                  # Настройки (зашифрованные)
+ │   ├── api_key.json
+ │   ├── org_settings.json
+ │   ├── commission_data.json
+ │   └── proxy_settings.json
+ └── *.json                     # UI-настройки
+```
+
+#### Логирование
+
+**Маскировка чувствительных данных** — все логи проходят через `SensitiveDataFilter`:
+- СНИЛС → `***-***-*** **` или `***********`
 - Пароли → `***`
 - API-ключи → `***`
 - URL с credentials → `https://***:***@***`
 
-#### Дополнительно
+**Уровень логирования:** INFO (продакшн) / DEBUG (режим отладки)
 
-- Ключ невозможно расшифровать на другом компьютере или под другим пользователем Windows
-- Пароли никогда не попадают в логи
-- **TLS верификация** управляется чекбоксом (по умолчанию выключена для корпоративных прокси)
-- **Windows Integrated Authentication** — автоматическое использование текущих Windows-учетных данных
+**Аудит-лог** — отдельный файл `audit.log` для ключевых действий:
+- Отправка XML (SEND_XML)
+- Запрос реестра (QUERY_SETID, QUERY_SNILS)
+- Импорт данных (IMPORT_XLSX, IMPORT_XML)
+- Экспорт (EXPORT_XML, EXPORT_XLSX)
+- Бэкапы (BACKUP)
+
+### Корпоративные прокси
+
+- **Автоопределение:** автоматически читает настройки прокси из реестра Windows
+- **Ручная настройка:** поддерживает Basic-аутентификацию через `http://user:pass@host:port`
+- **WPAD:** поддерживается через системные настройки
+- **TLS:** включён по умолчанию, отключается через UI для корпоративных SSL-инспекций
 
 ### Эндпоинты API
 
@@ -320,77 +357,68 @@ Excel_to_XML/
 ├── ExcelXML.spec                  # Конфигурация PyInstaller
 ├── ico.ico                        # Иконка приложения
 ├── README.md                      # Документация проекта
+├── Техническое_задание_2.md       # Техническое задание
 │
-├── tabs/                          # Вкладки интерфейса
+├── tabs/                          # Вкладки интерфейса (PySide6)
 │   ├── data_entry_tab.py         # Внесение данных
 │   ├── data_view_tab.py          # Просмотр данных
 │   ├── data_transfer_tab.py      # Передача данных
+│   ├── data_transfer_tab_base.py # Базовый класс передачи
 │   ├── exam_journal_tab.py       # Журнал проверки знаний
 │   ├── protocol_tab.py           # Формирование протокола
 │   ├── single_worker_protocol_tab.py  # Протокол одиночного работника
 │   ├── employee_summary_tab.py   # Сводка по сотрудникам
 │   └── programs_dialog.py        # Диалог программ обучения
 │
-├── protocol/                      # Модули протокола
-│   ├── commission_manager.py     # Управление данными комиссии
-│   └── programs_manager.py       # Управление программами обучения
-│
-├── journal/                      # Журнал проверок
-│   └── journal_manager.py        # CRUD операции с журналом
-│
 ├── api/                          # API Минтруда
-│   ├── __init__.py
 │   ├── mintrud_api.py            # Единая точка входа API
-│   ├── payload_builder.py        # Сборка Request.xml, .olot архива
+│   ├── payload_builder.py        # Сборка multipart-запроса
 │   ├── response_parser.py        # Парсинг XML ответов
 │   └── backends/                 # Transport backends
-│       ├── __init__.py
 │       ├── base_backend.py       # Абстрактный интерфейс
-│       ├── requests_backend.py   # requests + Negotiate/NTLM
+│       ├── requests_backend.py   # requests (персистентная сессия + retry)
 │       └── wininet_backend.py    # Windows WinINET
 │
-├── network/                      # Network diagnostics
-│   ├── __init__.py
-│   └── client.py                # Windows Integrated Auth, тестирование
-│
-├── exporters/                    # Экспорт данных
-│   ├── xml_exporter.py          # Конвертация в XML
-│   └── protocol_exporter.py     # Генерация протокола
-│
-├── importers/                    # Импорт данных
-│   ├── xlsx_importer.py         # Загрузка XLSX/XLS
-│   └── xml_importer.py          # Загрузка XML
-│
-├── db/                          # База данных
-│   ├── database.py              # Менеджер подключений (singleton, шифрование)
+├── db/                          # База данных (SQLite)
+│   ├── database.py              # DatabaseManager (singleton, WAL, прагмы)
 │   ├── schema.py                # Схема SQLite
 │   ├── workers_data_repo.py     # Репозиторий workers_data
 │   ├── exam_journal_repo.py     # Репозиторий журнала
 │   ├── employees_repo.py        # Репозиторий сотрудников (сводка)
 │   └── employee_programs_repo.py # Репозиторий программ (сводка)
 │
+├── journal/                      # Журнал проверок
+│   └── journal_manager.py        # CRUD операции с журналом
+│
+├── protocol/                     # Модули протокола
+│   ├── commission_manager.py     # Управление данными комиссии
+│   └── programs_manager.py       # Управление программами обучения
+│
+├── exporters/                    # Экспорт данных
+│   ├── xml_exporter.py          # Конвертация в XML (XSD)
+│   └── protocol_exporter.py     # Генерация протокола DOCX
+│
+├── importers/                    # Импорт данных
+│   ├── xlsx_importer.py         # Загрузка XLSX/XLS
+│   ├── xml_importer.py          # Загрузка XML
+│   └── error_report.py          # Отчёт об ошибках импорта
+│
+├── network/                      # Сетевые утилиты
+│   └── client.py                # Windows Integrated Auth, диагностика
+│
 ├── utils/                       # Утилиты
-│   ├── logger.py                # Настройка логирования (+ SensitiveDataFilter)
-│   ├── tahoe_style.py          # Темы оформления
-│   ├── crypto.py                # Шифрование (data + file-level)
-│   └── proxy_manager.py         # Управление прокси
+│   ├── crypto.py                # Полевое шифрование (AES/Fernet, DPAPI)
+│   ├── logger.py                # Логирование (+ SensitiveDataFilter)
+│   ├── app_paths.py             # Пути к %APPDATA%/Excel_to_XML/
+│   ├── proxy_manager.py         # Управление прокси
+│   ├── tahoe_style.py          # Темы оформления (light/dark, Mica)
+│   └── audit.py                 # Аудит-лог
 │
 ├── schema/                      # XSD-схемы
-│   └── *.xsd
+│   └── educated_person_import_v1.0.9.xsd
 │
-├── data/                        # Данные приложения
-│   ├── app_data.db              # SQLite (расшифрована во время работы)
-│   ├── app_data.db.enc          # Зашифрованная БД (AES/Fernet, на диске)
-│   ├── app_data.db.backup.N     # Автоматические бэкапы (до 5)
-│   ├── api_key.json             # Зашифрованный API-ключ
-│   ├── org_settings.json        # Зашифрованные настройки УЦ
-│   ├── commission_data.json     # Зашифрованные данные комиссии
-│   ├── proxy_settings.json      # Зашифрованные настройки прокси
-│   ├── programs_data.json       # Номера документов и часы программ
-│   └── journal_settings.json    # UI-настройки журнала
-│
-└── log/                        # Логи
-    └── network.log             # Логи сетевых операций
+└── data/                        # Runtime-шаблоны (примеры)
+    └── __init__.py
 ```
 
 ---
@@ -417,22 +445,49 @@ Excel_to_XML/
 
 ### Создание исполняемого файла
 
+**Вариант 1: PyInstaller (рекомендуется)**
 ```bash
+pip install pyinstaller
 pyinstaller ExcelXML.spec
 ```
+Результат: `dist/ExcelXML-Mintrud/ExcelXML-Mintrud.exe` (около 6 МБ + библиотеки)
 
-Результат появится в папке `dist/ExcelXML-Mintrud/`.
+**Вариант 2: C# лаунчер + исходники**
+```bash
+csc Launcher.cs
+```
+Результат: `Launcher.exe` (~5 КБ) — запускает `python main.py`, не требует упаковки
+
+**Параметры сборки:**
+- `onedir` — директория с библиотеками (не UPX, чтобы избежать ложных срабатываний АВ)
+- `--noconsole` — без консольного окна
+- `--icon=ico.ico` — иконка приложения
+- `--version=version_info.txt` — версия
 
 ### Логирование
 
-Приложение ведёт логи в следующих файлах:
+Логи хранятся в `%APPDATA%/Excel_to_XML/log/`:
 
-| Файл | Назначение |
-|------|------------|
-| `log/network.log` | Сетевые операции, прокси, авторизация |
-| `api_requests.log` | Запросы к API Минтруда |
-| `import_errors.log` | Ошибки импорта файлов |
-| `export_errors.log` | Ошибки экспорта в XML |
+| Файл | Назначение | Уровень |
+|------|------------|---------|
+| `app.log` | Основной лог приложения | INFO+ (ротация 5×5МБ) |
+| `error.log` | Только ошибки | ERROR+ |
+| `audit.log` | Аудит действий | INFO (отдельный файл) |
+
+Логи автоматически фильтруют СНИЛС, пароли, API-ключи (`SensitiveDataFilter`).
+
+### Поиск и устранение неисправностей
+
+| Проблема | Решение |
+|----------|---------|
+| Не отправляется XML | Проверьте API-ключ (32 символа), настройки прокси, TLS-сертификат |
+| Ошибка прокси | Включите «Авто (системные)» или настройте вручную `http://user:pass@host:port` |
+| SSL-ошибки | Отключите «Проверять TLS» в настройках прокси (для корпоративных SSL-инспекций) |
+| Не загружается Excel | Проверьте заголовки колонок: Фамилия, Имя, СНИЛС, Дата и т.д. |
+| Не конвертируется XML | Убедитесь, что XSD-схема есть в папке `schema/` |
+| Где логи? | `%APPDATA%/Excel_to_XML/log/` |
+| Где БД? | `%APPDATA%/Excel_to_XML/app_data.db` |
+| Сброс настроек | Удалите `%APPDATA%/Excel_to_XML/` (кроме master.key!) |
 
 ---
 

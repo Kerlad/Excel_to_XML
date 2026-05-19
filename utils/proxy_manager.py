@@ -104,6 +104,18 @@ def build_proxies_for_requests(settings: dict) -> Optional[Dict[str, str]]:
         url = settings.get("url", "").strip()
         if not url:
             return None
-        proxies = {"http": url, "https": url}
+        username = settings.get("username", "").strip()
+        password = settings.get("password", "").strip()
+        if username and password:
+            from urllib.parse import urlparse, urlunparse
+            parsed = urlparse(url)
+            auth_url = urlunparse((
+                parsed.scheme,
+                f"{username}:{password}@{parsed.hostname}:{parsed.port or 3128}",
+                parsed.path, parsed.params, parsed.query, parsed.fragment
+            ))
+            proxies = {"http": auth_url, "https": auth_url}
+        else:
+            proxies = {"http": url, "https": url}
         return proxies
     return None

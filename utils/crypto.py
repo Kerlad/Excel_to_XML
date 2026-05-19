@@ -40,10 +40,11 @@ def _get_or_create_master_key():
     prot = _dpapi_encrypt(raw)
     if prot:
         kf.write_bytes(prot)
-        _MASTER_KEY = raw; logger.info(f'Master key: {kf}'); return raw
-    fallback = hashlib.sha256(os.environ.get('USERNAME','default_user').encode()).digest()
-    logger.warning('DPAPI unavailable, using USERNAME fallback')
-    _MASTER_KEY = fallback; return fallback
+        _MASTER_KEY = raw; logger.info(f'Master key created: {kf}'); return raw
+    # DPAPI unavailable — store raw key in AppData (less secure, but random)
+    kf.write_bytes(raw)
+    logger.warning('DPAPI unavailable, master.key stored unprotected')
+    _MASTER_KEY = raw; return raw
 
 def _fernet():
     return Fernet(base64.urlsafe_b64encode(_get_or_create_master_key()))
@@ -54,7 +55,7 @@ def encrypt_value(plain):
 def decrypt_value(enc):
     if not enc: return ''
     try: return _fernet().decrypt(enc.encode('utf-8')).decode('utf-8')
-    except Exception as e: logger.error(f'Decrypt failed: {e}'); return enc
+    except Exception as e: logger.error(f'Decrypt failed: {e}'); return ''
 
 def hash_for_search(val):
     normalized = val.lower().strip().replace('-', '').replace(' ', '').replace('\xa0', '')
@@ -66,17 +67,4 @@ def encrypt_data(data):
 def decrypt_data(enc):
     return json.loads(_fernet().decrypt(enc.encode('utf-8')).decode('utf-8'))
 
-def encrypt_file(path):
-    p = Path(path)
-    if not p.exists(): raise FileNotFoundError(str(path))
-    enc = _fernet().encrypt(p.read_bytes())
-    p.with_suffix(p.suffix + '.enc').write_bytes(enc)
-    p.unlink()
-    return str(p.with_suffix(p.suffix + '.enc'))
 
-def decrypt_file(enc_path, out_path):
-    p = Path(enc_path)
-    if not p.exists(): raise FileNotFoundError(str(enc_path))
-    data = _fernet().decrypt(p.read_bytes())
-    Path(out_path).write_bytes(data)
-    p.unlink()

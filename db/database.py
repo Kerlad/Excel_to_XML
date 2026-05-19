@@ -110,8 +110,9 @@ class DatabaseManager:
     def close_all(self):
         self.close()
 
-    def create_backup(self, encrypt: bool = True) -> str:
-        """Create encrypted backup of the database with rotation."""
+    def create_backup(self) -> str:
+        """Create backup of the database with rotation.
+        DB already contains field-level encrypted personal data."""
         if not self.db_path or not os.path.exists(self.db_path):
             return ""
         backup_dir = os.path.join(os.path.dirname(self.db_path), "backups")
@@ -126,13 +127,5 @@ class DatabaseManager:
                 shutil.move(old, new)
         backup_path = os.path.join(backup_dir, f"{base}.backup.1")
         shutil.copy2(self.db_path, backup_path)
-        if encrypt:
-            try:
-                from utils.crypto import encrypt_file
-                enc_path = encrypt_file(backup_path)
-                logger.info(f"Backup encrypted: {enc_path}")
-                return enc_path
-            except Exception as e:
-                logger.warning(f"Backup encryption failed: {e}")
         logger.info(f"Backup created: {backup_path}")
         return backup_path

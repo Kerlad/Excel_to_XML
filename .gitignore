@@ -47,12 +47,4 @@ generate_test_data.py
 
 # Docs (optional)
 Техническое_задание*.pdf
-Техническое_задание*.md
-Doclad.MD
-ReadmeV2.md
-TZ#2.md
 curl.txt
-
-# Launcher
-Launcher.cs
-version_info.txt

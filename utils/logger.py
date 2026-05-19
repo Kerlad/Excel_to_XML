@@ -67,7 +67,7 @@ def setup_logging(log_dir: str, max_bytes: int = 5 * 1024 * 1024, backup_count: 
     error_handler.addFilter(sensitive_filter)
 
     root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
+    root.setLevel(logging.INFO)
     for h in root.handlers[:]:
         root.removeHandler(h)
     root.addHandler(main_handler)

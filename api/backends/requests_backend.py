@@ -8,6 +8,27 @@ logger = logging.getLogger(__name__)
 
 class RequestsBackend(BaseBackend):
     name = "requests"
+    _session = None
+
+    def _get_session(self, proxies):
+        import requests
+        if self._session is None:
+            self._session = requests.Session()
+            # Retry policy with backoff
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS"]
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            self._session.mount("https://", adapter)
+            self._session.mount("http://", adapter)
+        if proxies:
+            self._session.proxies = proxies
+        return self._session
 
     def is_available(self) -> bool:
         try:
@@ -23,24 +44,14 @@ class RequestsBackend(BaseBackend):
         proxies: Optional[Dict[str, str]] = None,
         **kwargs
     ) -> tuple[bool, int, bytes, str]:
-        import requests
         logger.info(f"RequestsBackend: POST {url}")
         try:
-            session = requests.Session()
-            if proxies:
-                session.proxies = proxies
+            session = self._get_session(proxies)
             response = session.post(url, files=files, headers=headers,
                                     timeout=timeout, verify=verify)
-            session.close()
             return True, response.status_code, response.content, ""
-        except requests.exceptions.Timeout:
-            return False, 0, b"", "Request timeout"
-        except requests.exceptions.ProxyError as e:
-            return False, 0, b"", f"Proxy error: {e}"
-        except requests.exceptions.ConnectionError as e:
-            return False, 0, b"", f"Connection error: {e}"
-        except Exception as e:
-            return False, 0, b"", str(e)
+        except ImportError:
+            return False, 0, b"", "requests not installed"
 
     def get(
         self, url: str,
@@ -50,15 +61,11 @@ class RequestsBackend(BaseBackend):
         proxies: Optional[Dict[str, str]] = None,
         **kwargs
     ) -> tuple[bool, int, bytes, str]:
-        import requests
         logger.info(f"RequestsBackend: GET {url}")
         try:
-            session = requests.Session()
-            if proxies:
-                session.proxies = proxies
+            session = self._get_session(proxies)
             response = session.get(url, headers=headers, params=params,
                                    timeout=timeout, verify=verify)
-            session.close()
             return True, response.status_code, response.content, ""
         except Exception as e:
             return False, 0, b"", str(e)

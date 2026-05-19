@@ -420,7 +420,10 @@ if __name__ == "__main__":
     db.initialize()
     create_schema()
     logging.getLogger(__name__).info(f"БД: {db_path}")
-    db.create_backup(encrypt=True)
+    db.create_backup()
+
+    import atexit
+    atexit.register(db.close_all)
 
     # Загрузка темы
     theme = load_theme(data_dir)

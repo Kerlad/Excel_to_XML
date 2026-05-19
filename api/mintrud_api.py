@@ -426,6 +426,7 @@ class MintrudClient:
             page_no += 1
             time.sleep(0.5)
         
+        log_audit("QUERY_SNILS", f"records={len(all_records)}")
         return {"success": True, "records": all_records}
 
 
