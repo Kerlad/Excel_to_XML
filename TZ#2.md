@@ -920,7 +920,7 @@ CREATE INDEX idx_exam_journal_status ON exam_journal(status);
 
 
 
-### 3.6. Шифрование и безопасность
+### 3.4. Шифрование и безопасность
 
 **Принцип:** SQLite-БД — обычная (без файлового шифрования). Персональные данные защищены на уровне отдельных полей (ФИО, СНИЛС). Конфиденциальные настройки шифруются целиком.
 
@@ -1010,7 +1010,7 @@ DataTransferTab ──(send XML)──> API Минтруда
 - Excel: openpyxl (XLSX), xlrd (XLS)
 - XML: lxml (XSD-валидация), xml.etree.ElementTree
 - Документы: python-docx (шаблоны DOCX)
-- HTTP: requests (основной), httpx, urllib, pycurl, WinINET (запасные)
+- HTTP: requests (основной), WinINET (запасной, Windows API)
 - Упаковка: PyInstaller (EXE)
 
 **Стандарты кода:**
@@ -1024,7 +1024,7 @@ DataTransferTab ──(send XML)──> API Минтруда
 - Запрос к API Минтруда: зависит от скорости соединения и размера ответа (пагинация по 5000 записей)
 
 **Ограничения:**
-- Максимум 5000 записей в workers_data.json
+- Максимум 5000 записей в таблице workers_data (app_data.db)
 - Максимум 300 записей на один протокол (для генерации DOCX)
 
 ## 6. Интеграция с API Минтруда

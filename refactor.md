@@ -1,492 +1,549 @@
-1. Perform final stabilization, cleanup and testing of the project.
+Perform final production hardening, documentation synchronization and release audit.
 
-   Project:
-   Windows desktop application (PySide6 + SQLite + requests + WinINet + PyInstaller)
-   for occupational safety registry, employee training tracking,
-   XML generation and Mintrud API integration.
+Project:
+Windows desktop application (PySide6 + SQLite + requests + WinINet + PyInstaller)
+for occupational safety registry, employee training management,
+XML generation and Mintrud API integration.
 
-   Current status:
-   - antivirus false positives resolved
-   - AppData storage enabled
-   - SQLite plain DB
-   - field-level encryption implemented
-   - DPAPI master key implemented
-   - requests + wininet only
+Current state:
+- antivirus false positives resolved
+- runtime storage moved to AppData
+- SQLite architecture stable
+- field-level encryption implemented
+- DPAPI key management implemented
+- requests + wininet networking active
 
-   Goal:
-   Finalize project for production/corporate deployment.
+Goal:
+Prepare final production-ready release.
 
-   IMPORTANT:
-   Do NOT break existing functionality.
-   Do NOT reintroduce antivirus false positives.
-   Do NOT remove requests or wininet backends.
+IMPORTANT:
+- do NOT break existing business logic
+- do NOT remove requests backend
+- do NOT remove wininet backend
+- do NOT reintroduce antivirus triggers
+- preserve current architecture
 
-   ==================================================
-   SECTION 1. FINAL CODE CLEANUP
-   ==================================================
+==================================================
+SECTION 1. FINAL CODE HARDENING
+==================================================
 
-   1.1 Remove ambiguous base directory logic
+1.1 Safe decrypt_data()
 
-   File:
-   utils/app_paths.py
+File:
+utils/crypto.py
 
-   Problem:
-   get_base_dir() still points to executable/project directory
-   and can be accidentally reused for runtime storage.
+Problem:
+decrypt_data() may raise exceptions if:
+- corrupted encrypted payload
+- invalid JSON
+- key mismatch
 
-   Action:
-   - audit all usages of get_base_dir()
-   - ensure it is NOT used for:
-     - logs
-     - db
-     - temp
-     - configs
-     - backups
+Required:
+wrap decrypt_data() in safe try/except.
 
-   If used only for resources:
-   rename:
+Behavior:
+- log warning only
+- do not crash app
+- return safe fallback
 
-   get_base_dir()
-   -> get_resource_dir()
+Recommended:
 
-   or equivalent.
+try:
+    ...
+except Exception:
+    logger.warning("Decrypt data failed")
+    return {}
 
-   Goal:
-   runtime storage only in AppData.
+Goal:
+encryption failures must not break application flow.
 
-   --------------------------------------------------
+--------------------------------------------------
 
-   1.2 Reduce crypto log noise
+1.2 DPAPI robustness audit
 
-   File:
-   utils/crypto.py
+File:
+utils/crypto.py
 
-   Current:
-   decrypt failures log detailed exception text.
+Audit all DPAPI functions.
 
-   Replace:
+Verify:
+- exceptions handled safely
+- fallback key generation stable
+- no crash if:
+  - domain policy blocks DPAPI
+  - profile corrupted
+  - permissions insufficient
 
-   logger.error(f"Decrypt failed: {e}")
+If DPAPI unavailable:
+- generate random local key
+- store master.key
+- log one warning only
 
-   with safer production logging:
+Avoid repetitive warnings.
 
-   logger.warning("Decrypt failed")
+Message:
+"DPAPI unavailable, using local fallback key (reduced security)."
 
-   Avoid noisy crypto stack traces.
+--------------------------------------------------
 
-   --------------------------------------------------
+1.3 Crypto logging hygiene
 
-   1.3 Harden DPAPI fallback handling
+Audit crypto logs.
 
-   Files:
-   utils/crypto.py
+Ensure logs do NOT expose:
+- encrypted blobs
+- stack traces with sensitive info
 
-   Problem:
-   DPAPI helpers catch only ImportError.
+Use concise warnings only.
 
-   Need:
-   catch broader exceptions:
+Examples:
+GOOD:
+logger.warning("Decrypt failed")
 
-   - permission issues
-   - profile corruption
-   - domain restrictions
-   - DPAPI failures
+BAD:
+logger.error(f"Decrypt failed: {exception}")
 
-   Use:
+==================================================
+SECTION 2. NETWORK AND PROXY STABILITY
+==================================================
 
-   except Exception as e:
+2.1 Requests send() exception handling
 
-   with safe fallback.
+File:
+api/backends/requests_backend.py
 
-   Log concise warning.
+Problem:
+send() may not catch all exceptions.
 
-   --------------------------------------------------
+Fix:
+replace narrow exception handling with:
 
-   1.4 Validate master.key fallback mode
+except Exception as e:
+    return False, 0, b'', str(e)
 
-   If DPAPI unavailable:
-   master.key stored raw.
+Ensure all network failures handled safely.
 
-   This is acceptable fallback.
+--------------------------------------------------
 
-   Required:
-   - document fallback mode
-   - log warning once
-   - optionally expose UI warning
+2.2 Retry policy audit
 
-   Text:
-   "DPAPI unavailable, using local fallback key (reduced security)."
+Review Retry configuration.
 
-   ==================================================
-   SECTION 2. STORAGE AND FILE SECURITY
-   ==================================================
+Current retry may include POST.
 
-   2.1 Audit runtime storage
+Risk:
+POST retries may duplicate XML submissions.
 
-   Verify ALL runtime files stored only in:
+Action:
+review allowed_methods.
 
-   %APPDATA%/Excel_to_XML/
+Preferred:
+["HEAD", "GET", "OPTIONS"]
 
-   Check:
-   - app_data.db
+Only allow POST retry if API is idempotent or safe.
+
+Document decision.
+
+--------------------------------------------------
+
+2.3 Persistent requests session
+
+Verify requests.Session() reused.
+
+Requirements:
+- single persistent session
+- proper close on shutdown
+
+Avoid session recreation for batch operations.
+
+--------------------------------------------------
+
+2.4 Proxy manual auth audit
+
+Verify manual proxy mode works with:
+
+http://username:password@host:port
+
+Test:
+- authenticated proxy
+- unauthenticated proxy
+- invalid credentials
+
+Ensure graceful errors.
+
+--------------------------------------------------
+
+2.5 TLS verification policy
+
+Verify:
+- TLS verify=True default
+- no hidden verify=False fallback
+
+Disable verify only by explicit setting.
+
+==================================================
+SECTION 3. STORAGE AND FILE SECURITY
+==================================================
+
+3.1 Runtime storage audit
+
+Verify ALL runtime files stored only in:
+
+%APPDATA%/Excel_to_XML/
+
+Files:
+- app_data.db
+- logs
+- backups
+- settings
+- master.key
+- temp if persistent
+
+Forbidden:
+runtime files near executable.
+
+--------------------------------------------------
+
+3.2 XML temp file cleanup
+
+Audit XML workflow.
+
+Temporary XML files may contain personal data.
+
+Requirements:
+- create in temp directory
+- auto delete after send/export
+
+Verify:
+no temp XML remains after operation.
+
+--------------------------------------------------
+
+3.3 Temporary reports cleanup
+
+Audit temporary files:
+- DOCX
+- protocols
+- reports
+
+Temporary files:
+cleanup after use.
+
+Persistent exports:
+save only to user-selected path.
+
+--------------------------------------------------
+
+3.4 Backup audit
+
+Verify DB backups.
+
+Requirements:
+- backups preserve encrypted fields
+- no plaintext exports created unintentionally
+
+==================================================
+SECTION 4. LOGGING AND AUDIT
+==================================================
+
+4.1 Sensitive logging audit
+
+Verify logs never contain:
+
+- SNILS
+- FIO
+- proxy passwords
+- tokens
+- API keys
+- XML payloads
+- authorization headers
+
+Audit all logger calls.
+
+Mask examples:
+
+14566772094 -> 145****094
+
+--------------------------------------------------
+
+4.2 Log rotation
+
+Audit logging handlers.
+
+If missing:
+implement rotation.
+
+Preferred:
+RotatingFileHandler or TimedRotatingFileHandler
+
+Prevent unlimited log growth.
+
+Recommended:
+- maxBytes
+- backupCount
+
+--------------------------------------------------
+
+4.3 Logging levels
+
+Production default:
+INFO
+
+DEBUG:
+only via explicit debug setting.
+
+==================================================
+SECTION 5. DATABASE STABILITY
+==================================================
+
+5.1 SQLite configuration audit
+
+Verify:
+
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+PRAGMA synchronous=FULL or NORMAL;
+
+Ensure settings applied consistently.
+
+--------------------------------------------------
+
+5.2 DB shutdown
+
+Verify all DB connections close correctly.
+
+Use:
+DatabaseManager.close_all()
+
+Call on app exit.
+
+--------------------------------------------------
+
+5.3 Large dataset stability
+
+Test database with:
+
+- 100 employees
+- 1000 employees
+- 5000+ employees
+
+Verify:
+- search
+- filtering
+- imports
+- journal
+- planning
+
+No crashes or major slowdown.
+
+==================================================
+SECTION 6. FUNCTIONAL TESTING
+==================================================
+
+6.1 Employee Summary (2.7)
+
+Test:
+
+- Excel import
+- manual add/edit
+- employee search by SNILS
+- duplicate detection
+- encrypted persistence
+- registry sync
+- status logic
+- filters
+- exports
+
+Verify full workflow.
+
+--------------------------------------------------
+
+6.2 Training Plan (2.8)
+
+Test:
+
+- generate next year plan
+- overdue detection
+- recommendations
+- filters
+- export
+
+Verify business rules.
+
+--------------------------------------------------
+
+6.3 Journal
+
+Test:
+
+- add/edit/delete
+- filters
+- statuses
+- SetId
+- exports
+
+--------------------------------------------------
+
+6.4 Monitoring
+
+Test:
+
+- logs display
+- refresh
+- filters
+- statuses
+
+--------------------------------------------------
+
+6.5 XML workflow
+
+Test:
+
+- XML generation
+- validation
+- send
+- temp cleanup
+
+==================================================
+SECTION 7. UI/PERFORMANCE TESTING
+==================================================
+
+7.1 Long-running tasks
+
+Verify worker threads for:
+
+- Excel import
+- API sync
+- XML generation
+- batch requests
+
+UI requirements:
+- no freeze
+- progress bar
+- status updates
+
+--------------------------------------------------
+
+7.2 Large tables
+
+Verify performance for:
+- employee summary
+- journal
+
+Large datasets must remain usable.
+
+==================================================
+SECTION 8. TECHNICAL SPECIFICATION SYNCHRONIZATION
+==================================================
+
+Update technical specification to match actual architecture.
+
+Remove obsolete references:
+
+- app_data.db.enc
+- encrypt DB on shutdown
+- decrypt DB on startup
+- JSON storage architecture
+- workers_data.json
+- exam_journal.json
+- httpx
+- urllib
+- pycurl
+
+Replace with actual architecture:
+
+Storage:
+- plain SQLite app_data.db
+
+Encryption:
+- field-level encryption
+- SNILS
+- names
+
+Key management:
+- DPAPI
+- master.key
+
+Runtime storage:
+%APPDATA%/Excel_to_XML/
+
+Networking:
+- requests
+- wininet fallback
+
+--------------------------------------------------
+
+8.1 Section 2.7 / 2.8 review
+
+Resolve ambiguity:
+
+Current TЗ references:
+- current year plan
+- next year plan
+
+Document actual implemented behavior.
+
+If both supported:
+describe both clearly.
+
+--------------------------------------------------
+
+8.2 Section numbering audit
+
+Verify numbering consistency across TЗ.
+
+==================================================
+SECTION 9. README UPDATE
+==================================================
+
+Update README.md.
+
+Required sections:
+
+1. Architecture overview
+   - PySide6
+   - SQLite
+   - repositories
+
+2. Security model
+   - field encryption
+   - DPAPI
+   - AppData
+
+3. Corporate networking
+   - requests
+   - wininet
+   - proxy support
+
+4. Build instructions
+   - PyInstaller
+   - no UPX
+   - onedir
+
+5. Runtime paths
+
+6. Troubleshooting
+   - proxy
+   - TLS
    - logs
-   - settings
-   - backups
-   - master.key
-   - temp files if persistent
 
-   Forbidden:
-   runtime files near executable.
-
-   --------------------------------------------------
-
-   2.2 XML temp cleanup
-
-   Audit XML generation/export.
-
-   Temporary XML files may contain personal data.
-
-   Requirements:
-   - create in temp dir
-   - auto cleanup after send/export
-
-   Use:
-   NamedTemporaryFile(delete=True)
-
-   or explicit cleanup.
-
-   Verify no temp XML remains after operation.
-
-   --------------------------------------------------
-
-   2.3 Temporary DOCX/protocol cleanup
-
-   Audit generated protocol or report temp files.
-
-   Temporary files:
-   - auto cleanup if transient
-
-   Persistent exports:
-   - only user-selected destination.
-
-   ==================================================
-   SECTION 3. SECURITY HARDENING
-   ==================================================
-
-   3.1 Logging audit
-
-   Verify logs never contain:
-
-   - SNILS
-   - FIO
-   - proxy passwords
-   - tokens
-   - API keys
-   - XML payloads
-
-   Audit all logger calls.
-
-   Verify masking works.
-
-   Examples:
-   14566772094 -> 145****094
-
-   --------------------------------------------------
-
-   3.2 Proxy credential security
-
-   Current:
-   proxy credentials encrypted in config.
-
-   Acceptable.
-
-   But improve:
-
-   Document recommendation:
-   future migration to Windows Credential Manager.
-
-   Do not break current storage.
-
-   --------------------------------------------------
-
-   3.3 API key handling
-
-   Verify:
-   API keys are not bundled in repository/build.
-
-   On first launch:
-   generate empty/default config.
-
-   Do not ship real/test API keys.
-
-   --------------------------------------------------
-
-   3.4 Backup verification
-
-   Verify backups preserve encrypted fields.
-
-   Ensure backups do NOT create plaintext exports.
-
-   ==================================================
-   SECTION 4. NETWORK ROBUSTNESS
-   ==================================================
-
-   4.1 Requests backend optimization
-
-   Problem:
-   requests sessions may be recreated too often.
-
-   Implement persistent:
-
-   requests.Session()
-
-   Reuse session for batch operations.
-
-   --------------------------------------------------
-
-   4.2 Retry policy
-
-   Add retry strategy:
-
-   - retries=3
-   - exponential backoff
-
-   For:
-   - registry API
-   - Mintrud API
-   - network instability
-
-   --------------------------------------------------
-
-   4.3 Manual proxy auth testing
-
-   Verify requests backend supports:
-
-   http://username:password@host:port
-
-   Manual proxy mode must work.
-
-   --------------------------------------------------
-
-   4.4 TLS policy
-
-   Verify:
-   TLS verify=True default.
-
-   No silent verify=False fallback.
-
-   Only explicit setting/UI option allowed.
-
-   ==================================================
-   SECTION 5. DATABASE STABILITY
-   ==================================================
-
-   5.1 SQLite settings
-
-   Verify:
-
-   PRAGMA journal_mode=WAL;
-   PRAGMA foreign_keys=ON;
-   PRAGMA synchronous=FULL or NORMAL;
-
-   Ensure no regressions.
-
-   --------------------------------------------------
-
-   5.2 Graceful DB shutdown
-
-   Ensure:
-   all sqlite connections closed on exit.
-
-   Implement/verify:
-
-   DatabaseManager.close_all()
-
-   Call on app shutdown.
-
-   ==================================================
-   SECTION 6. FUNCTIONAL TESTING
-   ==================================================
-
-   Perform functional test audit.
-
-   ==================================================
-   6.1 Employee Summary (2.7)
-   ==================================================
-
-   Test:
-   - Excel import
-   - manual employee add/edit
-   - employee search by SNILS
-   - duplicate detection
-   - encrypted storage
-   - registry sync
-   - status updates
-   - filters
-   - exports
-
-   Verify:
-   all flows work.
-
-   ==================================================
-   6.2 Training Plan (2.8)
-   ==================================================
-
-   Test:
-   - generate next year plan
-   - overdue detection
-   - recommendations
-   - filtering
-   - export if applicable
-
-   Verify business logic.
-
-   ==================================================
-   6.3 Journal
-   ==================================================
-
-   Test:
-   - add/edit records
-   - filters
-   - status logic
-   - SetId
-   - exports
-
-   ==================================================
-   6.4 Monitoring
-   ==================================================
-
-   Test:
-   - logs visible
-   - refresh
-   - filters
-   - statuses
-
-   ==================================================
-   6.5 XML workflow
-   ==================================================
-
-   Test:
-   - XML generation
-   - validation
-   - send flow
-   - temp cleanup
-
-   ==================================================
-   SECTION 7. LOAD TESTING
-   ==================================================
-
-   Run basic performance/load testing.
-
-   Test with:
-
-   Employees:
-   - 100
-   - 1000
-   - 5000+
-
-   Verify:
-   - import speed
-   - search speed
-   - filtering speed
-   - UI responsiveness
-
-   Test batch API requests.
-
-   Verify:
-   - no UI freeze
-   - worker threads work
-   - progress bars update
-
-   ==================================================
-   SECTION 8. UI TESTING
-   ==================================================
-
-   Verify long operations use worker threads:
-
-   - Excel import
-   - API sync
-   - XML generation
-
-   UI requirements:
-   - no freeze
-   - progress indicators
-   - cancel buttons if applicable
-
-   ==================================================
-   SECTION 9. TECHNICAL SPECIFICATION UPDATE
-   ==================================================
-
-   Update attached technical specification.
-
-   Replace obsolete architecture references.
-
-   Remove obsolete requirements:
-
-   - app_data.db.enc
-   - DB encrypt on shutdown
-   - DB decrypt on startup
-
-   Replace with:
-
-   Architecture:
-   - plain SQLite DB
-   - field-level encryption
-   - DPAPI master key
-   - AppData runtime storage
-
-   Runtime path:
-   %APPDATA%/Excel_to_XML/
-
-   Update sections 2.7 and 2.8 if implementation changed.
-
-   ==================================================
-   SECTION 10. README UPDATE
-   ==================================================
-
-   Update README.md.
-
-   Add/update:
-
-   1. Architecture overview
-   2. Security model:
-      - field-level encryption
-      - DPAPI
-      - AppData storage
-
-   3. Corporate network support:
-      - requests
-      - wininet
-      - proxy support
-
-   4. Build instructions:
-      - PyInstaller
-      - no UPX
-      - onedir
-
-   5. Runtime paths
-
-   6. Troubleshooting:
-      - proxy issues
-      - logs
-      - TLS
-
-   7. Security notes:
-      - fallback key mode
-      - storage model
-
-   ==================================================
-   SECTION 11. FINAL OUTPUT
-   ==================================================
-
-   Return:
-
-   1. Bugs fixed
-   2. Remaining issues
-   3. Functional test results
-   4. Load test results
-   5. Missing TЗ features
-   6. Updated TЗ summary на русском
-   7. Updated README summary на русском
-   8. Production readiness assessment
-   9. Recommended next improvements
+7. Security notes
+   - fallback key mode
+   - storage model
+
+==================================================
+SECTION 10. RELEASE READINESS REPORT
+==================================================
+
+Return:
+
+1. Bugs fixed
+2. Remaining issues
+3. Security issues
+4. Functional test results
+5. Load test results
+6. Missing TЗ items
+7. Updated ТЗ summary на русском языке
+8. Updated README summary на русском языке
+9. Production readiness score
+10. Recommended next improvements
