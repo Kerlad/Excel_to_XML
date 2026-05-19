@@ -25,6 +25,30 @@ from utils.proxy_manager import load_proxy_settings
 
 logger = logging.getLogger(__name__)
 
+
+def _normalize_api_date(date_str: str) -> str:
+    """Normalize API date to DD.MM.YYYY. Handles ISO, ISO+T, and already-normalized formats."""
+    if not date_str:
+        return ""
+    date_str = date_str.strip()
+    # Already DD.MM.YYYY or DD.MM.YYYY HH:MM:SS
+    if '.' in date_str:
+        parts = date_str.split()[0]
+        if len(parts) == 10 and parts[2] == '.' and parts[5] == '.':
+            return parts
+    # ISO: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+    if 'T' in date_str:
+        date_str = date_str.split('T')[0]
+    if '-' in date_str:
+        parts = date_str.split()[0]
+        try:
+            dt = datetime.strptime(parts, "%Y-%m-%d")
+            return dt.strftime("%d.%m.%Y")
+        except (ValueError, IndexError):
+            pass
+    return date_str
+
+
 VALID_PROGRAMS = [str(i) for i in range(1, 30) if i != 5]
 DEFAULT_PROGRAMS = ["1", "2", "3", "4", "18", "23"]
 
@@ -105,7 +129,7 @@ class ApiQueryThread(QThread):
             prog_id = rec.get('learnProgramId', '')
             if not prog_id:
                 continue
-            exam_date = rec.get('Date', '')
+            exam_date = _normalize_api_date(rec.get('Date', ''))
             protocol = rec.get('ProtocolNumber', '')
             base_no = rec.get('baseNo', '')
             is_passed = rec.get('isPassed', '')
@@ -128,6 +152,24 @@ class ApiQueryThread(QThread):
                 )
             except (ValueError, TypeError):
                 pass
+
+        # Fill empty employee fields from API response
+        if records:
+            first_rec = records[0]
+            emp = EmployeesRepo.get_by_id(employee_id)
+            if emp:
+                updates = {}
+                if not emp.get('last_name'):
+                    updates['last_name'] = first_rec.get('LastName', '')
+                if not emp.get('first_name'):
+                    updates['first_name'] = first_rec.get('FirstName', '')
+                if not emp.get('middle_name'):
+                    updates['middle_name'] = first_rec.get('MiddleName', '')
+                if not emp.get('position'):
+                    updates['position'] = first_rec.get('Position', '')
+                if updates:
+                    updates['snils'] = emp['snils']
+                    EmployeesRepo.upsert(updates)
 
 
 class PlanDialog(QDialog):
@@ -1312,13 +1354,12 @@ class EmployeeSummaryTab(QWidget):
             result = get_by_snils(api_key, snils_clean, proxy_settings=proxy_settings)
             if result.get("success"):
                 records = result.get("records", [])
-                from collections import defaultdict
                 best = {}
                 for rec in records:
                     prog_id = rec.get('learnProgramId', '')
                     if not prog_id:
                         continue
-                    exam_date = rec.get('Date', '')
+                    exam_date = _normalize_api_date(rec.get('Date', ''))
                     if prog_id not in best or (exam_date and exam_date > best[prog_id].get('Date', '')):
                         best[prog_id] = rec
                 updated = 0
@@ -1328,12 +1369,28 @@ class EmployeeSummaryTab(QWidget):
                     try:
                         EmployeeProgramsRepo.update_from_api(
                             emp_id, int(prog_id),
-                            rec.get('Date', ''), rec.get('ProtocolNumber', ''),
+                            _normalize_api_date(rec.get('Date', '')), rec.get('ProtocolNumber', ''),
                             rec.get('baseNo', ''), result_val
                         )
                         updated += 1
                     except (ValueError, TypeError):
                         pass
+                # Fill empty employee fields from API response
+                if records:
+                    first_rec = records[0]
+                    if not emp.get('last_name') or not emp.get('first_name') or not emp.get('position'):
+                        updates = {}
+                        if not emp.get('last_name'):
+                            updates['last_name'] = first_rec.get('LastName', '')
+                        if not emp.get('first_name'):
+                            updates['first_name'] = first_rec.get('FirstName', '')
+                        if not emp.get('middle_name'):
+                            updates['middle_name'] = first_rec.get('MiddleName', '')
+                        if not emp.get('position'):
+                            updates['position'] = first_rec.get('Position', '')
+                        if updates:
+                            updates['snils'] = emp['snils']
+                            EmployeesRepo.upsert(updates)
                 EmployeesRepo.update_sync(emp_id, datetime.now().strftime('%d.%m.%Y %H:%M:%S'))
                 QMessageBox.information(self, "Успех", f"Обновлено программ: {updated}")
                 self.refresh_table()

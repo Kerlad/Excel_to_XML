@@ -23,6 +23,30 @@ def _dpapi_decrypt(encrypted):
 def _key_dir():
     return Path(os.environ.get('APPDATA', Path.home() / 'AppData' / 'Roaming')) / 'Excel_to_XML'
 
+def _restrict_file_access(filepath: Path):
+    try:
+        import win32security
+        import win32api
+        import ntsecuritycon as con
+        username = win32api.GetUserName()
+        sid, _, _ = win32security.LookupAccountName(None, username)
+        sd = win32security.SECURITY_DESCRIPTOR()
+        dacl = win32security.ACL()
+        dacl.AddAccessAllowedAce(
+            win32security.ACL_REVISION,
+            con.FILE_GENERIC_READ | con.FILE_GENERIC_WRITE,
+            sid
+        )
+        sd.SetSecurityDescriptorDacl(1, dacl, 0)
+        win32security.SetFileSecurity(
+            str(filepath),
+            win32security.DACL_SECURITY_INFORMATION,
+            sd
+        )
+        logger.info("Master key file access restricted to current user")
+    except Exception:
+        logger.debug("Could not restrict master key file access")
+
 def _get_or_create_master_key():
     global _MASTER_KEY
     if _MASTER_KEY:
@@ -42,7 +66,11 @@ def _get_or_create_master_key():
         kf.write_bytes(prot)
         _MASTER_KEY = raw; logger.info('Master key created'); return raw
     # DPAPI unavailable — store raw key in AppData (less secure, but random)
+    # Fallback mode: key stored as plaintext because DPAPI is unavailable.
+    # This is a degraded security mode — master.key is not encrypted at rest.
+    # On Windows, file access is restricted to the current user.
     kf.write_bytes(raw)
+    _restrict_file_access(kf)
     logger.warning('DPAPI unavailable, using local fallback key (reduced security)')
     _MASTER_KEY = raw; return raw
 

@@ -674,14 +674,23 @@ class ExamJournalTab(QWidget):
                 "Номер протокола", "Дата"
             ]
             
+            # Формат импорта журнала (английские колонки, из import_journal.py)
+            import_headers = [
+                "last_name", "first_name", "middle_name", "snils", "position",
+                "program_id", "program_title", "exam_date", "protocol", "result",
+                "set_id", "base_no", "status"
+            ]
+            
             # Проверяем, какой формат файла
             is_journal_format = all(header in headers for header in journal_headers)
             is_api_setid_format = all(header in headers for header in api_setid_headers)
+            is_import_format = all(header in headers for header in import_headers)
             
-            if not (is_journal_format or is_api_setid_format):
+            if not (is_journal_format or is_api_setid_format or is_import_format):
+                logger.error(f"Unsupported journal format. Headers: {headers}")
                 QMessageBox.warning(
                     self, "Ошибка", 
-                    f"Неподдерживаемый формат файла. Ожидается формат журнала экспорта или API SetID экспорта."
+                    "Неподдерживаемый формат файла. Ожидается формат журнала экспорта или API SetID экспорта."
                 )
                 return
                 
@@ -772,6 +781,40 @@ class ExamJournalTab(QWidget):
                         status = "received" if base_no else "pending"
                         if not result:
                             result = "Удовлетворительно"
+                    elif is_import_format:
+                        # Импорт из формата import_journal (английские колонки)
+                        last_name = str(row[col_indices.get("last_name", 0)] or "").strip()
+                        first_name = str(row[col_indices.get("first_name", 1)] or "").strip()
+                        middle_name = str(row[col_indices.get("middle_name", 2)] or "").strip()
+                        snils = str(row[col_indices.get("snils", 3)] or "").strip()
+                        position = str(row[col_indices.get("position", 4)] or "").strip()
+                        program_id = str(row[col_indices.get("program_id", 5)] or "").strip()
+                        program_title = str(row[col_indices.get("program_title", 6)] or "").strip()
+                        exam_date = str(row[col_indices.get("exam_date", 7)] or "").strip()
+                        protocol = str(row[col_indices.get("protocol", 8)] or "").strip()
+                        result = str(row[col_indices.get("result", 9)] or "").strip()
+                        set_id = str(row[col_indices.get("set_id", 10)] or "").strip()
+                        base_no = str(row[col_indices.get("base_no", 11)] or "").strip()
+                        status_str = str(row[col_indices.get("status", 12)] or "").lower()
+
+                        if not all([last_name, first_name, middle_name, snils, program_id,
+                                  program_title, protocol, exam_date]):
+                            errors.append(f"Строка {row_idx}: заполните все обязательные поля")
+                            continue
+
+                        snils_digits = ''.join(filter(str.isdigit, snils))
+                        if len(snils_digits) != 11:
+                            errors.append(f"Строка {row_idx}: СНИЛС должен содержать 11 цифр")
+                            continue
+                        snils_formatted = f"{snils_digits[:3]}-{snils_digits[3:6]}-{snils_digits[6:9]} {snils_digits[9:]}"
+
+                        send_date = ""
+                        if "получен" in status_str or "received" in status_str:
+                            status = "received"
+                        else:
+                            status = "pending"
+                        if not result:
+                            result = "Удовлетворительно"
 
                     # Создаем запись
                     import uuid
@@ -800,6 +843,7 @@ class ExamJournalTab(QWidget):
              
             # Если есть ошибки, показываем их
             if errors:
+                logger.error(f"Journal import errors: {errors}")
                 error_msg = "Обнаружены ошибки при импорте:\n" + "\n".join(errors[:10])
                 if len(errors) > 10:
                     error_msg += f"\n... и еще {len(errors) - 10} ошибок"
@@ -820,6 +864,7 @@ class ExamJournalTab(QWidget):
             self.refresh_journal()
              
         except Exception as e:
+            logger.error(f"Journal import failed: {e}", exc_info=True)
             QMessageBox.critical(self, "Ошибка", f"Не удалось прочитать файл:\n{str(e)}")
 
     def _create_journal_template(self):
@@ -978,7 +1023,7 @@ class ExamJournalTab(QWidget):
         from utils.app_paths import get_app_data_dir, get_resource_dir
         data_dir = get_app_data_dir()
         template_path = os.path.join(
-            get_resource_dir(),
+            get_resource_dir(), "templates",
             "Protokol_proverki_znanii_OT.docx"
         )
 

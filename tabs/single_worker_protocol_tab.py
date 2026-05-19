@@ -421,7 +421,7 @@ class SingleWorkerProtocolTab(QWidget):
 
         from utils.app_paths import get_resource_dir
         template_path = os.path.join(
-            get_resource_dir(),
+            get_resource_dir(), "templates",
             "Protokol_proverki_znanii_OT.docx"
         )
 

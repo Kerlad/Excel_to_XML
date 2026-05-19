@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RegistrySet>
+  <RegistryRecord outerId="9adce7bf-d343-4241-97a7-b488f435dbbd">
+    <Worker>
+      <LastName>Иванов</LastName>
+      <FirstName>Иван</FirstName>
+      <MiddleName>Иванович</MiddleName>
+      <Snils>123-456-789 01</Snils>
+      <Position>Инженер</Position>
+      <EmployerInn>7701234567</EmployerInn>
+      <EmployerTitle>ООО Ромашка</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7701234567</Inn>
+      <Title>УЦ Знание</Title>
+    </Organization>
+    <Test isPassed="true" learnProgramId="1">
+      <Date>2026-05-15</Date>
+      <ProtocolNumber>П-001</ProtocolNumber>
+      <LearnProgramTitle>Оказание первой помощи пострадавшим</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+  <RegistryRecord outerId="f2ce28b9-48ff-4a3a-83e9-8ae051ed9549">
+    <Worker>
+      <LastName>Петров</LastName>
+      <FirstName>Петр</FirstName>
+      <MiddleName>Петрович</MiddleName>
+      <Snils>234-567-890 12</Snils>
+      <Position>Электрик</Position>
+      <EmployerInn>7701234567</EmployerInn>
+      <EmployerTitle>ООО Ромашка</EmployerTitle>
+    </Worker>
+    <Organization>
+      <Inn>7701234567</Inn>
+      <Title>УЦ Знание</Title>
+    </Organization>
+    <Test isPassed="true" learnProgramId="2">
+      <Date>2026-05-15</Date>
+      <ProtocolNumber>П-001</ProtocolNumber>
+      <LearnProgramTitle>Использование (применение) средств индивидуальной защиты</LearnProgramTitle>
+    </Test>
+  </RegistryRecord>
+</RegistrySet>

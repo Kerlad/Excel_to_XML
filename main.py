@@ -22,6 +22,33 @@ from utils.app_paths import get_app_data_dir, get_app_log_dir, get_resource_dir
 from db import DatabaseManager, create_schema
 
 
+def _create_palette(theme: str) -> QPalette:
+    """Создание палитры для темы (light/dark)."""
+    if theme == "dark":
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(30, 30, 42))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(232, 232, 240))
+        palette.setColor(QPalette.ColorRole.Base, QColor(40, 40, 55))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(35, 35, 50))
+        palette.setColor(QPalette.ColorRole.Text, QColor(232, 232, 240))
+        palette.setColor(QPalette.ColorRole.Button, QColor(40, 40, 55))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(232, 232, 240))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(179, 136, 255))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+    else:
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(245, 245, 250))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(26, 26, 46))
+        palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(240, 240, 250))
+        palette.setColor(QPalette.ColorRole.Text, QColor(26, 26, 46))
+        palette.setColor(QPalette.ColorRole.Button, QColor(245, 245, 250))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(26, 26, 46))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(124, 77, 255))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+    return palette
+
+
 class MainWindow(QMainWindow):
     def __init__(self, app=None):
         super().__init__()
@@ -32,7 +59,7 @@ class MainWindow(QMainWindow):
         self.resize(1200, 800)
 
         # Иконка приложения
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ico.ico")
+        icon_path = os.path.join(get_resource_dir(), "resources", "ico.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
@@ -86,30 +113,7 @@ class MainWindow(QMainWindow):
         save_theme(get_app_data_dir(), theme)
 
         if self.app:
-            # Обновляем палитру
-            if theme == "dark":
-                palette = QPalette()
-                palette.setColor(QPalette.ColorRole.Window, QColor(30, 30, 42))
-                palette.setColor(QPalette.ColorRole.WindowText, QColor(232, 232, 240))
-                palette.setColor(QPalette.ColorRole.Base, QColor(40, 40, 55))
-                palette.setColor(QPalette.ColorRole.AlternateBase, QColor(35, 35, 50))
-                palette.setColor(QPalette.ColorRole.Text, QColor(232, 232, 240))
-                palette.setColor(QPalette.ColorRole.Button, QColor(40, 40, 55))
-                palette.setColor(QPalette.ColorRole.ButtonText, QColor(232, 232, 240))
-                palette.setColor(QPalette.ColorRole.Highlight, QColor(179, 136, 255))
-                palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-            else:
-                palette = QPalette()
-                palette.setColor(QPalette.ColorRole.Window, QColor(245, 245, 250))
-                palette.setColor(QPalette.ColorRole.WindowText, QColor(26, 26, 46))
-                palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
-                palette.setColor(QPalette.ColorRole.AlternateBase, QColor(240, 240, 250))
-                palette.setColor(QPalette.ColorRole.Text, QColor(26, 26, 46))
-                palette.setColor(QPalette.ColorRole.Button, QColor(245, 245, 250))
-                palette.setColor(QPalette.ColorRole.ButtonText, QColor(26, 26, 46))
-                palette.setColor(QPalette.ColorRole.Highlight, QColor(124, 77, 255))
-                palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-            self.app.setPalette(palette)
+            self.app.setPalette(_create_palette(theme))
             self.app.setStyleSheet(get_global_stylesheet(theme))
 
             # Обновляем стили всех виджетов
@@ -429,30 +433,7 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
-    # Палитра под выбранную тему (не зависит от системной темы)
-    if theme == "dark":
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(30, 30, 42))
-        palette.setColor(QPalette.ColorRole.WindowText, QColor(232, 232, 240))
-        palette.setColor(QPalette.ColorRole.Base, QColor(40, 40, 55))
-        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(35, 35, 50))
-        palette.setColor(QPalette.ColorRole.Text, QColor(232, 232, 240))
-        palette.setColor(QPalette.ColorRole.Button, QColor(40, 40, 55))
-        palette.setColor(QPalette.ColorRole.ButtonText, QColor(232, 232, 240))
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(179, 136, 255))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    else:
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(245, 245, 250))
-        palette.setColor(QPalette.ColorRole.WindowText, QColor(26, 26, 46))
-        palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
-        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(240, 240, 250))
-        palette.setColor(QPalette.ColorRole.Text, QColor(26, 26, 46))
-        palette.setColor(QPalette.ColorRole.Button, QColor(245, 245, 250))
-        palette.setColor(QPalette.ColorRole.ButtonText, QColor(26, 26, 46))
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(124, 77, 255))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    app.setPalette(palette)
+    app.setPalette(_create_palette(theme))
 
     app.setStyle("Fusion")
     app.setStyleSheet(get_global_stylesheet(theme))

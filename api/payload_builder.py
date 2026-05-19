@@ -4,6 +4,7 @@ Builds Request.xml, .olot archives, and multipart payloads.
 """
 import io
 import zipfile
+from xml.sax.saxutils import escape
 from typing import Dict, Any, Optional
 
 API_URL = "https://edu.rosmintrud.ru/api/set/push"
@@ -28,7 +29,7 @@ def build_request_xml(api_key: str, need_send: bool = False) -> bytes:
     need_send_str = "true" if need_send else "false"
     xml = f'''<?xml version="1.0" encoding="UTF-8"?>
 <Request>
-    <ApiKey>{api_key}</ApiKey>
+    <ApiKey>{escape(api_key)}</ApiKey>
     <NeedSend>{need_send_str}</NeedSend>
 </Request>'''
     return xml.encode('utf-8')

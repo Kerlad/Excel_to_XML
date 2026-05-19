@@ -1,5 +1,5 @@
 // C# Launcher for ExcelXML-Mintrud
-// Compile: csc.exe /target:winexe /win32icon:ico.ico /out:ExcelXML-Mintrud.exe Launcher.cs
+// Compile: csc.exe /target:winexe /win32icon:resources\ico.ico /out:ExcelXML-Mintrud.exe Launcher.cs
 using System;
 using System.Diagnostics;
 using System.IO;

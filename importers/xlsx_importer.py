@@ -42,6 +42,122 @@ def format_snils(raw):
     return f"{clean[0:3]}-{clean[3:6]}-{clean[6:9]} {clean[9:11]}"
 
 
+class FieldValidator:
+    @staticmethod
+    def validate_snils(value: str, row_num: int):
+        formatted = format_snils(str(value))
+        if formatted is None:
+            return {
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': 'СНИЛС',
+                'message': f"СНИЛС должен содержать 11 цифр (введено: {value})"
+            }
+        return None
+
+    @staticmethod
+    def validate_program(value: str, row_num: int):
+        program_str = str(value).strip()
+        programs = [p.strip() for p in program_str.rstrip(',').split(',') if p.strip()]
+        invalid_programs = [p for p in programs if p not in VALID_PROGRAMS]
+        if invalid_programs:
+            return {
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': '№ программы',
+                'message': f"Некорректный номер программы: {', '.join(invalid_programs)}"
+            }
+        return None
+
+    @staticmethod
+    def validate_result(value: str, row_num: int):
+        result = str(value).strip()
+        if result not in ['Удовлетворительно', 'Неудовлетворительно']:
+            return {
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': 'Результат',
+                'message': f"Результат должен быть 'Удовлетворительно' или 'Неудовлетворительно' (введено: {result})"
+            }
+        return None
+
+    @staticmethod
+    def validate_name(field_name: str, value, row_num: int):
+        val = str(value).strip() if value is not None else ''
+        if val and not val.replace(' ', '').replace('-', '').replace("'", '').isalpha():
+            return {
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': field_name,
+                'message': f"Поле '{field_name}' должно содержать только буквы"
+            }
+        return None
+
+    @staticmethod
+    def validate_date(value, row_num: int):
+        if value is None:
+            return {
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': 'Дата',
+                'message': f"Дата некорректна"
+            }
+        if isinstance(value, datetime):
+            return value.strftime('%d.%m.%Y')
+        if isinstance(value, (int, float)):
+            try:
+                delta = datetime(1899, 12, 30) + timedelta(days=value)
+                return delta.strftime('%d.%m.%Y')
+            except Exception:
+                return {
+                    'row': row_num,
+                    'type': 'Ошибка',
+                    'field': 'Дата',
+                    'message': f"Ошибка парсинга даты"
+                }
+        date_str = str(value).strip()
+        # Убираем разделители для парсинга
+        if '.' in date_str or '-' in date_str:
+            clean_date = date_str.replace('.', '').replace('-', '')
+        else:
+            clean_date = date_str
+        if len(clean_date) == 8 and clean_date.isdigit():
+            try:
+                d = datetime.strptime(clean_date, "%d%m%Y")
+                if d.date() > datetime.now().date():
+                    return {
+                        'row': row_num,
+                        'type': 'Ошибка',
+                        'field': 'Дата',
+                        'message': f"Дата больше текущей"
+                    }
+                return f"{clean_date[:2]}.{clean_date[2:4]}.{clean_date[4:]}"
+            except ValueError:
+                return {
+                    'row': row_num,
+                    'type': 'Ошибка',
+                    'field': 'Дата',
+                    'message': f"Дата некорректна"
+                }
+        return {
+            'row': row_num,
+            'type': 'Ошибка',
+            'field': 'Дата',
+            'message': f"Дата некорректна"
+        }
+
+    @staticmethod
+    def validate_required(col: str, value, row_num: int):
+        if value is None or str(value).strip() == '':
+            return {
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': col,
+                'message': f"Пустое обязательное поле '{col}'"
+            }
+        return None
+
+
 def validate_row(row_dict, row_num):
     """
     Валидация строки из Excel.
@@ -50,152 +166,46 @@ def validate_row(row_dict, row_num):
     """
     errors = []
 
-    # Проверка обязательных полей (ИНН/названия УЦ и Заказчика — необязательные)
     required_cols = ['Фамилия', 'Имя', 'Отчество', 'СНИЛС', 'Должность', 'Результат', '№ программы', 'Дата', '№ протокола']
     for col in required_cols:
-        val = row_dict.get(col)
-        if val is None or str(val).strip() == '':
-            errors.append({
-                'row': row_num,
-                'type': 'Ошибка',
-                'field': col,
-                'message': f"Пустое обязательное поле '{col}'"
-            })
+        err = FieldValidator.validate_required(col, row_dict.get(col), row_num)
+        if err:
+            errors.append(err)
 
     if errors:
         return False, errors
 
-    # СНИЛС
     snils = format_snils(str(row_dict['СНИЛС']))
-    if snils is None:
-        errors.append({
-            'row': row_num,
-            'type': 'Ошибка',
-            'field': 'СНИЛС',
-            'message': f"СНИЛС должен содержать 11 цифр (введено: {row_dict['СНИЛС']})"
-        })
+    err = FieldValidator.validate_snils(row_dict['СНИЛС'], row_num)
+    if err:
+        errors.append(err)
 
-    # Номер программы
     program_str = str(row_dict['№ программы']).strip()
     programs = [p.strip() for p in program_str.rstrip(',').split(',') if p.strip()]
-    invalid_programs = [p for p in programs if p not in VALID_PROGRAMS]
-    if invalid_programs:
-        errors.append({
-            'row': row_num,
-            'type': 'Ошибка',
-            'field': '№ программы',
-            'message': f"Некорректный номер программы: {', '.join(invalid_programs)}"
-        })
+    err = FieldValidator.validate_program(row_dict['№ программы'], row_num)
+    if err:
+        errors.append(err)
 
-    # Результат
-    result = str(row_dict['Результат']).strip()
-    if result not in ['Удовлетворительно', 'Неудовлетворительно']:
-        errors.append({
-            'row': row_num,
-            'type': 'Ошибка',
-            'field': 'Результат',
-            'message': f"Результат должен быть 'Удовлетворительно' или 'Неудовлетворительно' (введено: {result})"
-        })
+    err = FieldValidator.validate_result(row_dict['Результат'], row_num)
+    if err:
+        errors.append(err)
 
-    # ФИО — только текст
     for field_name in ['Фамилия', 'Имя', 'Отчество']:
-        val = str(row_dict.get(field_name, '')).strip()
-        if val and not val.replace(' ', '').replace('-', '').replace("'", '').isalpha():
-            errors.append({
-                'row': row_num,
-                'type': 'Ошибка',
-                'field': field_name,
-                'message': f"Поле '{field_name}' должно содержать только буквы"
-            })
+        err = FieldValidator.validate_name(field_name, row_dict.get(field_name), row_num)
+        if err:
+            errors.append(err)
 
-    # Дата
-    date_val = row_dict['Дата']
-    date_str = None
-    if isinstance(date_val, datetime):
-        date_str = date_val.strftime('%d.%m.%Y')
-    elif isinstance(date_val, (int, float)):
-        # Excel serial date
-        try:
-            delta = datetime(1899, 12, 30) + timedelta(days=date_val)
-            date_str = delta.strftime('%d.%m.%Y')
-        except Exception:
-            errors.append({
-                'row': row_num,
-                'type': 'Ошибка',
-                'field': 'Дата',
-                'message': f"Ошибка парсинга даты"
-            })
-    else:
-        date_str = str(date_val).strip()
-        # Пробуем распарсить как дату
-        if '.' in date_str or '-' in date_str:
-            clean_date = date_str.replace('.', '').replace('-', '')
-            if len(clean_date) == 8 and clean_date.isdigit():
-                try:
-                    d = datetime.strptime(clean_date, "%d%m%Y")
-                    if d.date() > datetime.now().date():
-                        errors.append({
-                            'row': row_num,
-                            'type': 'Ошибка',
-                            'field': 'Дата',
-                            'message': f"Дата больше текущей"
-                        })
-                    date_str = f"{clean_date[:2]}.{clean_date[2:4]}.{clean_date[4:]}"
-                except ValueError:
-                    errors.append({
-                        'row': row_num,
-                        'type': 'Ошибка',
-                        'field': 'Дата',
-                        'message': f"Дата некорректна"
-                    })
-                    date_str = None
-            else:
-                errors.append({
-                    'row': row_num,
-                    'type': 'Ошибка',
-                    'field': 'Дата',
-                    'message': f"Дата некорректна"
-                })
-                date_str = None
-        else:
-            # Строка без разделителей — пробуем как 8 цифр
-            clean_date = date_str.strip()
-            if len(clean_date) == 8 and clean_date.isdigit():
-                try:
-                    d = datetime.strptime(clean_date, "%d%m%Y")
-                    if d.date() > datetime.now().date():
-                        errors.append({
-                            'row': row_num,
-                            'type': 'Ошибка',
-                            'field': 'Дата',
-                            'message': f"Дата больше текущей"
-                        })
-                    date_str = f"{clean_date[:2]}.{clean_date[2:4]}.{clean_date[4:]}"
-                except ValueError:
-                    errors.append({
-                        'row': row_num,
-                        'type': 'Ошибка',
-                        'field': 'Дата',
-                        'message': f"Дата некорректна"
-                    })
-                    date_str = None
-            else:
-                errors.append({
-                    'row': row_num,
-                    'type': 'Ошибка',
-                    'field': 'Дата',
-                    'message': f"Дата некорректна"
-                })
-                date_str = None
+    date_str = FieldValidator.validate_date(row_dict['Дата'], row_num)
+    if isinstance(date_str, dict):
+        errors.append(date_str)
+        date_str = None
 
     if errors:
         return False, errors
 
-    # Формирование данных
-    # Поддержка нескольких программ — разбиваем на N записей
     records = []
+    result = str(row_dict['Результат']).strip()
     for prog in programs:
-        # Безопасное получение строк (None → пустая строка)
         def gv(key):
             v = row_dict.get(key)
             return str(v).strip() if v is not None else ''
@@ -214,7 +224,7 @@ def validate_row(row_dict, row_num):
             'program': prog,
             'date': date_str,
             'protocol': gv('№ протокола'),
-            'source_row': row_num  # Номер строки в файле для отслеживания дубликатов
+            'source_row': row_num
         }
         records.append(record)
 

@@ -8,6 +8,7 @@ from xml.etree.ElementTree import XMLParser
 
 logging.basicConfig(filename='import_errors.log', level=logging.ERROR, encoding='utf-8')
 
+MAX_XML_SIZE_MB = 100
 NS = {'xs': 'http://www.w3.org/2001/XMLSchema'}
 VALID_PROGRAMS = {'1', '2', '3', '4', '6', '7', '8', '9', '10', '11', '12',
                   '13', '14', '15', '16', '17', '18', '19', '20', '21',

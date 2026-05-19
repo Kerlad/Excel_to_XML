@@ -54,18 +54,22 @@ def format_snils(snils_raw):
 
 def format_date_xsd(date_str):
     """Форматирование даты в xs:date (YYYY-MM-DD)"""
-    clean = str(date_str).replace('.', '').replace('-', '')
-    if len(clean) == 8 and clean.isdigit():
-        try:
-            dt = datetime.strptime(clean, "%d%m%Y")
-            return dt.strftime("%Y-%m-%d")
-        except ValueError:
-            return None
+    if not date_str:
+        return None
+    date_str = str(date_str).strip()
     # Уже в формате YYYY-MM-DD
     if len(date_str) == 10 and date_str[4] == '-' and date_str[7] == '-':
         try:
             datetime.strptime(date_str, "%Y-%m-%d")
             return date_str
+        except ValueError:
+            return None
+    # Пробуем парсить DDMMYYYY (с разделителями . или -)
+    clean = date_str.replace('.', '').replace('-', '')
+    if len(clean) == 8 and clean.isdigit():
+        try:
+            dt = datetime.strptime(clean, "%d%m%Y")
+            return dt.strftime("%Y-%m-%d")
         except ValueError:
             return None
     return None

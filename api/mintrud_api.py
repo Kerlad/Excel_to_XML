@@ -4,12 +4,14 @@ Main entry point for all API operations.
 """
 import os
 import json
+import re
 import time
 import logging
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, Optional
 
 # Import payload builder
+from xml.sax.saxutils import escape
 from .payload_builder import build_request_xml, build_olot_archive, build_multipart_payload, API_URL, GET_URL, HEADERS
 
 # Import response parser
@@ -24,6 +26,26 @@ from utils.audit import log_audit
 from utils.logger import mask_sensitive
 
 logger = logging.getLogger(__name__)
+
+_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "log")
+
+
+def _save_error_response(response_bytes: bytes, status_code: int = 0):
+    """Сохраняет полный ответ сервера в /log/error_response.txt (UTF-8 BOM)."""
+    try:
+        os.makedirs(_LOG_DIR, exist_ok=True)
+        path = os.path.join(_LOG_DIR, "error_response.txt")
+        text = f"HTTP {status_code}\n"
+        try:
+            text += response_bytes.decode("utf-8")
+        except Exception:
+            text += str(response_bytes)
+        with open(path, "w", encoding="utf-8-sig") as f:
+            f.write(text)
+        logger.info(f"Error response saved to {path}")
+    except Exception as e:
+        logger.warning(f"Failed to save error response: {e}")
+
 
 # API endpoints
 API_URL = "https://edu.rosmintrud.ru/api/set/push"
@@ -257,7 +279,9 @@ class MintrudClient:
                 
                 last_error = error_msg
                 logger.warning(f"Backend {backend_name} failed: {mask_sensitive(error_msg)}")
-                
+                if response_bytes:
+                    _save_error_response(response_bytes, status_code)
+
                 # Only fallback on SSL errors
                 if not _is_ssl_error(error_msg):
                     return {"success": False, "error": error_msg}
@@ -298,18 +322,22 @@ class MintrudClient:
                 
                 last_error = error_msg
                 logger.warning(f"Backend {backend_name} failed: {mask_sensitive(error_msg)}")
-                
+                if response_bytes:
+                    _save_error_response(response_bytes, status_code)
+
                 if not _is_ssl_error(error_msg):
                     return {"success": False, "error": error_msg}
-                
+
                 logger.info(f"SSL error, trying next backend...")
-                
+
             except Exception as e:
                 last_error = str(e)
                 logger.warning(f"Backend {backend_name} exception: {mask_sensitive(str(e))}")
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
-        
+
+        if response_bytes:
+            _save_error_response(response_bytes, status_code)
         return {"success": False, "error": last_error or "All backends failed"}
 
     def query_by_setid(self, api_key: str, set_id: str, page_size: int = 5000) -> Dict[str, Any]:
@@ -337,10 +365,10 @@ class MintrudClient:
         while True:
             xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
 <EducatedPersonFilter>
-    <ApiKey>{api_key}</ApiKey>
+    <ApiKey>{escape(api_key)}</ApiKey>
     <PageNo>{page_no}</PageNo>
     <PageSize>{page_size}</PageSize>
-    <SetId>{set_id}</SetId>
+    <SetId>{escape(set_id)}</SetId>
 </EducatedPersonFilter>'''
             
             logger.info(f"Querying SetId {mask_sensitive(set_id)}, page {page_no}")
@@ -364,26 +392,35 @@ class MintrudClient:
 
         return {"success": True, "records": all_records, "error": None}
 
-    def query_by_snils(self, api_key: str, snils: str) -> Dict[str, Any]:
+    def query_by_snils(self, api_key: str, snils: str, page_size: int = 100) -> Dict[str, Any]:
         """
         Запрос данных по СНИЛС через API.
 
         Args:
             api_key: API-ключ
             snils: СНИЛС в формате 'xxx-xxx-xxx xx'
+            page_size: количество записей на странице
 
         Returns:
             Dict с ключами: success, records, error
         """
-        # Нормализация СНИЛС
-        snils_clean = snils.replace('-', '').replace(' ', '')
+        # Нормализация СНИЛС: удаляем все нецифровые символы
+        snils_clean = re.sub(r"\D", "", snils)
+        if not re.fullmatch(r"\d{11}", snils_clean):
+            logger.error(f"Invalid SNILS format: {mask_sensitive(snils)}")
+            return {"success": False, "records": [], "error": "Неверный формат СНИЛС (требуется 11 цифр)"}
 
+        # Сервер ожидает СНИЛС в формате XXX-XXX-XXX XX
+        snils_formatted = f"{snils_clean[0:3]}-{snils_clean[3:6]}-{snils_clean[6:9]} {snils_clean[9:11]}"
+
+        all_records = []
         for page_no in range(1, 1000):
             xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
-<EducatedPersonFilter xmlns="urn:esprot:edu:01.01">
+<EducatedPersonFilter>
+    <ApiKey>{escape(api_key)}</ApiKey>
     <PageNo>{page_no}</PageNo>
-    <PageSize>100</PageSize>
-    <Snils>{snils_clean}</Snils>
+    <PageSize>{page_size}</PageSize>
+    <Snils>{escape(snils_formatted)}</Snils>
 </EducatedPersonFilter>'''
 
             logger.info(f"Querying by SNILS, page {page_no}")

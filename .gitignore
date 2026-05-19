@@ -45,18 +45,32 @@ log/
 test_*.xlsx
 generate_test_data.py
 
-# Docs (optional)
+# Docs (optional) — moved to docs/
+docs/
 Техническое_задание*.pdf
-Техническое_задание_2.md
-curl.txt
-.opencode
-ReadmeV2.md
-refactor.md
-Req.md
-test_employees_import.xlsx
-test_employees_template.xlsx
-Doclad.MD
-TZ#2.md
-err.txt
-out.txt
 *.txt
+
+# Runtime artifacts
+backups/
+temp/
+tmp/
+generated/
+exports/
+*.bak
+*.tmp
+
+# Databases
+*.db
+*.sqlite
+
+# Secrets
+master.key
+api_key.json
+proxy_settings.json
+commission_data.json
+org_settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+.opencode

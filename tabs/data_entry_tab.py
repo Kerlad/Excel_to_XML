@@ -609,8 +609,14 @@ class DataEntryTab(QWidget):
             xsd_path = os.path.join(self.schema_dir, xsd_files[0]) if xsd_files else None
             records, xml_error_count, xml_error_messages, xml_xsd_errors = load_xml(file_path, xsd_path)
 
+            if records is None:
+                logger.error(f"XML import failed: {xml_error_messages}")
+            if xml_error_messages:
+                logger.error(f"XML import errors: {xml_error_messages}")
+
             # Если есть XSD-ошибки — показываем
             if xml_xsd_errors:
+                logger.error(f"XSD validation errors: {xml_xsd_errors}")
                 QMessageBox.warning(
                     self, "XSD-валидация",
                     "Файл не соответствует XSD-схеме:\n" + "\n".join(xml_xsd_errors[:20])
