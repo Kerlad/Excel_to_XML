@@ -40,7 +40,7 @@ def _get_or_create_master_key():
     prot = _dpapi_encrypt(raw)
     if prot:
         kf.write_bytes(prot)
-        _MASTER_KEY = raw; logger.info(f'Master key created: {kf}'); return raw
+        _MASTER_KEY = raw; logger.info('Master key created'); return raw
     # DPAPI unavailable — store raw key in AppData (less secure, but random)
     kf.write_bytes(raw)
     logger.warning('DPAPI unavailable, using local fallback key (reduced security)')
@@ -55,7 +55,7 @@ def encrypt_value(plain):
 def decrypt_value(enc):
     if not enc: return ''
     try: return _fernet().decrypt(enc.encode('utf-8')).decode('utf-8')
-    except Exception: logger.warning('Decrypt failed'); return ''
+    except Exception: logger.warning('Decrypt value failed'); return ''
 
 def hash_for_search(val):
     normalized = val.lower().strip().replace('-', '').replace(' ', '').replace('\xa0', '')
@@ -69,7 +69,7 @@ def decrypt_data(enc):
     try:
         return json.loads(_fernet().decrypt(enc.encode('utf-8')).decode('utf-8'))
     except Exception:
-        logger.warning('Decrypt failed')
+        logger.warning('Decrypt data failed')
         return {}
 
 
