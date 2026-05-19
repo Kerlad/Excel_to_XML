@@ -20,5 +20,7 @@ def get_app_log_dir() -> str:
     return str(path)
 
 
-def get_base_dir() -> str:
+def get_resource_dir() -> str:
+    """Directory containing project resources (schemas, templates, assets).
+    NOT for runtime storage — use get_app_data_dir() for that."""
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

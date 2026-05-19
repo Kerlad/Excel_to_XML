@@ -90,10 +90,10 @@ class ApiQueryThread(QThread):
                     EmployeesRepo.update_sync(emp['id'], now)
                 else:
                     errors += 1
-                    logger.warning(f"API error for SNILS {snils_clean}: {result.get('error')}")
+                    logger.warning(f"API error: {result.get('error')}")
             except Exception as e:
                 errors += 1
-                logger.error(f"Exception for SNILS: {e}")
+                logger.error(f"Registry API exception: {e}")
             self.progress.emit(idx + 1, total)
             if idx < total - 1:
                 time.sleep(0.5)

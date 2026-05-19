@@ -1,542 +1,492 @@
-Perform full final refactor, audit and production hardening of the project.
+1. Perform final stabilization, cleanup and testing of the project.
 
-Project:
-Windows desktop application (PySide6 + SQLite + requests + WinINet + PyInstaller)
-for occupational safety training registry, XML generation and Mintrud API integration.
+   Project:
+   Windows desktop application (PySide6 + SQLite + requests + WinINet + PyInstaller)
+   for occupational safety registry, employee training tracking,
+   XML generation and Mintrud API integration.
 
-Current state:
-- antivirus false positives resolved
-- runtime moved to AppData
-- full DB encryption removed
-- field-level encryption implemented
-- SQLite storage active
-- requests + wininet only
+   Current status:
+   - antivirus false positives resolved
+   - AppData storage enabled
+   - SQLite plain DB
+   - field-level encryption implemented
+   - DPAPI master key implemented
+   - requests + wininet only
 
-Goal:
-Finalize project for stable corporate use.
+   Goal:
+   Finalize project for production/corporate deployment.
 
-Requirements:
-- do NOT break business logic
-- do NOT remove requests backend
-- do NOT remove wininet backend
-- preserve existing UI flows
-- preserve SQLite architecture
-- preserve field-level encryption of personal data
+   IMPORTANT:
+   Do NOT break existing functionality.
+   Do NOT reintroduce antivirus false positives.
+   Do NOT remove requests or wininet backends.
 
-==================================================
-SECTION 1. CODE SECURITY CLEANUP
-==================================================
+   ==================================================
+   SECTION 1. FINAL CODE CLEANUP
+   ==================================================
 
-1.1 Remove obsolete dangerous crypto functions
+   1.1 Remove ambiguous base directory logic
 
-File:
-utils/crypto.py
+   File:
+   utils/app_paths.py
 
-Delete completely:
-- encrypt_file()
-- decrypt_file()
+   Problem:
+   get_base_dir() still points to executable/project directory
+   and can be accidentally reused for runtime storage.
 
-These functions are obsolete after field-level encryption
-and resemble ransomware-like behavior.
+   Action:
+   - audit all usages of get_base_dir()
+   - ensure it is NOT used for:
+     - logs
+     - db
+     - temp
+     - configs
+     - backups
 
-No file encryption lifecycle should remain anywhere.
+   If used only for resources:
+   rename:
 
-Search whole project for:
-- encrypt_file(
-- decrypt_file(
-- unlink(
-- remove(
+   get_base_dir()
+   -> get_resource_dir()
 
-and verify no obsolete encryption workflow remains.
+   or equivalent.
 
---------------------------------------------------
+   Goal:
+   runtime storage only in AppData.
 
-1.2 Harden decrypt behavior
+   --------------------------------------------------
 
-In decrypt_value():
+   1.2 Reduce crypto log noise
 
-Current behavior may return encrypted blob on failure.
+   File:
+   utils/crypto.py
 
-Bad:
-return enc
+   Current:
+   decrypt failures log detailed exception text.
 
-Replace with:
-- return empty string or safe placeholder
-- generic error logging only
+   Replace:
 
-Required:
-decrypt failures must not leak encrypted blobs to UI.
+   logger.error(f"Decrypt failed: {e}")
 
-Example:
-return ""
+   with safer production logging:
 
---------------------------------------------------
+   logger.warning("Decrypt failed")
 
-1.3 Improve fallback key generation
+   Avoid noisy crypto stack traces.
 
-Current fallback based on USERNAME hash is weak.
+   --------------------------------------------------
 
-Remove any logic like:
-SHA256(USERNAME)
+   1.3 Harden DPAPI fallback handling
 
-If DPAPI unavailable:
-- generate random 32-byte key
-- store locally in AppData/master.key
+   Files:
+   utils/crypto.py
 
-Use:
-os.urandom(32)
+   Problem:
+   DPAPI helpers catch only ImportError.
 
-Do not derive crypto keys from:
-- username
-- computer name
-- domain name
+   Need:
+   catch broader exceptions:
 
-==================================================
-SECTION 2. CORPORATE STORAGE SECURITY
-==================================================
+   - permission issues
+   - profile corruption
+   - domain restrictions
+   - DPAPI failures
 
-2.1 AppData path correctness
+   Use:
 
-Replace hardcoded:
-Path.home()/AppData/Roaming
+   except Exception as e:
 
-with:
+   with safe fallback.
 
-os.environ.get("APPDATA")
+   Log concise warning.
 
-Fallback allowed only if APPDATA unavailable.
+   --------------------------------------------------
 
-Target runtime directory:
+   1.4 Validate master.key fallback mode
 
-%APPDATA%/Excel_to_XML/
+   If DPAPI unavailable:
+   master.key stored raw.
 
---------------------------------------------------
+   This is acceptable fallback.
 
-2.2 Runtime files location
+   Required:
+   - document fallback mode
+   - log warning once
+   - optionally expose UI warning
 
-Ensure ONLY runtime files stored in AppData:
+   Text:
+   "DPAPI unavailable, using local fallback key (reduced security)."
 
-- app_data.db
-- logs/
-- backups/
-- master.key
-- settings/
-- api configs
+   ==================================================
+   SECTION 2. STORAGE AND FILE SECURITY
+   ==================================================
 
-Nothing runtime-related near executable.
+   2.1 Audit runtime storage
 
-Forbidden:
-./data
-./logs
-./temp
-local sqlite near exe
+   Verify ALL runtime files stored only in:
 
---------------------------------------------------
+   %APPDATA%/Excel_to_XML/
 
-2.3 Remove bundled runtime configs
+   Check:
+   - app_data.db
+   - logs
+   - settings
+   - backups
+   - master.key
+   - temp files if persistent
 
-Do not ship in repository/build:
-- api_key.json
-- org_settings.json
-- commission_data.json
-- proxy settings
+   Forbidden:
+   runtime files near executable.
 
-Instead:
-generate defaults on first launch.
+   --------------------------------------------------
 
-Allowed:
-*.example templates only.
+   2.2 XML temp cleanup
 
-==================================================
-SECTION 3. PERSONAL DATA SECURITY
-==================================================
+   Audit XML generation/export.
 
-3.1 Verify field-level encryption coverage
+   Temporary XML files may contain personal data.
 
-Sensitive fields MUST be encrypted:
+   Requirements:
+   - create in temp dir
+   - auto cleanup after send/export
 
-workers_data:
-- snils
-- last_name
-- first_name
-- middle_name
+   Use:
+   NamedTemporaryFile(delete=True)
 
-employees:
-- snils
-- names
+   or explicit cleanup.
 
-exam_journal:
-- snils
-- names
+   Verify no temp XML remains after operation.
 
-Optional:
-- protocol
-- base_no
+   --------------------------------------------------
 
-Verify all repositories consistently use:
-encrypt_value()
-decrypt_value()
+   2.3 Temporary DOCX/protocol cleanup
 
---------------------------------------------------
+   Audit generated protocol or report temp files.
 
-3.2 Searchable hashes
+   Temporary files:
+   - auto cleanup if transient
 
-Sensitive searchable fields require hashes.
+   Persistent exports:
+   - only user-selected destination.
 
-Ensure:
-snils_hash exists wherever SNILS searched.
+   ==================================================
+   SECTION 3. SECURITY HARDENING
+   ==================================================
 
-Use:
-SHA256(normalized_snils)
+   3.1 Logging audit
 
-Search only by hash.
+   Verify logs never contain:
 
-Do not search decrypted values.
+   - SNILS
+   - FIO
+   - proxy passwords
+   - tokens
+   - API keys
+   - XML payloads
 
---------------------------------------------------
+   Audit all logger calls.
 
-3.3 Backup validation
+   Verify masking works.
 
-Database backups must preserve encrypted fields.
+   Examples:
+   14566772094 -> 145****094
 
-Verify backups do not create plaintext exports.
+   --------------------------------------------------
 
-Since DB is field-encrypted:
-backup of DB is allowed.
+   3.2 Proxy credential security
 
-But ensure no plaintext serialization.
+   Current:
+   proxy credentials encrypted in config.
 
-==================================================
-SECTION 4. PROXY AND NETWORK SECURITY
-==================================================
+   Acceptable.
 
-4.1 Keep only approved backends
+   But improve:
 
-Allowed:
-- requests
-- wininet
+   Document recommendation:
+   future migration to Windows Credential Manager.
 
-Remove all dead network code if still present.
+   Do not break current storage.
 
-Forbidden:
-- httpx
-- urllib backend
-- pycurl
-- ntlm experimental backends
+   --------------------------------------------------
 
---------------------------------------------------
+   3.3 API key handling
 
-4.2 Manual proxy auth
+   Verify:
+   API keys are not bundled in repository/build.
 
-Audit manual proxy mode.
+   On first launch:
+   generate empty/default config.
 
-Requests backend must support:
+   Do not ship real/test API keys.
 
-http://username:password@host:port
+   --------------------------------------------------
 
-or equivalent auth handling.
+   3.4 Backup verification
 
-Currently manual auth may be incomplete.
+   Verify backups preserve encrypted fields.
 
-Fix.
+   Ensure backups do NOT create plaintext exports.
 
---------------------------------------------------
+   ==================================================
+   SECTION 4. NETWORK ROBUSTNESS
+   ==================================================
 
-4.3 Proxy credential storage
+   4.1 Requests backend optimization
 
-Audit proxy password storage.
+   Problem:
+   requests sessions may be recreated too often.
 
-Preferred:
-Windows Credential Manager.
+   Implement persistent:
 
-If not implemented:
-centralize encryption using utils.crypto.
+   requests.Session()
 
-Do not keep separate crypto implementations.
+   Reuse session for batch operations.
 
-Remove local crypto logic from proxy manager.
+   --------------------------------------------------
 
---------------------------------------------------
+   4.2 Retry policy
 
-4.4 Network hardening
+   Add retry strategy:
 
-Verify:
-- TLS verify=True by default
-- no silent SSL disable
-- explicit UI option only
+   - retries=3
+   - exponential backoff
 
-Requests:
-- timeout configured
-- retry policy
-- backoff
+   For:
+   - registry API
+   - Mintrud API
+   - network instability
 
-Recommended:
-retries=3
+   --------------------------------------------------
 
-==================================================
-SECTION 5. LOGGING AND AUDIT
-==================================================
+   4.3 Manual proxy auth testing
 
-5.1 Logging sanitization
+   Verify requests backend supports:
 
-Logs must never contain:
-- SNILS
-- FIO
-- API keys
-- tokens
-- proxy passwords
-- XML payloads
+   http://username:password@host:port
 
-Implement or verify:
-mask_sensitive()
+   Manual proxy mode must work.
 
-Examples:
-14566772094 -> 145****094
+   --------------------------------------------------
 
---------------------------------------------------
+   4.4 TLS policy
 
-5.2 Logging verbosity
+   Verify:
+   TLS verify=True default.
 
-Production default:
-INFO
+   No silent verify=False fallback.
 
-DEBUG only via settings/debug mode.
+   Only explicit setting/UI option allowed.
 
-Avoid root logger DEBUG by default.
+   ==================================================
+   SECTION 5. DATABASE STABILITY
+   ==================================================
 
---------------------------------------------------
+   5.1 SQLite settings
 
-5.3 Audit trail
+   Verify:
 
-Add/verify audit log.
+   PRAGMA journal_mode=WAL;
+   PRAGMA foreign_keys=ON;
+   PRAGMA synchronous=FULL or NORMAL;
 
-Record:
-- send_xml
-- query_registry
-- import_excel
-- generate_plan
+   Ensure no regressions.
 
-Fields:
-- timestamp
-- action
-- user
-- set_id if exists
+   --------------------------------------------------
 
-Do NOT log personal data.
+   5.2 Graceful DB shutdown
 
-==================================================
-SECTION 6. DATABASE STABILITY
-==================================================
+   Ensure:
+   all sqlite connections closed on exit.
 
-6.1 SQLite pragmas
+   Implement/verify:
 
-Verify:
+   DatabaseManager.close_all()
 
-PRAGMA journal_mode=WAL;
-PRAGMA foreign_keys=ON;
+   Call on app shutdown.
 
-Recommended:
-PRAGMA synchronous=NORMAL
+   ==================================================
+   SECTION 6. FUNCTIONAL TESTING
+   ==================================================
 
-or FULL.
+   Perform functional test audit.
 
---------------------------------------------------
+   ==================================================
+   6.1 Employee Summary (2.7)
+   ==================================================
 
-6.2 Graceful shutdown
+   Test:
+   - Excel import
+   - manual employee add/edit
+   - employee search by SNILS
+   - duplicate detection
+   - encrypted storage
+   - registry sync
+   - status updates
+   - filters
+   - exports
 
-Ensure sqlite connections close properly.
+   Verify:
+   all flows work.
 
-Add:
-DatabaseManager.close_all()
+   ==================================================
+   6.2 Training Plan (2.8)
+   ==================================================
 
-Use on app shutdown.
+   Test:
+   - generate next year plan
+   - overdue detection
+   - recommendations
+   - filtering
+   - export if applicable
 
-Avoid dangling connections.
+   Verify business logic.
 
---------------------------------------------------
+   ==================================================
+   6.3 Journal
+   ==================================================
 
-6.3 Persistent sessions
+   Test:
+   - add/edit records
+   - filters
+   - status logic
+   - SetId
+   - exports
 
-Requests backend currently may recreate sessions.
+   ==================================================
+   6.4 Monitoring
+   ==================================================
 
-Use persistent:
-requests.Session()
+   Test:
+   - logs visible
+   - refresh
+   - filters
+   - statuses
 
-Reuse for batch requests.
+   ==================================================
+   6.5 XML workflow
+   ==================================================
 
-==================================================
-SECTION 7. FILE/TEMP SECURITY
-==================================================
+   Test:
+   - XML generation
+   - validation
+   - send flow
+   - temp cleanup
 
-7.1 XML temporary files
+   ==================================================
+   SECTION 7. LOAD TESTING
+   ==================================================
 
-Audit XML generation.
+   Run basic performance/load testing.
 
-Temporary XML files containing personal data must:
-- use temp dir
-- auto cleanup after send/export
+   Test with:
 
-Avoid persistent temp XML.
+   Employees:
+   - 100
+   - 1000
+   - 5000+
 
---------------------------------------------------
+   Verify:
+   - import speed
+   - search speed
+   - filtering speed
+   - UI responsiveness
 
-7.2 Temporary DOCX/protocol files
+   Test batch API requests.
 
-Check protocol generation.
+   Verify:
+   - no UI freeze
+   - worker threads work
+   - progress bars update
 
-Temp files must not accumulate.
+   ==================================================
+   SECTION 8. UI TESTING
+   ==================================================
 
-Cleanup after use if temporary.
+   Verify long operations use worker threads:
 
-==================================================
-SECTION 8. UI / PERFORMANCE
-==================================================
+   - Excel import
+   - API sync
+   - XML generation
 
-8.1 Large tables
+   UI requirements:
+   - no freeze
+   - progress indicators
+   - cancel buttons if applicable
 
-Audit all large tables.
+   ==================================================
+   SECTION 9. TECHNICAL SPECIFICATION UPDATE
+   ==================================================
 
-For large datasets:
-use:
-QTableView + model
+   Update attached technical specification.
 
-Avoid QTableWidget for:
-- employee summary
-- journal
+   Replace obsolete architecture references.
 
---------------------------------------------------
+   Remove obsolete requirements:
 
-8.2 Background tasks
+   - app_data.db.enc
+   - DB encrypt on shutdown
+   - DB decrypt on startup
 
-Long operations must run in worker threads:
-- API requests
-- batch registry sync
-- Excel import
-- XML generation
+   Replace with:
 
-UI must not freeze.
+   Architecture:
+   - plain SQLite DB
+   - field-level encryption
+   - DPAPI master key
+   - AppData runtime storage
 
-Add:
-- progress bars
-- cancel buttons
+   Runtime path:
+   %APPDATA%/Excel_to_XML/
 
-==================================================
-SECTION 9. TECHNICAL SPECIFICATION AUDIT
-==================================================
+   Update sections 2.7 and 2.8 if implementation changed.
 
-Compare codebase with attached technical specification.
+   ==================================================
+   SECTION 10. README UPDATE
+   ==================================================
 
-Find:
-- missing features
-- partially implemented sections
-- mismatches
+   Update README.md.
 
-Focus especially:
+   Add/update:
 
-2.7 Employee Summary:
-- employee import
-- registry sync
-- status logic
-- filters
-- exports
+   1. Architecture overview
+   2. Security model:
+      - field-level encryption
+      - DPAPI
+      - AppData storage
 
-2.8 Training Plan:
-- next year plan generation
-- overdue logic
-- recommendations
+   3. Corporate network support:
+      - requests
+      - wininet
+      - proxy support
 
-Journal:
-- status filters
-- SetId
-- export
+   4. Build instructions:
+      - PyInstaller
+      - no UPX
+      - onedir
 
-Monitoring:
-- logs
-- filtering
-- refresh
+   5. Runtime paths
 
---------------------------------------------------
+   6. Troubleshooting:
+      - proxy issues
+      - logs
+      - TLS
 
-Update technical specification according to implemented architecture changes.
+   7. Security notes:
+      - fallback key mode
+      - storage model
 
-Required TЗ changes:
+   ==================================================
+   SECTION 11. FINAL OUTPUT
+   ==================================================
 
-1. Replace full DB encryption requirements
-(old app_data.db.enc lifecycle)
+   Return:
 
-WITH:
-
-Field-level encryption:
-- SNILS
-- FIO
-
-Plain SQLite:
-app_data.db
-
-2. Update storage requirements:
-
-Runtime path:
-%APPDATA%/Excel_to_XML/
-
-3. Update key management:
-
-DPAPI + master.key.
-
-4. Remove obsolete requirements referencing:
-- db encrypt on shutdown
-- db decrypt on startup
-
-Modify TЗ accordingly.
-
-==================================================
-SECTION 10. README UPDATE
-==================================================
-
-Update README.md.
-
-Add/update:
-
-1. Architecture overview:
-- PySide6
-- SQLite
-- repositories
-- encryption model
-
-2. Security model:
-- field-level encryption
-- DPAPI
-- AppData storage
-
-3. Corporate network support:
-- requests
-- wininet
-- proxy autodetection
-
-4. Build instructions:
-- PyInstaller settings
-- no UPX
-- onedir build
-
-5. Runtime storage locations.
-
-6. Troubleshooting:
-- proxy issues
-- TLS issues
-- logs location
-
-==================================================
-SECTION 11. FINAL OUTPUT
-==================================================
-
-Return:
-
-1. Critical issues found
-2. Security issues found
-3. Bugs found
-4. Missing TЗ features
-5. Files changed
-6. Updated TЗ summary
-7. Updated README summary
-8. Final architecture summary
-9. Production readiness assessment
-10. Вся документация - на русском языке
+   1. Bugs fixed
+   2. Remaining issues
+   3. Functional test results
+   4. Load test results
+   5. Missing TЗ features
+   6. Updated TЗ summary на русском
+   7. Updated README summary на русском
+   8. Production readiness assessment
+   9. Recommended next improvements

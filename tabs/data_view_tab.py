@@ -271,9 +271,9 @@ class DataViewTab(QWidget):
             QMessageBox.warning(self, "Предупреждение", "Нет данных для конвертации")
             return
 
-        from utils.app_paths import get_base_dir, get_app_data_dir
-        base_dir = get_base_dir()
-        schema_dir = os.path.join(base_dir, "schema")
+        from utils.app_paths import get_resource_dir, get_app_data_dir
+        resource_dir = get_resource_dir()
+        schema_dir = os.path.join(resource_dir, "schema")
         os.makedirs(schema_dir, exist_ok=True)
         xsd_files = [f for f in os.listdir(schema_dir) if f.endswith('.xsd')]
 

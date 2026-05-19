@@ -34,10 +34,10 @@ class DataEntryTab(QWidget):
         self._last_duplicate_map = {}
 
         # Пути
-        from utils.app_paths import get_app_data_dir, get_base_dir
-        self.base_dir = get_base_dir()
+        from utils.app_paths import get_app_data_dir, get_resource_dir
+        self.resource_dir = get_resource_dir()
         self.data_dir = get_app_data_dir()
-        self.schema_dir = os.path.join(self.base_dir, "schema")
+        self.schema_dir = os.path.join(self.resource_dir, "schema")
         self.settings_file = os.path.join(self.data_dir, "org_settings.json")
         
         # Создание директорий

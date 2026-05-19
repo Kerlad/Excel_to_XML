@@ -9,7 +9,7 @@ def _dpapi_encrypt(data):
     try:
         import win32crypt
         return win32crypt.CryptProtectData(data, None, None, None, None, 0)
-    except ImportError:
+    except Exception:
         return None
 
 def _dpapi_decrypt(encrypted):
@@ -17,7 +17,7 @@ def _dpapi_decrypt(encrypted):
         import win32crypt
         _, data = win32crypt.CryptUnprotectData(encrypted, None, None, None, 0)
         return data
-    except ImportError:
+    except Exception:
         return None
 
 def _key_dir():
@@ -43,7 +43,7 @@ def _get_or_create_master_key():
         _MASTER_KEY = raw; logger.info(f'Master key created: {kf}'); return raw
     # DPAPI unavailable — store raw key in AppData (less secure, but random)
     kf.write_bytes(raw)
-    logger.warning('DPAPI unavailable, master.key stored unprotected')
+    logger.warning('DPAPI unavailable, using local fallback key (reduced security)')
     _MASTER_KEY = raw; return raw
 
 def _fernet():
@@ -55,7 +55,7 @@ def encrypt_value(plain):
 def decrypt_value(enc):
     if not enc: return ''
     try: return _fernet().decrypt(enc.encode('utf-8')).decode('utf-8')
-    except Exception as e: logger.error(f'Decrypt failed: {e}'); return ''
+    except Exception: logger.warning('Decrypt failed'); return ''
 
 def hash_for_search(val):
     normalized = val.lower().strip().replace('-', '').replace(' ', '').replace('\xa0', '')
