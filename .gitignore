@@ -56,3 +56,6 @@ test_employees_import.xlsx
 test_employees_template.xlsx
 Doclad.MD
 TZ#2.md
+err.txt
+out.txt
+*.txt
