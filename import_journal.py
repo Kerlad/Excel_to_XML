@@ -7,8 +7,8 @@ import uuid
 from datetime import datetime
 from openpyxl import load_workbook
 
-project_dir = os.path.dirname(os.path.abspath(__file__))
-data_dir = os.path.join(project_dir, "data")
+from utils.app_paths import get_app_data_dir
+data_dir = get_app_data_dir()
 
 from journal.journal_manager import JournalManager
 from db.exam_journal_repo import JournalRecord
@@ -124,7 +124,7 @@ def format_snils(raw: str) -> str:
 
 if __name__ == "__main__":
     # Путь к тестовому файлу (создайте test_data/journal_import.xlsx для теста)
-    test_dir = os.path.join(project_dir, "test_data")
+    test_dir = os.path.join(data_dir, "test_data")
     file_path = os.path.join(test_dir, "journal_import.xlsx")
     if not os.path.exists(test_dir):
         os.makedirs(test_dir, exist_ok=True)
