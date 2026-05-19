@@ -5,6 +5,7 @@ Logs security-relevant events without personal data.
 import os
 import logging
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 audit_logger = logging.getLogger("audit")
 
@@ -24,7 +25,9 @@ AUDIT_EVENTS = {
 def setup_audit_log(log_dir: str):
     from utils.logger import SensitiveDataFilter
     log_path = os.path.join(log_dir, "audit.log")
-    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler = RotatingFileHandler(
+        log_path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+    )
     handler.setFormatter(logging.Formatter(
         "%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     ))

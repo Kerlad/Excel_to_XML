@@ -65,6 +65,11 @@ def encrypt_data(data):
     return _fernet().encrypt(json.dumps(data, ensure_ascii=False).encode('utf-8')).decode('utf-8')
 
 def decrypt_data(enc):
-    return json.loads(_fernet().decrypt(enc.encode('utf-8')).decode('utf-8'))
+    if not enc: return {}
+    try:
+        return json.loads(_fernet().decrypt(enc.encode('utf-8')).decode('utf-8'))
+    except Exception:
+        logger.warning('Decrypt failed')
+        return {}
 
 

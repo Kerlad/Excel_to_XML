@@ -21,7 +21,7 @@ class RequestsBackend(BaseBackend):
                 total=3,
                 backoff_factor=1,
                 status_forcelist=[429, 500, 502, 503, 504],
-                allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS"]
+                allowed_methods=["HEAD", "GET", "OPTIONS"]
             )
             adapter = HTTPAdapter(max_retries=retry_strategy)
             self._session.mount("https://", adapter)
@@ -50,8 +50,8 @@ class RequestsBackend(BaseBackend):
             response = session.post(url, files=files, headers=headers,
                                     timeout=timeout, verify=verify)
             return True, response.status_code, response.content, ""
-        except ImportError:
-            return False, 0, b"", "requests not installed"
+        except Exception as e:
+            return False, 0, b"", str(e)
 
     def get(
         self, url: str,
