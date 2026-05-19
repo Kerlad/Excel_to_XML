@@ -1,16 +1,17 @@
 import os
+from pathlib import Path
 
 
 def get_app_data_dir() -> str:
-    path = os.path.join(get_base_dir(), "data")
-    os.makedirs(path, exist_ok=True)
-    return path
+    path = Path.home() / "AppData" / "Roaming" / "Excel_to_XML"
+    os.makedirs(str(path), exist_ok=True)
+    return str(path)
 
 
 def get_app_log_dir() -> str:
-    path = os.path.join(get_base_dir(), "log")
-    os.makedirs(path, exist_ok=True)
-    return path
+    path = Path.home() / "AppData" / "Roaming" / "Excel_to_XML" / "log"
+    os.makedirs(str(path), exist_ok=True)
+    return str(path)
 
 
 def get_base_dir() -> str:

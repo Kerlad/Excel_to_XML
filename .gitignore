@@ -1,40 +1,57 @@
-.opencode
+# Project files
+.opencode/
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-build/*
-build/ExcelXML/*
-build/ExcelXML/
-dist/
-dist/*
-dist
-dist/ExcelXML/_internal/
-*.egg-info/
-.pytest_cache/
-.coverage
-htmlcov/
-*.log
 .env
 .venv
 env/
 venv/
+
+# Build
+build/
+dist/
+*.spec
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+*.manifest
+*.spec
+
+# Runtime data
 data/*.json
 !data/__init__.py
 data/*.db
-data/*.db.backup
+data/*.db.*
+data/master.key
+data/summary_programs.json
 log/
+import_errors.log
 
-# ТЗ и документация
+# Test files
+test_*.xlsx
+generate_test_data.py
+
+# Docs (optional)
 Техническое_задание*.pdf
-Техническое_задание_2.md
-Техническое_задание_2.pdf
+Техническое_задание*.md
 Doclad.MD
 ReadmeV2.md
 TZ#2.md
 curl.txt
-test_journal.xlsx
-test_workers_valid.xlsx
-test_workers_with_errors.xlsx
+
+# Launcher
+Launcher.cs
+version_info.txt
+.opencode

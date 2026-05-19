@@ -1,76 +1,82 @@
-import os
-import json
-import base64
-import hashlib
-import logging
-import shutil
+﻿import os, json, base64, hashlib, logging
+from pathlib import Path
+from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
+_MASTER_KEY = None
 
-try:
-    from cryptography.fernet import Fernet, InvalidToken
-except ImportError:
-    raise ImportError("pip install cryptography")
+def _dpapi_encrypt(data):
+    try:
+        import win32crypt
+        return win32crypt.CryptProtectData(data, None, None, None, None, 0)
+    except ImportError:
+        return None
 
+def _dpapi_decrypt(encrypted):
+    try:
+        import win32crypt
+        _, data = win32crypt.CryptUnprotectData(encrypted, None, None, None, 0)
+        return data
+    except ImportError:
+        return None
 
-def _get_derive_key():
-    username = os.environ.get('USERNAME', 'default_user').encode('utf-8')
-    return hashlib.sha256(username).digest()
+def _key_dir():
+    return Path(os.environ.get('APPDATA', Path.home() / 'AppData' / 'Roaming')) / 'Excel_to_XML'
 
+def _get_or_create_master_key():
+    global _MASTER_KEY
+    if _MASTER_KEY:
+        return _MASTER_KEY
+    kd = _key_dir(); kd.mkdir(parents=True, exist_ok=True)
+    kf = kd / 'master.key'
+    if kf.exists():
+        try:
+            raw = _dpapi_decrypt(kf.read_bytes())
+            if raw and len(raw) == 32:
+                _MASTER_KEY = raw; return raw
+        except Exception as e:
+            logger.warning(f'Key load failed: {e}')
+    raw = os.urandom(32)
+    prot = _dpapi_encrypt(raw)
+    if prot:
+        kf.write_bytes(prot)
+        _MASTER_KEY = raw; logger.info(f'Master key: {kf}'); return raw
+    fallback = hashlib.sha256(os.environ.get('USERNAME','default_user').encode()).digest()
+    logger.warning('DPAPI unavailable, using USERNAME fallback')
+    _MASTER_KEY = fallback; return fallback
 
 def _fernet():
-    key = _get_derive_key()
-    fernet_key = base64.urlsafe_b64encode(key)
-    return Fernet(fernet_key)
+    return Fernet(base64.urlsafe_b64encode(_get_or_create_master_key()))
 
+def encrypt_value(plain):
+    return _fernet().encrypt(plain.encode('utf-8')).decode('utf-8') if plain else ''
 
-def encrypt_data(data: dict) -> str:
-    json_str = json.dumps(data, ensure_ascii=False)
-    return _fernet().encrypt(json_str.encode('utf-8')).decode('utf-8')
+def decrypt_value(enc):
+    if not enc: return ''
+    try: return _fernet().decrypt(enc.encode('utf-8')).decode('utf-8')
+    except Exception as e: logger.error(f'Decrypt failed: {e}'); return enc
 
+def hash_for_search(val):
+    normalized = val.lower().strip().replace('-', '').replace(' ', '').replace('\xa0', '')
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
-def decrypt_data(encrypted: str) -> dict:
-    json_str = _fernet().decrypt(encrypted.encode('utf-8')).decode('utf-8')
-    return json.loads(json_str)
+def encrypt_data(data):
+    return _fernet().encrypt(json.dumps(data, ensure_ascii=False).encode('utf-8')).decode('utf-8')
 
+def decrypt_data(enc):
+    return json.loads(_fernet().decrypt(enc.encode('utf-8')).decode('utf-8'))
 
-def encrypt_file(file_path: str) -> str:
-    enc_path = file_path + '.enc'
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
-    with open(file_path, 'rb') as f:
-        data = f.read()
-    encrypted = _fernet().encrypt(data)
-    with open(enc_path, 'wb') as f:
-        f.write(encrypted)
-    os.remove(file_path)
-    logger.info(f"File encrypted: {file_path} -> {enc_path}")
-    return enc_path
+def encrypt_file(path):
+    p = Path(path)
+    if not p.exists(): raise FileNotFoundError(str(path))
+    enc = _fernet().encrypt(p.read_bytes())
+    p.with_suffix(p.suffix + '.enc').write_bytes(enc)
+    p.unlink()
+    return str(p.with_suffix(p.suffix + '.enc'))
 
-
-def decrypt_file(enc_path: str, output_path: str):
-    if not os.path.exists(enc_path):
-        raise FileNotFoundError(f"Encrypted file not found: {enc_path}")
-    with open(enc_path, 'rb') as f:
-        encrypted = f.read()
-    try:
-        data = _fernet().decrypt(encrypted)
-    except InvalidToken:
-        logger.error("Decryption failed: invalid key or corrupted file")
-        raise
-    with open(output_path, 'wb') as f:
-        f.write(data)
-    os.remove(enc_path)
-    logger.info(f"File decrypted: {enc_path} -> {output_path}")
-
-
-def backup_file(file_path: str, max_backups: int = 5):
-    backup_pattern = file_path + '.backup.{}'
-    for i in range(max_backups - 1, 0, -1):
-        src = backup_pattern.format(i)
-        dst = backup_pattern.format(i + 1)
-        if os.path.exists(src):
-            shutil.move(src, dst)
-    if os.path.exists(file_path):
-        shutil.copy2(file_path, backup_pattern.format(1))
-        logger.info(f"Backup: {backup_pattern.format(1)}")
+def decrypt_file(enc_path, out_path):
+    p = Path(enc_path)
+    if not p.exists(): raise FileNotFoundError(str(enc_path))
+    data = _fernet().decrypt(p.read_bytes())
+    Path(out_path).write_bytes(data)
+    p.unlink()

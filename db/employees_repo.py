@@ -1,10 +1,26 @@
 import logging
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional
 
 from .database import DatabaseManager
+from utils.crypto import encrypt_value, decrypt_value, hash_for_search
 
 logger = logging.getLogger(__name__)
+
+
+def _decrypt_emp(r: dict) -> dict:
+    return {
+        'id': r['id'],
+        'snils': decrypt_value(r['snils_enc']),
+        'last_name': decrypt_value(r['last_name_enc']),
+        'first_name': decrypt_value(r['first_name_enc']),
+        'middle_name': decrypt_value(r['middle_name_enc']),
+        'position': r['position'],
+        'required_programs': r['required_programs'],
+        'last_sync': r['last_sync'],
+        'created_at': r['created_at'],
+        'updated_at': r['updated_at'],
+    }
 
 
 class EmployeesRepo:
@@ -13,17 +29,19 @@ class EmployeesRepo:
     @staticmethod
     def get_all() -> List[dict]:
         db = DatabaseManager.get_instance()
-        return db.fetchall(f"SELECT * FROM {EmployeesRepo.TABLE} ORDER BY last_name, first_name")
+        return [_decrypt_emp(r) for r in db.fetchall(f"SELECT * FROM {EmployeesRepo.TABLE} ORDER BY last_name_enc, first_name_enc")]
 
     @staticmethod
     def get_by_id(emp_id: int) -> Optional[dict]:
         db = DatabaseManager.get_instance()
-        return db.fetchone(f"SELECT * FROM {EmployeesRepo.TABLE} WHERE id = ?", (emp_id,))
+        r = db.fetchone(f"SELECT * FROM {EmployeesRepo.TABLE} WHERE id = ?", (emp_id,))
+        return _decrypt_emp(r) if r else None
 
     @staticmethod
     def get_by_snils(snils: str) -> Optional[dict]:
         db = DatabaseManager.get_instance()
-        return db.fetchone(f"SELECT * FROM {EmployeesRepo.TABLE} WHERE snils = ?", (snils,))
+        r = db.fetchone(f"SELECT * FROM {EmployeesRepo.TABLE} WHERE snils_hash = ?", (hash_for_search(snils),))
+        return _decrypt_emp(r) if r else None
 
     @staticmethod
     def upsert(employee: dict) -> int:
@@ -31,59 +49,46 @@ class EmployeesRepo:
         snils = employee.get('snils', '')
         existing = EmployeesRepo.get_by_snils(snils)
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
         with db.transaction() as conn:
             if existing:
                 conn.execute(f"""
                     UPDATE {EmployeesRepo.TABLE}
-                    SET last_name=?, first_name=?, middle_name=?, position=?,
+                    SET last_name_enc=?, first_name_enc=?, middle_name_enc=?,
+                        snils_enc=?, snils_hash=?, position=?,
                         required_programs=?, updated_at=?
-                    WHERE snils=?
+                    WHERE id=?
                 """, (
-                    employee.get('last_name', ''),
-                    employee.get('first_name', ''),
-                    employee.get('middle_name', ''),
-                    employee.get('position', ''),
-                    employee.get('required_programs', ''),
-                    now,
-                    snils,
+                    encrypt_value(employee.get('last_name','')),
+                    encrypt_value(employee.get('first_name','')),
+                    encrypt_value(employee.get('middle_name','')),
+                    encrypt_value(snils), hash_for_search(snils),
+                    employee.get('position',''),
+                    employee.get('required_programs',''), now, existing['id'],
                 ))
                 return existing['id']
             else:
                 cur = conn.execute(f"""
                     INSERT INTO {EmployeesRepo.TABLE}
-                    (snils, last_name, first_name, middle_name, position, required_programs,
-                     last_sync, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (snils_enc, snils_hash, last_name_enc, first_name_enc, middle_name_enc,
+                     position, required_programs, last_sync, created_at, updated_at)
+                    VALUES (?,?,?,?,?, ?,?,?,?,?)
                 """, (
-                    snils,
-                    employee.get('last_name', ''),
-                    employee.get('first_name', ''),
-                    employee.get('middle_name', ''),
-                    employee.get('position', ''),
-                    employee.get('required_programs', ''),
-                    employee.get('last_sync'),
-                    now,
-                    now,
+                    encrypt_value(snils), hash_for_search(snils),
+                    encrypt_value(employee.get('last_name','')),
+                    encrypt_value(employee.get('first_name','')),
+                    encrypt_value(employee.get('middle_name','')),
+                    employee.get('position',''), employee.get('required_programs',''),
+                    employee.get('last_sync'), now, now,
                 ))
                 return cur.lastrowid
-
-    @staticmethod
-    def upsert_many(employees: List[dict]) -> int:
-        count = 0
-        for emp in employees:
-            EmployeesRepo.upsert(emp)
-            count += 1
-        return count
 
     @staticmethod
     def update_sync(emp_id: int, sync_date: str):
         db = DatabaseManager.get_instance()
         with db.transaction() as conn:
             conn.execute(
-                f"UPDATE {EmployeesRepo.TABLE} SET last_sync = ?, updated_at = datetime('now') WHERE id = ?",
-                (sync_date, emp_id)
-            )
+                f"UPDATE {EmployeesRepo.TABLE} SET last_sync=?, updated_at=datetime('now') WHERE id=?",
+                (sync_date, emp_id))
 
     @staticmethod
     def delete(emp_id: int):
@@ -101,9 +106,8 @@ class EmployeesRepo:
 
     @staticmethod
     def count() -> int:
-        db = DatabaseManager.get_instance()
-        row = db.fetchone(f"SELECT COUNT(DISTINCT snils) as cnt FROM {EmployeesRepo.TABLE}")
-        return row['cnt'] if row else 0
+        r = DatabaseManager.get_instance().fetchone(f"SELECT COUNT(DISTINCT snils_hash) as cnt FROM {EmployeesRepo.TABLE}")
+        return r['cnt'] if r else 0
 
     @staticmethod
     def get_with_programs(emp_id: int) -> List[dict]:

@@ -6,10 +6,11 @@ logger = logging.getLogger(__name__)
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS workers_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    last_name TEXT NOT NULL DEFAULT '',
-    first_name TEXT NOT NULL DEFAULT '',
-    middle_name TEXT NOT NULL DEFAULT '',
-    snils TEXT NOT NULL DEFAULT '',
+    last_name_enc TEXT NOT NULL DEFAULT '',
+    first_name_enc TEXT NOT NULL DEFAULT '',
+    middle_name_enc TEXT NOT NULL DEFAULT '',
+    snils_enc TEXT NOT NULL DEFAULT '',
+    snils_hash TEXT NOT NULL DEFAULT '',
     position TEXT NOT NULL DEFAULT '',
     employer_inn TEXT NOT NULL DEFAULT '',
     employer_title TEXT NOT NULL DEFAULT '',
@@ -23,7 +24,7 @@ CREATE TABLE IF NOT EXISTS workers_data (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_workers_snils ON workers_data(snils);
+CREATE INDEX IF NOT EXISTS idx_workers_snils_hash ON workers_data(snils_hash);
 CREATE INDEX IF NOT EXISTS idx_workers_program ON workers_data(program);
 
 CREATE TABLE IF NOT EXISTS exam_journal (
@@ -32,10 +33,11 @@ CREATE TABLE IF NOT EXISTS exam_journal (
     send_date TEXT NOT NULL DEFAULT '',
     set_id TEXT NOT NULL DEFAULT '',
     xml_file TEXT NOT NULL DEFAULT '',
-    last_name TEXT NOT NULL DEFAULT '',
-    first_name TEXT NOT NULL DEFAULT '',
-    middle_name TEXT NOT NULL DEFAULT '',
-    snils TEXT NOT NULL DEFAULT '',
+    last_name_enc TEXT NOT NULL DEFAULT '',
+    first_name_enc TEXT NOT NULL DEFAULT '',
+    middle_name_enc TEXT NOT NULL DEFAULT '',
+    snils_enc TEXT NOT NULL DEFAULT '',
+    snils_hash TEXT NOT NULL DEFAULT '',
     position TEXT NOT NULL DEFAULT '',
     program_id TEXT NOT NULL DEFAULT '',
     program_title TEXT NOT NULL DEFAULT '',
@@ -46,16 +48,17 @@ CREATE TABLE IF NOT EXISTS exam_journal (
     status TEXT NOT NULL DEFAULT 'pending'
 );
 
-CREATE INDEX IF NOT EXISTS idx_exam_journal_snils ON exam_journal(snils);
+CREATE INDEX IF NOT EXISTS idx_exam_journal_snils_hash ON exam_journal(snils_hash);
 CREATE INDEX IF NOT EXISTS idx_exam_journal_setid ON exam_journal(set_id);
 CREATE INDEX IF NOT EXISTS idx_exam_journal_status ON exam_journal(status);
 
 CREATE TABLE IF NOT EXISTS employees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    snils TEXT UNIQUE NOT NULL,
-    last_name TEXT NOT NULL DEFAULT '',
-    first_name TEXT NOT NULL DEFAULT '',
-    middle_name TEXT NOT NULL DEFAULT '',
+    snils_enc TEXT UNIQUE NOT NULL,
+    snils_hash TEXT UNIQUE NOT NULL,
+    last_name_enc TEXT NOT NULL DEFAULT '',
+    first_name_enc TEXT NOT NULL DEFAULT '',
+    middle_name_enc TEXT NOT NULL DEFAULT '',
     position TEXT NOT NULL DEFAULT '',
     required_programs TEXT NOT NULL DEFAULT '',
     last_sync TEXT,
@@ -63,7 +66,7 @@ CREATE TABLE IF NOT EXISTS employees (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_employees_snils ON employees(snils);
+CREATE INDEX IF NOT EXISTS idx_employees_snils_hash ON employees(snils_hash);
 
 CREATE TABLE IF NOT EXISTS employee_programs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,4 +93,4 @@ def create_schema():
     db = DatabaseManager.get_instance()
     with db.transaction() as conn:
         conn.executescript(SCHEMA_SQL)
-    logger.info("Schema created/verified successfully")
+    logger.info("Schema created/verified")

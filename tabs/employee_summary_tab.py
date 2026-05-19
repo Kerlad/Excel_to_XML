@@ -166,7 +166,7 @@ class PlanDialog(QDialog):
             val_label.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {color};")
             val_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             desc_label = QLabel(label)
-            desc_label.setStyleSheet("font-size: 12px; color: #666;")
+            desc_label.setStyleSheet("font-size: 12px;")
             desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             card_layout.addWidget(val_label)
             card_layout.addWidget(desc_label)
@@ -410,7 +410,7 @@ class EmployeeSummaryTab(QWidget):
             card_layout.addWidget(val_label)
 
             desc_label = QLabel(label)
-            desc_label.setStyleSheet("font-size: 11px; color: #666;")
+            desc_label.setStyleSheet("font-size: 11px;")
             desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             card_layout.addWidget(desc_label)
 
@@ -1010,8 +1010,8 @@ class EmployeeSummaryTab(QWidget):
         position = self.me_position.text().strip()
         programs_str = self.me_program.text().strip()
 
-        if not all([last_name, first_name, snils]):
-            QMessageBox.warning(self, "Ошибка", "Заполните Фамилию, СНИЛС")
+        if not snils:
+            QMessageBox.warning(self, "Ошибка", "Заполните СНИЛС")
             return
 
         snils_clean = snils.replace('-', '').replace(' ', '')

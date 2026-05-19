@@ -130,8 +130,8 @@ class MainWindow(QMainWindow):
 
         # Меню "Настройки"
         settings_menu = menubar.addMenu("Настройки")
-        theme_action = settings_menu.addAction("Светлая тема" if self.current_theme == "dark" else "Тёмная тема")
-        theme_action.triggered.connect(self._toggle_theme)
+        self._theme_action = settings_menu.addAction("Светлая тема" if self.current_theme == "dark" else "Тёмная тема")
+        self._theme_action.triggered.connect(self._toggle_theme)
 
         # Меню "Справка"
         help_menu = menubar.addMenu("Справка")
@@ -146,11 +146,13 @@ class MainWindow(QMainWindow):
     def _toggle_theme(self):
         """Переключение темы."""
         new_theme = "light" if self.current_theme == "dark" else "dark"
+        # Обновляем текст пункта меню ДО смены темы (меню может быть удалено при refresh)
+        try:
+            theme_action = self._theme_action
+            theme_action.setText("Светлая тема" if new_theme == "dark" else "Тёмная тема")
+        except (RuntimeError, AttributeError):
+            pass
         self._apply_theme(new_theme)
-        # Обновляем текст пункта меню
-        menubar = self.menuBar()
-        settings_menu = menubar.actions()[0].menu()  # первое меню = Настройки
-        settings_menu.actions()[0].setText("Светлая тема" if new_theme == "dark" else "Тёмная тема")
 
     def show_help(self):
         """Окно справки по работе с программой."""
@@ -409,21 +411,13 @@ if __name__ == "__main__":
     setup_logging(log_dir)
     logging.getLogger(__name__).info("=== Приложение запущено ===")
 
-    # Инициализация БД (в %APPDATA%/Excel_to_XML/)
+    # Инициализация БД
     data_dir = get_app_data_dir()
     db_path = os.path.join(data_dir, "app_data.db")
     db = DatabaseManager.get_instance(db_path)
     db.initialize()
     create_schema()
-    # Проверка целостности БД
-    try:
-        integrity = db.fetchone("PRAGMA integrity_check")
-        if integrity and integrity[0] == "ok":
-            logging.getLogger(__name__).info(f"БД инициализирована: {db_path}")
-        else:
-            logging.getLogger(__name__).warning(f"Integrity check: {integrity}")
-    except Exception as e:
-        logging.getLogger(__name__).warning(f"Could not check DB integrity: {e}")
+    logging.getLogger(__name__).info(f"БД: {db_path}")
 
     # Загрузка темы
     theme = load_theme(data_dir)
