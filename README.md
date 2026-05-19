@@ -53,7 +53,7 @@
 ### Передача данных
 - Ввод и сохранение API-ключа (32 символа)
 - Настройки прокси: без прокси / авто (системные) / вручную
-- **Transport backend selection** — выбор HTTP-транспорта (Auto/Requests/HTTPX/urllib/pycurl/WinINET)
+- **Transport backend selection** — выбор HTTP-транспорта (Auto/Requests/WinINET)
 - **Windows Integrated Authentication** — автоматическая авторизация через Negotiate/Kerberos
 - Отправка XML на сервер Минтруда
 - Получение SetId после успешной загрузки
@@ -128,8 +128,7 @@ pip install -r requirements.txt
 | cryptography | ≥41.0.0 | Шифрование API-ключа (AES/Fernet) |
 | Pillow | ≥10.0.0 | Работа с иконками |
 | python-dateutil | ≥2.8.0 | Расчёт дат (relativedelta) |
-| requests-ntlm | ≥1.2.0 | NTLM-аутентификация |
-| requests-negotiate-sspi | ≥0.5.0 | Windows Negotiate/Kerberos |
+| python-docx | ≥1.1.0 | Генерация протоколов DOCX |
 | pywin32 | ≥306 | Windows API для Negotiate |
 
 ### Варианты сборки
@@ -234,11 +233,8 @@ python main.py
 
 | Backend | Описание | Преимущества |
 |---------|----------|--------------|
-| Auto | Автоматический выбор лучшего | Fallback между всеми backends |
+| Auto | Автоматический выбор лучшего | Fallback между requests и WinINET |
 | Requests | Библиотека requests | Windows Integrated Authentication (Negotiate/Kerberos) |
-| HTTPX | Асинхронный HTTP-клиент | Высокая производительность |
-| urllib | Стандартная библиотека | Без внешних зависимостей |
-| pycurl | libcurl bindings | Высокая производительность |
 | WinINET | Windows Internet API | Лучшая поддержка корпоративных прокси |
 
 ### Безопасность
@@ -351,9 +347,6 @@ Excel_to_XML/
 │       ├── __init__.py
 │       ├── base_backend.py       # Абстрактный интерфейс
 │       ├── requests_backend.py   # requests + Negotiate/NTLM
-│       ├── httpx_backend.py      # httpx
-│       ├── urllib_backend.py     # urllib (fallback)
-│       ├── pycurl_backend.py     # pycurl
 │       └── wininet_backend.py    # Windows WinINET
 │
 ├── network/                      # Network diagnostics

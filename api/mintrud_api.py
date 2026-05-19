@@ -3,13 +3,9 @@ Unified Mintrud API client.
 Main entry point for all API operations.
 """
 import os
-import io
 import json
 import time
-import zipfile
 import logging
-import hashlib
-import base64
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, Optional
 
@@ -24,6 +20,7 @@ from .backends import BackendRegistry
 
 # Import proxy manager
 import utils.proxy_manager as proxy_manager
+from utils.audit import log_audit
 
 logger = logging.getLogger(__name__)
 
@@ -53,26 +50,13 @@ def _is_ssl_error(error_message: str) -> bool:
 
 # ============ API Key Management ============
 
-def _get_derive_key():
-    """Get encryption key based on system username."""
-    username = os.environ.get('USERNAME', 'default_user').encode('utf-8')
-    return hashlib.sha256(username).digest()
-
-
-def _fernet():
-    """Create Fernet cipher with system-derived key."""
-    from cryptography.fernet import Fernet
-    key = _get_derive_key()
-    fernet_key = base64.urlsafe_b64encode(key)
-    return Fernet(fernet_key)
-
-
 def save_api_key(api_key: str, data_dir: str) -> tuple[bool, str]:
-    """Save encrypted API key."""
+    """Save encrypted API key using DPAPI-backed encryption."""
     try:
+        from utils.crypto import encrypt_value
         os.makedirs(data_dir, exist_ok=True)
         key_file = os.path.join(data_dir, "api_key.json")
-        encrypted = _fernet().encrypt(api_key.encode('utf-8')).decode('utf-8')
+        encrypted = encrypt_value(api_key)
         with open(key_file, 'w', encoding='utf-8') as f:
             json.dump({"key": encrypted}, f)
         return True, "API ключ сохранён"
@@ -81,15 +65,16 @@ def save_api_key(api_key: str, data_dir: str) -> tuple[bool, str]:
 
 
 def load_api_key(data_dir: str) -> Optional[str]:
-    """Load decrypted API key."""
+    """Load decrypted API key using DPAPI-backed decryption."""
     key_file = os.path.join(data_dir, "api_key.json")
     if not os.path.exists(key_file):
         return None
     try:
+        from utils.crypto import decrypt_value
         with open(key_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
         encrypted = data.get('key', '')
-        return _fernet().decrypt(encrypted.encode('utf-8')).decode('utf-8')
+        return decrypt_value(encrypted)
     except Exception:
         return None
 
@@ -154,9 +139,10 @@ class MintrudClient:
                 except Exception as e:
                     logger.warning(f"Backend {backend_name} not available: {e}")
         
-        # Fallback to urllib (always available)
-        logger.info("Falling back to urllib backend")
-        return BackendRegistry.get_backend("urllib")()
+        # Ни один backend не доступен
+        logger.error("No backends available")
+        raise RuntimeError("Не удалось создать ни один HTTP-транспорт. "
+                           "Убедитесь, что установлены зависимости (requests).")
     
     def _get_backend_fallback_list(self):
         """
@@ -244,7 +230,6 @@ class MintrudClient:
         verify = self._get_verify()
         
         logger.info(f"Sending XML to {API_URL}")
-        logger.info(f"Proxies: {proxies}")
         logger.info(f"Initial backend: {self.backend_name}")
         
         # Try backends with SSL fallback
@@ -264,7 +249,10 @@ class MintrudClient:
                 )
                 
                 if success:
-                    return parse_send_response(response_bytes, status_code)
+                    result = parse_send_response(response_bytes, status_code)
+                    set_id = result.get("set_id", "")
+                    log_audit("SEND_XML", f"set_id={set_id}")
+                    return result
                 
                 last_error = error_msg
                 logger.warning(f"Backend {backend_name} failed: {error_msg}")
@@ -379,6 +367,7 @@ class MintrudClient:
             page_no += 1
             time.sleep(0.5)
         
+        log_audit("QUERY_SETID", f"set_id={set_id}, records={len(all_records)}")
         return {"success": True, "records": all_records}
     
     def query_by_snils(self, api_key: str, snils: str, page_size: int = 100) -> Dict[str, Any]:

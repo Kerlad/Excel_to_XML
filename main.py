@@ -16,6 +16,7 @@ from journal.journal_manager import JournalManager
 from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from utils.logger import setup_logging
+from utils.audit import setup_audit_log
 from utils.tahoe_style import get_global_stylesheet, apply_mica, load_theme, save_theme
 from utils.app_paths import get_app_data_dir, get_app_log_dir, get_base_dir
 from db import DatabaseManager, create_schema
@@ -409,6 +410,7 @@ if __name__ == "__main__":
     # Настройка логирования
     log_dir = get_app_log_dir()
     setup_logging(log_dir)
+    setup_audit_log(log_dir)
     logging.getLogger(__name__).info("=== Приложение запущено ===")
 
     # Инициализация БД
@@ -418,6 +420,7 @@ if __name__ == "__main__":
     db.initialize()
     create_schema()
     logging.getLogger(__name__).info(f"БД: {db_path}")
+    db.create_backup(encrypt=True)
 
     # Загрузка темы
     theme = load_theme(data_dir)

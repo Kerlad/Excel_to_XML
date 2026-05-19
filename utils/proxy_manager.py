@@ -1,42 +1,15 @@
 import os
 import json
 import logging
-import base64
-import hashlib
 from typing import Optional, Dict, Tuple
+
+from utils.crypto import encrypt_value, decrypt_value
 
 ENABLE_TLS_VERIFY = True
 
 logger = logging.getLogger(__name__)
 
 PROXY_SETTINGS_FILE = "proxy_settings.json"
-
-
-def _get_derive_key():
-    username = os.environ.get('USERNAME', 'default_user').encode('utf-8')
-    return hashlib.sha256(username).digest()
-
-
-def _fernet():
-    try:
-        from cryptography.fernet import Fernet
-    except ImportError:
-        raise ImportError("pip install cryptography")
-    key = _get_derive_key()
-    fernet_key = base64.urlsafe_b64encode(key)
-    return Fernet(fernet_key)
-
-
-def _encrypt_value(value: str) -> str:
-    if not value:
-        return ""
-    return _fernet().encrypt(value.encode('utf-8')).decode('utf-8')
-
-
-def _decrypt_value(encrypted: str) -> str:
-    if not encrypted:
-        return ""
-    return _fernet().decrypt(encrypted.encode('utf-8')).decode('utf-8')
 
 
 def load_proxy_settings(data_dir: str) -> dict:
@@ -55,8 +28,8 @@ def load_proxy_settings(data_dir: str) -> dict:
         ue = data.get("username_encrypted", "")
         pe = data.get("password_encrypted", "")
         if ue or pe:
-            data["username"] = _decrypt_value(ue)
-            data["password"] = _decrypt_value(pe)
+            data["username"] = decrypt_value(ue)
+            data["password"] = decrypt_value(pe)
         else:
             data["username"] = data.get("username", "")
             data["password"] = data.get("password", "")
@@ -77,8 +50,8 @@ def save_proxy_settings(data_dir: str, settings: dict) -> tuple[bool, str]:
         data = {
             "mode": settings.get("mode", "off"),
             "url": settings.get("url", "").strip(),
-            "username_encrypted": _encrypt_value(username),
-            "password_encrypted": _encrypt_value(password),
+            "username_encrypted": encrypt_value(username),
+            "password_encrypted": encrypt_value(password),
             "username": "",
             "password": "",
             "tls_verify": settings.get("tls_verify", True),

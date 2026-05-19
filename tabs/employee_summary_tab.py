@@ -1109,6 +1109,7 @@ class EmployeeSummaryTab(QWidget):
             first_name_col = col_map.get('Имя')
             middle_name_col = col_map.get('Отчество')
             position_col = col_map.get('Должность')
+            fio_col = col_map.get('ФИО')  # support ФИО column (full name)
 
             program_cols = {}
             for p in VALID_PROGRAMS:
@@ -1137,10 +1138,18 @@ class EmployeeSummaryTab(QWidget):
                     continue
                 snils_fmt = f"{snils_clean[:3]}-{snils_clean[3:6]}-{snils_clean[6:9]} {snils_clean[9:]}"
 
-                last_name = str(ws.cell(row=row_num, column=(last_name_col or 0) + 1).value or '').strip() if last_name_col else ''
-                first_name = str(ws.cell(row=row_num, column=(first_name_col or 0) + 1).value or '').strip() if first_name_col else ''
-                middle_name = str(ws.cell(row=row_num, column=(middle_name_col or 0) + 1).value or '').strip() if middle_name_col else ''
-                position = str(ws.cell(row=row_num, column=(position_col or 0) + 1).value or '').strip() if position_col else ''
+                last_name = str(ws.cell(row=row_num, column=(last_name_col if last_name_col is not None else 0) + 1).value or '').strip() if last_name_col is not None else ''
+                first_name = str(ws.cell(row=row_num, column=(first_name_col if first_name_col is not None else 0) + 1).value or '').strip() if first_name_col is not None else ''
+                middle_name = str(ws.cell(row=row_num, column=(middle_name_col if middle_name_col is not None else 0) + 1).value or '').strip() if middle_name_col is not None else ''
+                position = str(ws.cell(row=row_num, column=(position_col if position_col is not None else 0) + 1).value or '').strip() if position_col is not None else ''
+                # Parse ФИО column if no separate Фамилия/Имя
+                if (not last_name or not first_name) and fio_col is not None:
+                    fio_raw = str(ws.cell(row=row_num, column=fio_col + 1).value or '').strip()
+                    if fio_raw:
+                        parts = fio_raw.split()
+                        if len(parts) >= 1: last_name = parts[0]
+                        if len(parts) >= 2: first_name = parts[1]
+                        if len(parts) >= 3: middle_name = ' '.join(parts[2:])
 
                 required_programs = set()
                 if hidden_col is not None:

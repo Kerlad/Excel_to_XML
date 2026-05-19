@@ -123,7 +123,11 @@ def format_snils(raw: str) -> str:
 
 
 if __name__ == "__main__":
-    file_path = os.path.join(project_dir, "test_data", "journal_import.xlsx")
+    # Путь к тестовому файлу (создайте test_data/journal_import.xlsx для теста)
+    test_dir = os.path.join(project_dir, "test_data")
+    file_path = os.path.join(test_dir, "journal_import.xlsx")
+    if not os.path.exists(test_dir):
+        os.makedirs(test_dir, exist_ok=True)
     
     print("=== Импорт в журнал ===")
     print(f"Файл: {file_path}")

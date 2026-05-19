@@ -6,6 +6,8 @@ import logging
 import xml.etree.ElementTree as ET
 from typing import Dict, Any
 
+from utils.logger import mask_sensitive
+
 logger = logging.getLogger(__name__)
 
 ERROR_MAP = {
@@ -48,7 +50,7 @@ def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[s
         except Exception:
             response_text = str(response_bytes)
     
-    logger.info(f"Response text (first 500 chars): {response_text[:500]}")
+    logger.info(f"Response (first 500 chars): {mask_sensitive(response_text[:500])}")
     
     try:
         root = ET.fromstring(response_text)
@@ -185,12 +187,12 @@ def parse_setid_response(response_bytes: bytes, status_code: int = 200) -> Dict[
         except Exception:
             response_text = str(response_bytes)
 
-    logger.info(f"parse_setid_response: status={status_code}, text_len={len(response_text)}, text[:300]={response_text[:300]}")
+    logger.info(f"parse_setid_response: status={status_code}, text_len={len(response_text)}")
 
     try:
         root = ET.fromstring(response_text)
     except ET.ParseError:
-        logger.error(f"XML parse error: {response_text[:500]}")
+        logger.error(f"XML parse error: {mask_sensitive(response_text[:500])}")
         return {
             "success": False,
             "records": [],

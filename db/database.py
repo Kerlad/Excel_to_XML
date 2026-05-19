@@ -1,10 +1,13 @@
 import sqlite3
 import os
+import shutil
 import logging
 import threading
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
+
+MAX_BACKUPS = 5
 
 
 class DatabaseManager:
@@ -41,6 +44,8 @@ class DatabaseManager:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA synchronous=FULL")
+            conn.execute("PRAGMA busy_timeout=5000")
             self._local.conn = conn
         else:
             try:
@@ -52,6 +57,8 @@ class DatabaseManager:
                 conn.row_factory = sqlite3.Row
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute("PRAGMA synchronous=FULL")
+                conn.execute("PRAGMA busy_timeout=5000")
                 self._local.conn = conn
         return conn
 
@@ -102,3 +109,30 @@ class DatabaseManager:
 
     def close_all(self):
         self.close()
+
+    def create_backup(self, encrypt: bool = True) -> str:
+        """Create encrypted backup of the database with rotation."""
+        if not self.db_path or not os.path.exists(self.db_path):
+            return ""
+        backup_dir = os.path.join(os.path.dirname(self.db_path), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        base = os.path.basename(self.db_path)
+        for num in range(MAX_BACKUPS - 1, 0, -1):
+            old = os.path.join(backup_dir, f"{base}.backup.{num}")
+            new = os.path.join(backup_dir, f"{base}.backup.{num + 1}")
+            if os.path.exists(old):
+                if os.path.exists(new):
+                    os.remove(new)
+                shutil.move(old, new)
+        backup_path = os.path.join(backup_dir, f"{base}.backup.1")
+        shutil.copy2(self.db_path, backup_path)
+        if encrypt:
+            try:
+                from utils.crypto import encrypt_file
+                enc_path = encrypt_file(backup_path)
+                logger.info(f"Backup encrypted: {enc_path}")
+                return enc_path
+            except Exception as e:
+                logger.warning(f"Backup encryption failed: {e}")
+        logger.info(f"Backup created: {backup_path}")
+        return backup_path

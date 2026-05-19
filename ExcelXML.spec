@@ -14,6 +14,7 @@ a = Analysis(
         ('Protokol_proverki_znanii_OT.docx', '.'),
     ],
     hiddenimports=[
+        'email', 'email.mime', 'email.mime.multipart', 'email.mime.text',
         'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
         'openpyxl', 'lxml.etree', 'requests', 'cryptography.fernet',
         'docx', 'win32inet', 'win32con',
@@ -43,7 +44,7 @@ a = Analysis(
     excludes=[
         'numpy', 'pandas', 'matplotlib', 'scipy', 'sympy',
         'httpx', 'pycurl', 'requests_ntlm', 'requests_negotiate_sspi',
-        'tkinter', 'unittest', 'pydoc', 'email', 'http.server',
+        'tkinter', 'unittest', 'pydoc', 'http.server',
         'notebook', 'jupyter', 'ipython', 'ipykernel',
     ],
     win_no_prefer_redirects=False,

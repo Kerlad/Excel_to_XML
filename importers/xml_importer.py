@@ -4,6 +4,7 @@
 import os
 import logging
 import xml.etree.ElementTree as ET
+from xml.etree.ElementTree import XMLParser
 
 logging.basicConfig(filename='import_errors.log', level=logging.ERROR, encoding='utf-8')
 
@@ -11,11 +12,6 @@ NS = {'xs': 'http://www.w3.org/2001/XMLSchema'}
 VALID_PROGRAMS = {'1', '2', '3', '4', '6', '7', '8', '9', '10', '11', '12',
                   '13', '14', '15', '16', '17', '18', '19', '20', '21',
                   '22', '23', '24', '25', '26', '27', '28', '29'}
-
-
-def _find_parent_map(root):
-    """Построение карты parent для элементов."""
-    return {child: root for child in root}
 
 
 def load_xml(file_path, xsd_path=None):
@@ -28,9 +24,14 @@ def load_xml(file_path, xsd_path=None):
     Возвращает (records, error_count, error_messages, xsd_errors)
     xsd_errors — список ошибок XSD-валидации (если xsd_path указан)
     """
-    # Парсинг
+    size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    if size_mb > MAX_XML_SIZE_MB:
+        return None, 0, [f"Файл превышает лимит {MAX_XML_SIZE_MB} МБ ({size_mb:.1f} МБ)"], []
+    # Парсинг (XXE-safe: no external entities)
     try:
-        tree = ET.parse(file_path)
+        parser = XMLParser()
+        parser.entity = {}  # disable entity resolution
+        tree = ET.parse(file_path, parser=parser)
         root = tree.getroot()
     except ET.ParseError as e:
         return None, 0, [f"Ошибка парсинга XML: {e}"], []

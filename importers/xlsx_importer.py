@@ -221,6 +221,9 @@ def validate_row(row_dict, row_num):
     return True, records
 
 
+MAX_FILE_SIZE_MB = 10
+
+
 def load_xlsx(file_path, password=None):
     """
     Загрузка XLSX файла.
@@ -235,6 +238,9 @@ def load_xlsx(file_path, password=None):
     error_rows_set — множество номеров строк с ошибками
     """
     try:
+        size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        if size_mb > MAX_FILE_SIZE_MB:
+            return None, [], set(), [f"Файл превышает лимит {MAX_FILE_SIZE_MB} МБ ({size_mb:.1f} МБ)"]
         if file_path.endswith('.xlsx'):
             from openpyxl import load_workbook
             return _load_xlsx_openpyxl(file_path, password)

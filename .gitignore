@@ -1,5 +1,4 @@
 # Project files
-.opencode/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -12,7 +11,6 @@ venv/
 # Build
 build/
 dist/
-*.spec
 *.exe
 
 # IDE
@@ -37,7 +35,11 @@ data/*.db.*
 data/master.key
 data/summary_programs.json
 log/
-import_errors.log
+*.log
+*.enc
+
+# Project specific
+.opencode/
 
 # Test files
 test_*.xlsx
@@ -54,4 +56,3 @@ curl.txt
 # Launcher
 Launcher.cs
 version_info.txt
-.opencode
