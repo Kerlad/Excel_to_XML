@@ -18,7 +18,7 @@ from protocol.programs_manager import ProgramsManager
 from utils.logger import setup_logging
 from utils.audit import setup_audit_log
 from utils.tahoe_style import get_global_stylesheet, apply_mica, load_theme, save_theme
-from utils.app_paths import get_app_data_dir, get_app_log_dir, get_base_dir
+from utils.app_paths import get_app_data_dir, get_app_log_dir, get_resource_dir
 from db import DatabaseManager, create_schema
 
 
@@ -26,8 +26,7 @@ class MainWindow(QMainWindow):
     def __init__(self, app=None):
         super().__init__()
         self.app = app
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.current_theme = load_theme(self.base_dir)
+        self.current_theme = load_theme(get_app_data_dir())
         self.setWindowTitle("Excel-XML для передачи данных в Минтруд")
         self.setMinimumSize(1000, 700)
         self.resize(1200, 800)
@@ -84,7 +83,7 @@ class MainWindow(QMainWindow):
     def _apply_theme(self, theme: str):
         """Применение темы (light/dark) ко всему приложению."""
         self.current_theme = theme
-        save_theme(self.base_dir, theme)
+        save_theme(get_app_data_dir(), theme)
 
         if self.app:
             # Обновляем палитру

@@ -30,10 +30,9 @@ class BaseDataTransferTab(QWidget):
         self.setStyleSheet("background-color: transparent;")
 
         # Пути
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        from utils.app_paths import get_app_data_dir
+        from utils.app_paths import get_app_data_dir, get_resource_dir
         self.data_dir = get_app_data_dir()
-        self.schema_dir = os.path.join(self.base_dir, "schema")
+        self.schema_dir = os.path.join(get_resource_dir(), "schema")
         os.makedirs(self.data_dir, exist_ok=True)
 
         # Основной layout с прокруткой

@@ -902,7 +902,7 @@ class DataEntryTab(QWidget):
             ]
             ws.append(headers)
             
-            template_path = os.path.join(self.base_dir, "Шаблон.xlsx")
+            template_path = os.path.join(self.data_dir, "Шаблон.xlsx")
             wb.save(template_path)
             
             reply = QMessageBox.question(

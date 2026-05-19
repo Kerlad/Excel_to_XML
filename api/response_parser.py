@@ -72,7 +72,7 @@ def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[s
         send_edu = send_elem.text if send_elem is not None else "false"
         msg = msg_elem.text if msg_elem is not None else ""
         
-        logger.info(f"Success: SetId={set_id}, SendEducatedPerson={send_edu}")
+        logger.info(f"Success: SetId={mask_sensitive(set_id)}, SendEducatedPerson={send_edu}")
         
         return {
             "success": True,
@@ -92,7 +92,7 @@ def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[s
         send_edu = send_elem.text if send_elem is not None else "false"
         msg = msg_elem.text if msg_elem is not None else ""
 
-        logger.info(f"Success (Result tag): SetId={set_id}, SendEducatedPerson={send_edu}")
+        logger.info(f"Success (Result tag): SetId={mask_sensitive(set_id)}, SendEducatedPerson={send_edu}")
 
         return {
             "success": True,
@@ -112,7 +112,7 @@ def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[s
         send_edu = send_elem.text if send_elem is not None else "false"
         msg = msg_elem.text if msg_elem is not None else ""
 
-        logger.info(f"Success (Message tag): SetId={set_id}")
+        logger.info(f"Success (Message tag): SetId={mask_sensitive(set_id)}")
 
         return {
             "success": True,
@@ -147,7 +147,7 @@ def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[s
         msg = msg_elem.text if msg_elem is not None else ""
         
         error_msg = _format_error(status_code_str, msg)
-        logger.error(f"Error: {status_code_str} - {msg}")
+        logger.error(f"Error: {status_code_str} - {mask_sensitive(msg)}")
         
         return {
             "success": False,

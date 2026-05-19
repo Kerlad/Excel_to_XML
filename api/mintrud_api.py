@@ -21,6 +21,7 @@ from .backends import BackendRegistry
 # Import proxy manager
 import utils.proxy_manager as proxy_manager
 from utils.audit import log_audit
+from utils.logger import mask_sensitive
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +256,7 @@ class MintrudClient:
                     return result
                 
                 last_error = error_msg
-                logger.warning(f"Backend {backend_name} failed: {error_msg}")
+                logger.warning(f"Backend {backend_name} failed: {mask_sensitive(error_msg)}")
                 
                 # Only fallback on SSL errors
                 if not _is_ssl_error(error_msg):
@@ -265,7 +266,7 @@ class MintrudClient:
                 
             except Exception as e:
                 last_error = str(e)
-                logger.warning(f"Backend {backend_name} exception: {e}")
+                logger.warning(f"Backend {backend_name} exception: {mask_sensitive(str(e))}")
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
         
@@ -296,7 +297,7 @@ class MintrudClient:
                     return {"success": True, "status_code": status_code, "response_bytes": response_bytes}
                 
                 last_error = error_msg
-                logger.warning(f"Backend {backend_name} failed: {error_msg}")
+                logger.warning(f"Backend {backend_name} failed: {mask_sensitive(error_msg)}")
                 
                 if not _is_ssl_error(error_msg):
                     return {"success": False, "error": error_msg}
@@ -305,7 +306,7 @@ class MintrudClient:
                 
             except Exception as e:
                 last_error = str(e)
-                logger.warning(f"Backend {backend_name} exception: {e}")
+                logger.warning(f"Backend {backend_name} exception: {mask_sensitive(str(e))}")
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
         
@@ -342,12 +343,12 @@ class MintrudClient:
     <SetId>{set_id}</SetId>
 </EducatedPersonFilter>'''
             
-            logger.info(f"Querying SetId {set_id}, page {page_no}")
+            logger.info(f"Querying SetId {mask_sensitive(set_id)}, page {page_no}")
             
             try_result = self._try_backends(api_key, xml_content, GET_URL)
             
             if not try_result.get("success"):
-                logger.error(f"Query failed: {try_result.get('error')}")
+                logger.error(f"Query failed: {mask_sensitive(try_result.get('error', ''))}")
                 return {"success": False, "records": [], "error": try_result.get("error", "Unknown error")}
             
             response_bytes = try_result["response_bytes"]
@@ -357,56 +358,40 @@ class MintrudClient:
 
             if not parse_result.get("success"):
                 return {"success": False, "records": [], "error": parse_result.get("error", "Unknown error")}
-            
-            records = parse_result.get("records", [])
-            all_records.extend(records)
-            
-            if len(records) < page_size:
-                break
-            
+
+            all_records.extend(parse_result.get("records", []))
             page_no += 1
-            time.sleep(0.5)
-        
-        log_audit("QUERY_SETID", f"set_id={set_id}, records={len(all_records)}")
-        return {"success": True, "records": all_records}
-    
-    def query_by_snils(self, api_key: str, snils: str, page_size: int = 100) -> Dict[str, Any]:
+
+        return {"success": True, "records": all_records, "error": None}
+
+    def query_by_snils(self, api_key: str, snils: str) -> Dict[str, Any]:
         """
-        Query records by SNILS.
-        
+        Запрос данных по СНИЛС через API.
+
         Args:
-            api_key: API key
-            snils: SNILS number
-            page_size: Page size for pagination
-        
+            api_key: API-ключ
+            snils: СНИЛС в формате 'xxx-xxx-xxx xx'
+
         Returns:
-            Dict with success, records, error
+            Dict с ключами: success, records, error
         """
-        ok, err = validate_api_key(api_key)
-        if not ok:
-            return {"success": False, "records": [], "error": err}
-        
-        if not snils:
-            return {"success": False, "records": [], "error": "СНИЛС не введён"}
-        
-        all_records = []
-        page_no = 1
-        
-        while True:
+        # Нормализация СНИЛС
+        snils_clean = snils.replace('-', '').replace(' ', '')
+
+        for page_no in range(1, 1000):
             xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
-<EducatedPersonFilter>
-    <ApiKey>{api_key}</ApiKey>
+<EducatedPersonFilter xmlns="urn:esprot:edu:01.01">
     <PageNo>{page_no}</PageNo>
-    <PageSize>{page_size}</PageSize>
-    <Snils>{snils}</Snils>
+    <PageSize>100</PageSize>
+    <Snils>{snils_clean}</Snils>
 </EducatedPersonFilter>'''
 
             logger.info(f"Querying by SNILS, page {page_no}")
 
             try_result = self._try_backends(api_key, xml_content, GET_URL)
-            
+
             if not try_result.get("success"):
-                logger.error(f"Query failed: {try_result.get('error')}")
+                logger.error(f"Query failed: {mask_sensitive(try_result.get('error', ''))}")
                 return {"success": False, "records": [], "error": try_result.get("error", "Unknown error")}
 
             response_bytes = try_result["response_bytes"]

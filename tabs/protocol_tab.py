@@ -634,8 +634,9 @@ class ProtocolTab(QWidget):
         }
 
         # Шаблон
+        from utils.app_paths import get_resource_dir
         template_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            get_resource_dir(),
             "Protokol_proverki_znanii_OT.docx"
         )
 

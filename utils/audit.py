@@ -22,12 +22,14 @@ AUDIT_EVENTS = {
 
 
 def setup_audit_log(log_dir: str):
+    from utils.logger import SensitiveDataFilter
     log_path = os.path.join(log_dir, "audit.log")
     handler = logging.FileHandler(log_path, encoding="utf-8")
     handler.setFormatter(logging.Formatter(
         "%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     ))
     handler.setLevel(logging.INFO)
+    handler.addFilter(SensitiveDataFilter())
     audit_logger.addHandler(handler)
     audit_logger.setLevel(logging.INFO)
     audit_logger.propagate = False

@@ -975,12 +975,12 @@ class ExamJournalTab(QWidget):
         # Сохраняем путь
         self._save_last_save_path(file_path)
 
+        from utils.app_paths import get_app_data_dir, get_resource_dir
+        data_dir = get_app_data_dir()
         template_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            get_resource_dir(),
             "Protokol_proverki_znanii_OT.docx"
         )
-        from utils.app_paths import get_app_data_dir
-        data_dir = get_app_data_dir()
 
         if protocol_number == "Все":
             # Генерируем все протоколы - каждый в отдельный файл
