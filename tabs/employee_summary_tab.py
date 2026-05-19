@@ -815,11 +815,9 @@ class EmployeeSummaryTab(QWidget):
 
             row_idx = self.table.rowCount()
             self.table.insertRow(row_idx)
-            logger.info(f"ROW={row_idx}: fio='{fio}' snils='{emp.get('snils','')}' pos='{emp.get('position','')}' progs={list(row_programs.keys())}")
 
             fio = f"{emp['last_name']} {emp['first_name']} {emp['middle_name']}".strip()
             row_data = [fio, emp['snils'], emp['position']]
-            logger.info(f"Adding row: fio='{fio}' snils='{emp.get('snils','')}' pos='{emp.get('position','')}' at row={row_idx} cols={len(row_data)}+{len(programs)*SUB_COLUMNS}+1")
 
             for p in programs:
                 pd = row_programs.get(p, {})
