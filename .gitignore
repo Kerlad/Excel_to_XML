@@ -11,6 +11,7 @@ build/ExcelXML/
 dist/
 dist/*
 dist
+dist/ExcelXML/_internal/
 *.egg-info/
 .pytest_cache/
 .coverage
