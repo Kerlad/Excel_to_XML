@@ -1,9 +1,11 @@
 ﻿from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
-    QLabel, QMessageBox, QFileDialog, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QMenu, QDialog, QFormLayout, QComboBox
+    QLabel, QMessageBox, QFileDialog, QTableView, QHeaderView,
+    QAbstractItemView, QMenu, QFormLayout, QComboBox
 )
-from PySide6.QtCore import Qt
+from utils.dialog_base import BaseDialog
+from PySide6.QtCore import Qt, QSortFilterProxyModel
+from PySide6.QtWidgets import QDialog
 from PySide6.QtGui import QColor
 from datetime import datetime
 import os
@@ -12,24 +14,14 @@ import logging
 from exporters.xml_exporter import export_to_xml
 from db.workers_data_repo import WorkersDataRepo
 from utils.crypto import decrypt_data, hash_for_search
+from utils.table_models import DataViewTableModel, MultiColumnFilterProxyModel, FIELD_KEYS, COLUMN_LABELS
 
 logger = logging.getLogger(__name__)
-
-FIELD_KEYS = ['last_name', 'first_name', 'middle_name', 'snils', 'position',
-              'employer_inn', 'employer_title', 'tc_inn', 'tc_title',
-              'result', 'program', 'date', 'protocol']
-
-COLUMN_LABELS = [
-    "Фамилия", "Имя", "Отчество", "СНИЛС", "Должность",
-    "ИНН\nзаказчика", "Наименование\nзаказчика", "ИНН\nУЦ",
-    "Наименование\nУЦ", "Результат", "№ программы", "Дата", "№ протокола"
-]
 
 
 class DataViewTab(QWidget):
     def __init__(self):
         super().__init__()
-        self._all_records = []
         self._setup_ui()
         self._connect_signals()
         self._load_all_data()
@@ -74,9 +66,12 @@ class DataViewTab(QWidget):
         toolbar.addWidget(self.export_btn)
         layout.addLayout(toolbar)
 
-        self.table = QTableWidget()
-        self.table.setColumnCount(13)
-        self.table.setHorizontalHeaderLabels(COLUMN_LABELS)
+        self._model = DataViewTableModel(FIELD_KEYS, COLUMN_LABELS, self)
+        self._proxy = MultiColumnFilterProxyModel(self)
+        self._proxy.setSourceModel(self._model)
+
+        self.table = QTableView()
+        self.table.setModel(self._proxy)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -85,8 +80,8 @@ class DataViewTab(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(32)
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         self.status_label = QLabel("Записей: 0 | Выбрано: 0")
 
@@ -95,19 +90,20 @@ class DataViewTab(QWidget):
 
     def _connect_signals(self):
         self.table.customContextMenuRequested.connect(self._show_context_menu)
-        self.table.itemSelectionChanged.connect(self._update_status)
+        self.table.selectionModel().selectionChanged.connect(self._update_status)
         self.table.horizontalHeader().customContextMenuRequested.connect(self._show_header_menu)
         self.search_edit.textChanged.connect(self._filter_table)
         self.refresh_btn.clicked.connect(self._load_all_data)
         self.convert_btn.clicked.connect(self.convert_to_xml)
         self.clear_btn.clicked.connect(self.clear_all_data)
         self.export_btn.clicked.connect(self._export_xlsx)
+        self.table.doubleClicked.connect(self._on_item_double_click)
 
     def _load_all_data(self):
         rows = WorkersDataRepo.get_all()
-        self._all_records = []
+        records = []
         for r in rows:
-            self._all_records.append({
+            records.append({
                 'last_name': r['last_name'],
                 'first_name': r['first_name'],
                 'middle_name': r['middle_name'],
@@ -123,38 +119,28 @@ class DataViewTab(QWidget):
                 'protocol': r['protocol'],
                 'id': r['id'],
             })
-        self._display_records(self._all_records)
-
-    def _display_records(self, records: list):
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(0)
-        for record in records:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            for col, key in enumerate(FIELD_KEYS):
-                item = QTableWidgetItem(str(record.get(key, '')))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row, col, item)
-            first_item = self.table.item(row, 0)
-            if first_item:
-                first_item.setData(Qt.ItemDataRole.UserRole, record.get('id'))
-            result_item = self.table.item(row, 9)
-            if result_item:
-                text = result_item.text()
-                if text == "Удовлетворительно":
-                    result_item.setForeground(QColor("#27AE60"))
-                elif text == "Неудовлетворительно":
-                    result_item.setForeground(QColor("#E74C3C"))
-        self.table.setSortingEnabled(True)
+        self._model.load_records(records)
+        self._model.set_cell_color(9, QColor("#FFF0F0"))
         self._update_status()
 
     def get_existing_keys(self):
         return WorkersDataRepo.get_existing_keys()
 
+    def _on_item_double_click(self, index):
+        if not index.isValid():
+            return
+        col = index.column()
+        if col == 3:
+            snils = self._model.get_row_data(self._proxy.mapToSource(index).row()).get('snils', '').strip()
+            if snils and snils.replace('-', '').replace(' ', '').isdigit():
+                from PySide6.QtWidgets import QApplication
+                QApplication.clipboard().setText(snils)
+                from utils.toast import Toast
+                Toast.info(self, f"СНИЛС скопирован: {snils}")
+
     def add_data(self, new_data, merge_mode=False):
         if merge_mode:
             WorkersDataRepo.clear()
-            self.table.setRowCount(0)
 
         existing_keys = WorkersDataRepo.get_existing_keys()
         duplicates = 0
@@ -180,29 +166,18 @@ class DataViewTab(QWidget):
         )
 
     def _filter_table(self, text):
-        text = text.strip().lower()
-        for row in range(self.table.rowCount()):
-            visible = not text
-            if text:
-                for col in range(self.table.columnCount()):
-                    item = self.table.item(row, col)
-                    if item and text in item.text().lower():
-                        visible = True
-                        break
-            self.table.setRowHidden(row, not visible)
+        self._proxy.setFilterFixedString(text.strip())
         self._update_status()
 
     def _update_status(self):
-        total = self.table.rowCount()
-        visible = sum(1 for row in range(total) if not self.table.isRowHidden(row))
-        selected_rows = len(set(
-            index.row() for index in self.table.selectedItems()
-        )) if self.table.selectedItems() else 0
+        total = self._model.rowCount()
+        visible = self._proxy.rowCount()
+        selected_rows = len(self.table.selectionModel().selectedRows()) if self.table.selectionModel() else 0
         self.status_label.setText(f"Записей: {visible} | Выбрано: {selected_rows}")
 
     def _show_context_menu(self, position):
-        row = self.table.rowAt(position.y())
-        if row < 0:
+        idx = self.table.indexAt(position)
+        if not idx.isValid():
             return
 
         menu = QMenu(self)
@@ -233,20 +208,18 @@ class DataViewTab(QWidget):
     def _toggle_column(self, col):
         self.table.setColumnHidden(col, not self.table.isColumnHidden(col))
 
-    def _get_row_data(self, row: int) -> dict:
-        data = {}
-        for col, key in enumerate(FIELD_KEYS):
-            item = self.table.item(row, col)
-            data[key] = item.text() if item else ''
-        data['id'] = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) if self.table.item(row, 0) else None
-        return data
+    def _get_selected_source_rows(self) -> list:
+        rows = set()
+        for idx in self.table.selectionModel().selectedIndexes():
+            rows.add(self._proxy.mapToSource(idx).row())
+        return sorted(rows)
 
     def edit_selected_row(self):
-        rows = sorted(set(index.row() for index in self.table.selectedItems()))
+        rows = self._get_selected_source_rows()
         if not rows:
             return
         row = rows[0]
-        row_data = self._get_row_data(row)
+        row_data = self._model.get_row_data(row)
         col_data = {}
         for col, key in enumerate(FIELD_KEYS):
             col_data[col] = row_data.get(key, '')
@@ -263,7 +236,7 @@ class DataViewTab(QWidget):
                 self._load_all_data()
 
     def delete_selected_rows(self):
-        rows = sorted(set(index.row() for index in self.table.selectedItems()))
+        rows = self._get_selected_source_rows()
         if not rows:
             return
         count = len(rows)
@@ -274,17 +247,17 @@ class DataViewTab(QWidget):
         )
         if reply == QMessageBox.StandardButton.Yes:
             for row in reversed(rows):
-                record_id = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+                record_id = self._model.get_record_id(row)
                 if record_id:
                     WorkersDataRepo.delete(record_id)
             self._load_all_data()
 
     def _duplicate_selected_rows(self):
-        rows = sorted(set(index.row() for index in self.table.selectedItems()))
+        rows = self._get_selected_source_rows()
         if not rows:
             return
         for row in rows:
-            data = self._get_row_data(row)
+            data = self._model.get_row_data(row)
             data.pop('id', None)
             WorkersDataRepo.add(data)
         self._load_all_data()
@@ -297,12 +270,11 @@ class DataViewTab(QWidget):
         )
         if reply == QMessageBox.StandardButton.Ok:
             WorkersDataRepo.clear()
-            self._all_records.clear()
-            self.table.setRowCount(0)
+            self._model.load_records([])
             self._update_status()
 
     def convert_to_xml(self):
-        if self.table.rowCount() == 0:
+        if self._model.rowCount() == 0:
             QMessageBox.warning(self, "Предупреждение", "Нет данных для конвертации")
             return
 
@@ -338,14 +310,8 @@ class DataViewTab(QWidget):
 
         if file_path:
             records = []
-            for row in range(self.table.rowCount()):
-                if self.table.isRowHidden(row):
-                    continue
-                record = {}
-                for col, key in enumerate(FIELD_KEYS):
-                    item = self.table.item(row, col)
-                    record[key] = item.text() if item else ''
-                records.append(record)
+            for row in range(self._model.rowCount()):
+                records.append(self._model.get_row_data(row))
 
             success, message = export_to_xml(records, file_path, org_settings)
             if success:
@@ -357,8 +323,8 @@ class DataViewTab(QWidget):
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
-        total_rows = self.table.rowCount()
-        if total_rows == 0:
+        total_count = self._model.rowCount()
+        if total_count == 0:
             QMessageBox.warning(self, "Предупреждение", "Нет данных для экспорта")
             return
 
@@ -388,12 +354,11 @@ class DataViewTab(QWidget):
             cell.border = thin_border
 
         row_num = 2
-        for row in range(total_rows):
-            if self.table.isRowHidden(row):
-                continue
-            for col in range(self.table.columnCount()):
-                item = self.table.item(row, col)
-                value = item.text() if item else ''
+        for src_row in range(total_count):
+            rec = self._model.get_row_data(src_row)
+            for col in range(len(COLUMN_LABELS)):
+                key = FIELD_KEYS[col] if col < len(FIELD_KEYS) else ''
+                value = rec.get(key, '')
                 cell = ws.cell(row=row_num, column=col + 1, value=value)
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 cell.border = thin_border
@@ -412,24 +377,25 @@ class DataViewTab(QWidget):
         QMessageBox.information(self, "Успех", f"Экспортировано записей: {exported}")
 
 
-class EditDialog(QDialog):
-    def __init__(self, row_data, parent=None):
-        super().__init__(parent)
-        self.row_data = row_data
-        self.setWindowTitle("Редактирование данных")
-        self.setMinimumWidth(500)
+class EditDialog(BaseDialog):
+    def __init__(self, row_data: dict, parent=None):
+        super().__init__(parent, title="Редактирование данных", min_width=520, min_height=520)
 
-        layout = QVBoxLayout(self)
+        self.row_data = row_data
+        bl = self.body_layout()
         form_layout = QFormLayout()
 
-        self.fields = {}
-        self.field_widgets = {}
+        self.fields: dict = {}
+        self.field_widgets: dict = {}
         field_names = [
             ("Фамилия", 0), ("Имя", 1), ("Отчество", 2), ("СНИЛС", 3),
             ("Должность", 4), ("ИНН Заказчика", 5), ("Наименование ЮЛ заказчика", 6),
             ("ИНН УЦ", 7), ("Наименование УЦ", 8), ("Результат", 9),
             ("№ программы", 10), ("Дата", 11), ("№ протокола", 12)
         ]
+
+        from utils.field_validators import validate_required, validate_name, validate_snils, validate_program_id, validate_date
+        from utils.field_validators import ValidatedLineEdit
 
         for label, col_idx in field_names:
             if col_idx == 9:
@@ -442,6 +408,35 @@ class EditDialog(QDialog):
                 form_layout.addRow(label, combo)
                 self.fields[col_idx] = combo
                 self.field_widgets[col_idx] = {'widget': combo, 'label': label}
+            elif col_idx in (0, 1, 4):
+                le = ValidatedLineEdit(
+                    row_data.get(col_idx, ""),
+                    validator=lambda t, idx=col_idx: validate_required(t, field_names[idx][0]) or validate_name(t) if t else None
+                )
+                self.register_field(le)
+                form_layout.addRow(label, le)
+                self.fields[col_idx] = le
+                self.field_widgets[col_idx] = {'widget': le, 'label': label}
+            elif col_idx == 2:
+                le = ValidatedLineEdit(row_data.get(col_idx, ""), validator=validate_name)
+                form_layout.addRow(label, le)
+                self.fields[col_idx] = le
+                self.field_widgets[col_idx] = {'widget': le, 'label': label}
+            elif col_idx == 3:
+                le = ValidatedLineEdit(row_data.get(col_idx, ""), validator=validate_snils)
+                form_layout.addRow(label, le)
+                self.fields[col_idx] = le
+                self.field_widgets[col_idx] = {'widget': le, 'label': label}
+            elif col_idx == 10:
+                le = ValidatedLineEdit(row_data.get(col_idx, ""), validator=validate_program_id)
+                form_layout.addRow(label, le)
+                self.fields[col_idx] = le
+                self.field_widgets[col_idx] = {'widget': le, 'label': label}
+            elif col_idx == 11:
+                le = ValidatedLineEdit(row_data.get(col_idx, ""), validator=validate_date)
+                form_layout.addRow(label, le)
+                self.fields[col_idx] = le
+                self.field_widgets[col_idx] = {'widget': le, 'label': label}
             else:
                 line_edit = QLineEdit()
                 line_edit.setText(row_data.get(col_idx, ""))
@@ -449,7 +444,7 @@ class EditDialog(QDialog):
                 self.fields[col_idx] = line_edit
                 self.field_widgets[col_idx] = {'widget': line_edit, 'label': label}
 
-        layout.addLayout(form_layout)
+        bl.addLayout(form_layout)
 
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("Сохранить")
@@ -460,16 +455,24 @@ class EditDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(save_btn)
         btn_layout.addWidget(cancel_btn)
-        layout.addLayout(btn_layout)
+        bl.addLayout(btn_layout)
 
-    def _set_error(self, col_idx):
+    def _set_error(self, col_idx: int):
         info = self.field_widgets.get(col_idx)
         if info:
-            info['widget'].setStyleSheet("border: 2px solid #E74C3C;")
+            w = info['widget']
+            if hasattr(w, 'set_invalid'):
+                w.set_invalid("Проверьте значение")
+            else:
+                w.setStyleSheet("border: 2px solid #E74C3C;")
 
     def _clear_errors(self):
         for info in self.field_widgets.values():
-            info['widget'].setStyleSheet("")
+            w = info['widget']
+            if hasattr(w, 'clear_validation'):
+                w.clear_validation()
+            else:
+                w.setStyleSheet("")
 
     def validate_and_save(self):
         self._clear_errors()
@@ -481,31 +484,14 @@ class EditDialog(QDialog):
             else:
                 values[col_idx] = info['widget'].text().strip()
 
-        valid_programs = {'1', '2', '3', '4', '6', '7', '8', '9', '10', '11', '12',
-                         '13', '14', '15', '16', '17', '18', '19', '20', '21',
-                         '22', '23', '24', '25', '26', '27', '28', '29'}
-
-        for col_idx in [0, 1, 2]:
-            val = values.get(col_idx, '')
-            info = self.field_widgets.get(col_idx)
-            if val and not val.replace(' ', '').replace('-', '').isalpha():
-                self._set_error(col_idx)
-                QMessageBox.warning(self, "Ошибка", f"{info['label']} — только текст")
-                return
-
         import unicodedata
         snils_raw = values.get(3, '')
         snils_clean = ''.join(c for c in snils_raw if unicodedata.category(c) != 'Zs')
         snils_clean = snils_clean.replace('-', '')
         if snils_clean and (not snils_clean.isdigit() or len(snils_clean) != 11):
             self._set_error(3)
-            QMessageBox.warning(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
-            return
-
-        prog = values.get(10, '').strip()
-        if prog and prog not in valid_programs:
-            self._set_error(10)
-            QMessageBox.warning(self, "Ошибка", "Некорректный номер программы")
+            from utils.error_utils import show_error_dialog
+            show_error_dialog(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
             return
 
         date_val = values.get(11, '').strip()
@@ -513,22 +499,26 @@ class EditDialog(QDialog):
             clean = date_val.replace('.', '').replace('-', '')
             if not clean.isdigit() or len(clean) != 8:
                 self._set_error(11)
-                QMessageBox.warning(self, "Ошибка", "Дата некорректна")
+                from utils.error_utils import show_error_dialog
+                show_error_dialog(self, "Ошибка", "Дата должна быть в формате ДД.ММ.ГГГГ")
                 return
             try:
+                from datetime import datetime
                 dt = datetime.strptime(clean, "%d%m%Y")
                 if dt.date() > datetime.now().date():
                     self._set_error(11)
-                    QMessageBox.warning(self, "Ошибка", "Дата не может быть больше текущей")
+                    from utils.error_utils import show_error_dialog
+                    show_error_dialog(self, "Ошибка", "Дата не может быть больше текущей")
                     return
             except ValueError:
                 self._set_error(11)
-                QMessageBox.warning(self, "Ошибка", "Дата некорректна")
+                from utils.error_utils import show_error_dialog
+                show_error_dialog(self, "Ошибка", "Дата некорректна")
                 return
 
         self.accept()
 
-    def get_data(self):
+    def get_data(self) -> dict:
         data = {}
         for col_idx, widget in self.fields.items():
             if isinstance(widget, QComboBox):

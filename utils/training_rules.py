@@ -36,6 +36,8 @@ def compute_expiry_date(exam_date_str: str, program_id: int, b_period_3years: bo
     """
     Compute the expiry date for a program given its exam date.
     """
+    if not exam_date_str:
+        return None
     dt = datetime.strptime(exam_date_str.split()[0], '%d.%m.%Y')
     years = get_training_period_years(program_id, b_period_3years)
     return dt + relativedelta(years=years)

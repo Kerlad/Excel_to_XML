@@ -49,6 +49,8 @@ generate_test_data.py
 docs/hide_*.md
 Техническое_задание*.pdf
 *.txt
+Reports/
+QR.jpg
 
 # Runtime artifacts
 backups/
@@ -73,4 +75,5 @@ org_settings.json
 # OS
 .DS_Store
 Thumbs.db
+.o
 .opencode

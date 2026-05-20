@@ -11,7 +11,7 @@
 - EXE output: `dist\ExcelXML-Mintrud\`
 
 ## Key Architecture
-- `importers/` — XLSX/XML file loading (employees import)
+- `importers/` — XLSX/XML file loading (employees import; `.xls` removed, use `.xlsx` only)
 - `exporters/` — XML/XLSX generation
 - `api/` — Mintrud API client (mintrud_api.py, payload_builder.py, response_parser.py, backends/)
 - `db/` — SQLite via DatabaseManager, EmployeesRepo, EmployeeProgramsRepo
@@ -56,7 +56,7 @@
 
 ### FR-005: SetId Capture on XML Send
 - SetId from `send_xml` response is saved to UI display field and journal
-- Located in `data_transfer_tab.py:send_xml()` and `data_transfer_tab_base.py:_send_xml()`
+- Located in `data_transfer_tab.py:send_xml()`
 
 ### FR-006: API SNILS Query Format
 - SNILS sent to server in `XXX-XXX-XXX XX` format (with dashes and space)
@@ -76,7 +76,7 @@
 - `tabs/employee_summary_tab.py` — main tab for registry sync, plan, stats
 - `tabs/data_entry_tab.py` — XML/XLSX import tab
 - `tabs/data_transfer_tab.py` — API send/query tab
-- `tabs/data_transfer_tab_base.py` — base class for data transfer tabs
+- `utils/constants.py` — shared constants (VALID_PROGRAMS, PROGRAM_TITLES)
 - `tabs/programs_dialog.py` — training programs editor dialog
 - `api/mintrud_api.py` — MintrudClient class
 - `api/backends/` — transport backends (Requests, WinINET)

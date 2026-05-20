@@ -11,11 +11,12 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QFrame, QProgressBar, QDialog
 )
 from utils.crypto import hash_for_search
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, QUrl
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from importers.xlsx_importer import load_xlsx
 from importers.xml_importer import load_xml
 from utils.crypto import encrypt_data, decrypt_data
+from utils.constants import VALID_PROGRAMS_SET
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,11 @@ class DataEntryTab(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.setAcceptDrops(True)
         self.get_existing_keys_callback = None
 
         self._last_error_details = []
-        self._last_duplicate_map = {}
+        self._last_duplicate_map = []
 
         from utils.app_paths import get_app_data_dir, get_resource_dir
         self.resource_dir = get_resource_dir()
@@ -55,6 +57,17 @@ class DataEntryTab(QWidget):
         scroll_layout.addWidget(self._create_org_group())
         scroll_layout.addWidget(self._create_upload_group())
         scroll_layout.addWidget(self._create_manual_entry_group())
+
+        self._drop_label = QLabel("📁 Перетащите файл XLSX или XML сюда для загрузки")
+        self._drop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._drop_label.setMinimumHeight(60)
+        self._drop_label.setStyleSheet("""
+            QLabel { border: 2px dashed #888; border-radius: 10px;
+                color: #666; font-size: 13px;
+                background-color: transparent; padding: 8px; }
+            QLabel:hover { border-color: #4169E1; color: #4169E1; }
+        """)
+        scroll_layout.addWidget(self._drop_label)
         scroll_layout.addStretch()
 
         scroll.setWidget(scroll_widget)
@@ -62,6 +75,22 @@ class DataEntryTab(QWidget):
 
         self.load_settings()
         self.load_xsd_on_startup()
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                path = url.toLocalFile().lower()
+                if path.endswith(('.xlsx', '.xml')):
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+
+    def dropEvent(self, event: QDropEvent):
+        urls = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
+        for path in urls:
+            self.file_path_input.setText(path)
+            self.upload_file()
+            break
 
     # ── helpers ─────────────────────────────────────────────
 
@@ -439,16 +468,13 @@ class DataEntryTab(QWidget):
             return
 
         program_str = fields['Номер программы']
-        valid_programs = {'1', '2', '3', '4', '6', '7', '8', '9', '10', '11', '12',
-                          '13', '14', '15', '16', '17', '18', '19', '20', '21',
-                          '22', '23', '24', '25', '26', '27', '28', '29'}
         programs = [p.strip() for p in program_str.rstrip(',').split(',') if p.strip()]
         if not programs:
             self._set_dialog_field_error(field_widgets['Номер программы'], True)
             QMessageBox.warning(self, "Ошибка", "Некорректный номер программы")
             return
         for prog in programs:
-            if prog not in valid_programs:
+            if prog not in VALID_PROGRAMS_SET:
                 self._set_dialog_field_error(field_widgets['Номер программы'], True)
                 QMessageBox.warning(self, "Ошибка", "Некорректный номер программы")
                 return
@@ -589,7 +615,7 @@ class DataEntryTab(QWidget):
 
     def select_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Выберите файл", "", "Excel/XML Files (*.xlsx *.xls *.xml)"
+            self, "Выберите файл", "", "Excel/XML Files (*.xlsx *.xml)"
         )
         if file_path:
             self.file_path_input.setText(file_path)
@@ -622,10 +648,11 @@ class DataEntryTab(QWidget):
         error_details = []
         error_rows_set = set()
         duplicate_map = {}
+        xml_error_messages = []
         xml_xsd_errors = []
         password = None
 
-        if file_path.endswith(('.xlsx', '.xls')):
+        if file_path.endswith('.xlsx'):
             result = load_xlsx(file_path)
 
             if len(result) >= 4:
@@ -852,7 +879,7 @@ class DataEntryTab(QWidget):
         show_errors_btn = QPushButton("\U000026A0  Показать ошибки")
         show_errors_btn.setObjectName("showErrorsBtn")
         show_errors_btn.setStyleSheet(self._btn_style(bg="#E67E22", hover="#D35400"))
-        show_errors_btn.clicked.connect(lambda: [self._export_error_report(dialog)])
+        show_errors_btn.clicked.connect(lambda: self._export_error_report(dialog))
 
         close_btn = QPushButton("Закрыть")
         close_btn.setObjectName("dialogPrimaryBtn")

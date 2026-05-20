@@ -27,7 +27,7 @@ class EmployeesRepo:
     TABLE = "employees"
 
     @staticmethod
-    def get_all() -> List[dict]:
+    def get_all(**kwargs) -> List[dict]:
         db = DatabaseManager.get_instance()
         return [_decrypt_emp(r) for r in db.fetchall(f"SELECT * FROM {EmployeesRepo.TABLE} ORDER BY last_name_enc, first_name_enc")]
 
@@ -121,3 +121,34 @@ class EmployeesRepo:
             WHERE e.id = ?
             ORDER BY ep.program_id
         """, (emp_id,))
+
+    @staticmethod
+    def get_all_with_programs() -> dict:
+        """PERFORMANCE: batch load ALL employees with their programs in ONE query.
+        Returns dict mapping employee_id -> {emp_dict, programs: [...]}"""
+        db = DatabaseManager.get_instance()
+        rows = db.fetchall("""
+            SELECT e.*, ep.program_id, ep.need_training, ep.exam_date,
+                   ep.protocol as ep_protocol, ep.base_no, ep.result as ep_result,
+                   ep.status as ep_status, ep.updated_at as ep_updated_at
+            FROM employees e
+            LEFT JOIN employee_programs ep ON e.id = ep.employee_id
+            ORDER BY e.last_name_enc, e.first_name_enc, ep.program_id
+        """)
+        result = {}
+        for r in rows:
+            eid = r['id']
+            if eid not in result:
+                result[eid] = {'emp': _decrypt_emp(r), 'programs': []}
+            if r['program_id'] is not None:
+                result[eid]['programs'].append({
+                    'program_id': r['program_id'],
+                    'need_training': r['need_training'],
+                    'exam_date': r['exam_date'],
+                    'protocol': r['ep_protocol'],
+                    'base_no': r['base_no'],
+                    'result': r['ep_result'],
+                    'status': r['ep_status'],
+                    'updated_at': r['ep_updated_at'],
+                })
+        return result

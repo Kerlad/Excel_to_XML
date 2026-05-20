@@ -12,7 +12,8 @@ from PySide6.QtGui import QFont
 from lxml import etree
 from api.mintrud_api import (
     load_api_key, save_api_key, push_xml, push_xml_signed,
-    get_by_set_id, get_by_snils, export_records_to_xlsx
+    get_by_set_id, get_by_snils, export_records_to_xlsx,
+    validate_api_key_remote
 )
 from utils.proxy_manager import (
     load_proxy_settings, save_proxy_settings, detect_windows_proxy
@@ -485,7 +486,20 @@ class DataTransferTab(QWidget):
             return
         ok, msg = save_api_key(api_key, self.data_dir)
         if ok:
-            QMessageBox.information(self, "Успех", "API ключ сохранён")
+            self._set_connection_status(True, "Ключ сохранён, проверка...")
+            QCoreApplication.processEvents()
+            try:
+                proxy_settings = self._get_proxy_settings()
+                valid, vmsg = validate_api_key_remote(api_key, proxy_settings)
+                if valid:
+                    self._set_connection_status(True, f"Ключ действителен")
+                    QMessageBox.information(self, "Успех", f"API ключ сохранён и проверен: {vmsg}")
+                else:
+                    self._set_connection_status(False, vmsg)
+                    QMessageBox.warning(self, "Предупреждение", f"Ключ сохранён, но проверка не пройдена: {vmsg}")
+            except Exception as e:
+                self._set_connection_status(True, "Ключ сохранён (проверка не выполнена)")
+                QMessageBox.information(self, "Успех", "API ключ сохранён (удалённая проверка недоступна)")
         else:
             QMessageBox.warning(self, "Ошибка", msg)
 
@@ -710,10 +724,16 @@ class DataTransferTab(QWidget):
             else:
                 error_msg = result.get("error", "Неизвестная ошибка")
                 raw_response = result.get("raw_response", "")
-                full_error = error_msg
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Ошибка загрузки")
+                msg.setIcon(QMessageBox.Icon.Critical)
+                msg.setText(error_msg)
                 if raw_response:
-                    full_error += f"\n\nОтвет сервера:\n{raw_response[:500]}"
-                QMessageBox.critical(self, "Ошибка загрузки", full_error)
+                    msg.setDetailedText(f"Ответ сервера:\n{raw_response[:500]}")
+                msg.exec()
+        except Exception as e:
+            logger.exception("Ошибка отправки XML")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка отправки XML:\n{e}")
         finally:
             self.send_progress.setVisible(False)
             self.send_xml_btn.setEnabled(True)
@@ -776,10 +796,16 @@ class DataTransferTab(QWidget):
             else:
                 error_msg = result.get("error", "Неизвестная ошибка")
                 raw_response = result.get("raw_response", "")
-                full_error = error_msg
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Ошибка загрузки")
+                msg.setIcon(QMessageBox.Icon.Critical)
+                msg.setText(error_msg)
                 if raw_response:
-                    full_error += f"\n\nОтвет сервера:\n{raw_response[:500]}"
-                QMessageBox.critical(self, "Ошибка загрузки", full_error)
+                    msg.setDetailedText(f"Ответ сервера:\n{raw_response[:500]}")
+                msg.exec()
+        except Exception as e:
+            logger.exception("Ошибка отправки подписанного XML")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка отправки подписанного XML:\n{e}")
         finally:
             self.send_progress.setVisible(False)
             self.send_xml_signed_btn.setEnabled(True)
@@ -802,7 +828,12 @@ class DataTransferTab(QWidget):
             return
 
         proxy_settings = self._get_proxy_settings()
-        result = get_by_set_id(api_key, set_id, proxy_settings=proxy_settings)
+        try:
+            result = get_by_set_id(api_key, set_id, proxy_settings=proxy_settings)
+        except Exception as e:
+            logger.exception("Ошибка запроса по SetId")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка запроса по SetId:\n{e}")
+            return
 
         if not result["success"]:
             QMessageBox.critical(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
@@ -855,7 +886,12 @@ class DataTransferTab(QWidget):
         snils = f"{snils_clean[0:3]}-{snils_clean[3:6]}-{snils_clean[6:9]} {snils_clean[9:11]}"
 
         proxy_settings = self._get_proxy_settings()
-        result = get_by_snils(api_key, snils, proxy_settings=proxy_settings)
+        try:
+            result = get_by_snils(api_key, snils, proxy_settings=proxy_settings)
+        except Exception as e:
+            logger.exception("Ошибка запроса по СНИЛС")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка запроса по СНИЛС:\n{e}")
+            return
 
         if not result["success"]:
             QMessageBox.critical(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
@@ -886,11 +922,14 @@ class DataTransferTab(QWidget):
     # ============================================================
 
     def _parse_xml_for_journal(self, xml_file_path):
-        import xml.etree.ElementTree as ET
+        try:
+            from defusedxml.ElementTree import parse as _xparse
+        except ImportError:
+            from xml.etree.ElementTree import parse as _xparse
 
         records = []
         try:
-            tree = ET.parse(xml_file_path)
+            tree = _xparse(xml_file_path)
             root = tree.getroot()
 
             for record in root.findall('RegistryRecord'):

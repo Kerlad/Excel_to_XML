@@ -3,8 +3,12 @@ Response parser for Mintrud API.
 Parses XML responses from the server.
 """
 import logging
-import xml.etree.ElementTree as ET
 from typing import Dict, Any
+
+try:
+    from defusedxml.ElementTree import parse as _parse, fromstring as _fromstring
+except ImportError:
+    from xml.etree.ElementTree import parse as _parse, fromstring as _fromstring
 
 from utils.logger import mask_sensitive
 
@@ -53,8 +57,8 @@ def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[s
     logger.info(f"Response (first 500 chars): {mask_sensitive(response_text[:500])}")
     
     try:
-        root = ET.fromstring(response_text)
-    except ET.ParseError:
+        root = _fromstring(response_text)
+    except Exception:
         return {
             "success": False,
             "set_id": None,
@@ -190,8 +194,8 @@ def parse_setid_response(response_bytes: bytes, status_code: int = 200) -> Dict[
     logger.info(f"parse_setid_response: status={status_code}, text_len={len(response_text)}")
 
     try:
-        root = ET.fromstring(response_text)
-    except ET.ParseError:
+        root = _fromstring(response_text)
+    except Exception:
         logger.error(f"XML parse error: {mask_sensitive(response_text[:500])}")
         return {
             "success": False,
@@ -348,8 +352,8 @@ def parse_error_response(response_bytes: bytes) -> Dict[str, Any]:
         response_text = str(response_bytes)
     
     try:
-        root = ET.fromstring(response_text)
-    except ET.ParseError:
+        root = _fromstring(response_text)
+    except Exception:
         return {
             "success": False,
             "error": f"Не удалось разобрать ответ сервера: {response_text[:200]}",

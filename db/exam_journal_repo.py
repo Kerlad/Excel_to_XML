@@ -2,7 +2,7 @@ import uuid
 import logging
 from datetime import datetime
 from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 from .database import DatabaseManager
 from utils.crypto import encrypt_value, decrypt_value, hash_for_search
@@ -78,6 +78,7 @@ class ExamJournalRepo:
         db = DatabaseManager.get_instance()
         updated = 0
         with db.transaction() as conn:
+            # PERFORMANCE: фильтруем по set_id на уровне SQL (использует индекс)
             rows = conn.execute(
                 f"SELECT * FROM {ExamJournalRepo.TABLE} WHERE set_id = ? AND status = 'pending'",
                 (set_id,)
@@ -109,28 +110,50 @@ class ExamJournalRepo:
     @staticmethod
     def search(query: str = "", set_id: str = "",
                status: str = "all", date_from: str = "", date_to: str = "") -> List[JournalRecord]:
-        all_records = ExamJournalRepo.get_all()
-        results = all_records
-        if query.strip():
-            q = query.strip().lower()
-            results = [r for r in results if q in r.last_name.lower() or q in r.first_name.lower()
-                       or q in r.middle_name.lower() or q in r.snils.replace('-','').replace(' ','')]
+        # PERFORMANCE: строим SQL-запрос с фильтрацией на уровне БД
+        db = DatabaseManager.get_instance()
+        conditions = []
+        params = []
+
         if set_id.strip():
-            results = [r for r in results if r.set_id == set_id.strip()]
+            conditions.append("set_id = ?")
+            params.append(set_id.strip())
+
         if status != "all":
-            results = [r for r in results if r.status == status]
+            conditions.append("status = ?")
+            params.append(status)
+
         if date_from:
             try:
-                df = datetime.strptime(date_from, "%d.%m.%Y")
-                results = [r for r in results
-                           if r.exam_date and datetime.strptime(r.exam_date.split()[0], '%d.%m.%Y') >= df]
-            except: pass
+                datetime.strptime(date_from, "%d.%m.%Y")
+                conditions.append("exam_date >= ?")
+                params.append(date_from)
+            except ValueError:
+                pass
+
         if date_to:
             try:
-                dt = datetime.strptime(date_to, "%d.%m.%Y")
-                results = [r for r in results
-                           if r.exam_date and datetime.strptime(r.exam_date.split()[0], '%d.%m.%Y') <= dt]
-            except: pass
+                datetime.strptime(date_to, "%d.%m.%Y")
+                conditions.append("exam_date <= ?")
+                params.append(date_to)
+            except ValueError:
+                pass
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        rows = db.fetchall(
+            f"SELECT * FROM {ExamJournalRepo.TABLE} WHERE {where_clause} ORDER BY id",
+            tuple(params)
+        )
+
+        # PERFORMANCE: текстовая фильтрация только после SQL-фильтрации
+        results = [_row_to_record(r) for r in rows]
+
+        if query.strip():
+            q = query.strip().lower()
+            results = [r for r in results
+                       if q in r.last_name.lower() or q in r.first_name.lower()
+                       or q in r.middle_name.lower() or q in r.snils.replace('-','').replace(' ','')]
+
         return results
 
     @staticmethod

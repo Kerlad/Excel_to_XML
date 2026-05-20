@@ -83,9 +83,20 @@ CREATE TABLE IF NOT EXISTS employee_programs (
     UNIQUE(employee_id, program_id)
 );
 
+-- PERFORMANCE: composite index for employee+program lookups
 CREATE INDEX IF NOT EXISTS idx_ep_employee ON employee_programs(employee_id);
 CREATE INDEX IF NOT EXISTS idx_ep_program ON employee_programs(program_id);
+CREATE INDEX IF NOT EXISTS idx_ep_employee_program ON employee_programs(employee_id, program_id);
 CREATE INDEX IF NOT EXISTS idx_ep_status ON employee_programs(status);
+CREATE INDEX IF NOT EXISTS idx_ep_updated ON employee_programs(updated_at);
+
+-- PERFORMANCE: composite index for batch program loading by employee list
+CREATE INDEX IF NOT EXISTS idx_workers_created ON workers_data(created_at);
+CREATE INDEX IF NOT EXISTS idx_employees_sync ON employees(last_sync);
+
+-- PERFORMANCE: date index for date range filtering
+CREATE INDEX IF NOT EXISTS idx_exam_journal_send_date ON exam_journal(send_date);
+CREATE INDEX IF NOT EXISTS idx_exam_journal_date ON exam_journal(exam_date);
 """
 
 

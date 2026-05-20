@@ -33,6 +33,7 @@ class SensitiveDataFilter(logging.Filter):
             msg = re.sub(pattern, replacement, msg)
         msg = msg.replace('%', '%%')
         record.msg = msg
+        record.args = ()
         return True
 
 
@@ -40,6 +41,13 @@ def mask_sensitive(text: str) -> str:
     if not text or len(text) < 10:
         return text
     return text[:4] + '*' * (len(text) - 8) + text[-4:]
+
+
+def filter_sensitive_text(text: str) -> str:
+    """Apply SensitiveDataFilter patterns to a plain text string."""
+    for pattern, replacement in SensitiveDataFilter.SENSITIVE_PATTERNS:
+        text = re.sub(pattern, replacement, text)
+    return text
 
 
 def setup_logging(log_dir: str, max_bytes: int = 5 * 1024 * 1024, backup_count: int = 3):

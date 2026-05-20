@@ -3,7 +3,7 @@ import os
 import logging
 import traceback
 from datetime import datetime
-from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QFileDialog
+from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QFileDialog, QProgressBar
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QFont, QAction
 from tabs.data_entry_tab import DataEntryTab
@@ -20,8 +20,9 @@ from utils.logger import setup_logging
 from utils.audit import setup_audit_log
 from utils.tahoe_style import get_global_stylesheet, create_palette, apply_mica, load_theme, save_theme
 from utils.app_paths import get_app_data_dir, get_app_log_dir, get_resource_dir
-from utils.about_dialog import AboutDialog
+from utils.about_dialog import AboutDialog, VERSION
 from utils.help_dialog import HelpDialog
+from utils.crypto import check_master_key_security
 from db import DatabaseManager, create_schema
 from db.employees_repo import EmployeesRepo
 from api.mintrud_api import load_api_key
@@ -120,9 +121,30 @@ class MainWindow(QMainWindow):
         self._sb_sync = QLabel("Синхр.: --")
         self._sb_api = QLabel("API ключ: --")
         self._sb_journal = QLabel("Журнал: --")
-        for lbl in (self._sb_employees, self._sb_sync, self._sb_api, self._sb_journal):
+        self._sb_api_indicator = QLabel()
+        self._sb_api_indicator.setFixedSize(10, 10)
+        self._sb_api_indicator.setStyleSheet("background-color: #888; border-radius: 5px;")
+        for lbl in (self._sb_employees, self._sb_sync, self._sb_api_indicator, self._sb_api, self._sb_journal):
             lbl.setContentsMargins(10, 2, 10, 2)
             sb.addPermanentWidget(lbl)
+
+        self._sb_version = QLabel(f"v{VERSION}")
+        self._sb_version.setContentsMargins(10, 2, 10, 2)
+        self._sb_version.setStyleSheet("color: #888;")
+        sb.addPermanentWidget(self._sb_version)
+
+        self._sb_progress = QProgressBar()
+        self._sb_progress.setRange(0, 100)
+        self._sb_progress.setFixedWidth(150)
+        self._sb_progress.setFixedHeight(16)
+        self._sb_progress.setVisible(False)
+        self._sb_progress.setTextVisible(True)
+        self._sb_progress.setStyleSheet("""
+            QProgressBar { border: 1px solid #ccc; border-radius: 4px;
+                text-align: center; font-size: 10px; }
+            QProgressBar::chunk { background-color: #4169E1; border-radius: 3px; }
+        """)
+        sb.addPermanentWidget(self._sb_progress)
 
     def _update_status_bar(self):
         """Обновление данных в строке состояния."""
@@ -139,9 +161,15 @@ class MainWindow(QMainWindow):
             self._sb_journal.setText("Журнал: --")
         try:
             key = load_api_key(get_app_data_dir())
-            self._sb_api.setText(f"API ключ: {'✓' if key else '✗'}")
+            if key:
+                self._sb_api.setText("API ключ: установлен")
+                self._sb_api_indicator.setStyleSheet("background-color: #27AE60; border-radius: 5px;")
+            else:
+                self._sb_api.setText("API ключ: не задан")
+                self._sb_api_indicator.setStyleSheet("background-color: #E74C3C; border-radius: 5px;")
         except Exception:
             self._sb_api.setText("API ключ: ?")
+            self._sb_api_indicator.setStyleSheet("background-color: #888; border-radius: 5px;")
         try:
             db = DatabaseManager.get_instance()
             rows = db.fetchone("SELECT MAX(last_sync) as ls FROM employees WHERE last_sync IS NOT NULL")
@@ -149,6 +177,24 @@ class MainWindow(QMainWindow):
             self._sb_sync.setText(f"Синхр.: {last_sync}")
         except Exception:
             self._sb_sync.setText("Синхр.: --")
+
+    def show_progress(self, visible: bool = True, value: int = -1, text: str = ""):
+        self._sb_progress.setVisible(visible)
+        if value >= 0:
+            self._sb_progress.setValue(value)
+        if text:
+            self._sb_progress.setFormat(text)
+        if not visible:
+            self._sb_progress.setFormat("")
+
+    def show_progress_indeterminate(self, visible: bool = True, text: str = ""):
+        self._sb_progress.setVisible(visible)
+        self._sb_progress.setRange(0, 0)
+        if text:
+            self._sb_progress.setFormat(text)
+        if not visible:
+            self._sb_progress.setRange(0, 100)
+            self._sb_progress.setFormat("")
 
     def _on_tab_changed(self, index):
         """Обработчик смены вкладки."""
@@ -271,6 +317,11 @@ sys.excepthook = global_exception_handler
 
 
 if __name__ == "__main__":
+    # PERFORMANCE: поддержка --profile для cProfile
+    _profile_flag = '--profile' in sys.argv
+    if _profile_flag:
+        sys.argv.remove('--profile')
+
     # Настройка логирования
     log_dir = get_app_log_dir()
     setup_logging(log_dir)
@@ -285,6 +336,40 @@ if __name__ == "__main__":
     create_schema()
     logging.getLogger(__name__).info(f"БД: {db_path}")
     db.create_backup()
+
+    # Security audit on startup
+    def security_audit():
+        audit_logger = logging.getLogger(__name__)
+        mode, msg = check_master_key_security()
+        audit_logger.info(f"Security audit - master.key: [{mode}] {msg}")
+        if mode == 'raw':
+            audit_logger.warning(
+                "SECURITY: DPAPI unavailable - master.key stored as plaintext! "
+                "Consider creating a backup via 'About' dialog."
+            )
+        elif mode == 'none':
+            audit_logger.error("SECURITY: Master key not found!")
+        elif mode == 'dpapi':
+            audit_logger.info("Security audit - master.key protection: OK (DPAPI)")
+
+        # Check API key existence
+        from api.mintrud_api import load_api_key
+        api_key = load_api_key(data_dir)
+        if api_key:
+            audit_logger.info("Security audit - API key: present (encrypted)")
+        else:
+            audit_logger.info("Security audit - API key: not set")
+
+        # Check database encryption integrity
+        try:
+            from db.employees_repo import EmployeesRepo
+            sample = EmployeesRepo.get_all(limit=1)
+            if sample:
+                audit_logger.info("Security audit - DB encryption: OK (field-level Fernet)")
+        except Exception as e:
+            audit_logger.warning(f"Security audit - DB encryption check: {e}")
+
+    security_audit()
 
     import atexit
     atexit.register(db.close_all)
@@ -310,4 +395,12 @@ if __name__ == "__main__":
     # Mica backdrop (после show() для получения HWND)
     apply_mica(window)
     logging.getLogger(__name__).info(f"Окно отображено, тема: {theme}, Mica применён")
-    sys.exit(app.exec())
+
+    if _profile_flag:
+        import cProfile
+        profiler = cProfile.Profile()
+        profiler.runcall(app.exec)
+        profiler.dump_stats(os.path.join(log_dir, "profile.prof"))
+        logging.getLogger(__name__).info(f"Profile saved to {os.path.join(log_dir, 'profile.prof')}")
+    else:
+        sys.exit(app.exec())

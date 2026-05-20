@@ -3,24 +3,19 @@ import json
 import logging
 from datetime import datetime
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+    QWidget, QVBoxLayout, QHBoxLayout, QTableView,
     QPushButton, QLabel, QLineEdit, QComboBox, QHeaderView, QAbstractItemView,
     QMessageBox, QFileDialog, QDateEdit, QFrame, QMenu, QInputDialog
 )
 from PySide6.QtCore import Qt, QDate, QCoreApplication
 from PySide6.QtGui import QColor, QFont, QBrush, QIcon
 from db.exam_journal_repo import JournalRecord
+from utils.table_models import ExamJournalTableModel, JOURNAL_FIELD_NAMES
 
 logger = logging.getLogger(__name__)
 
 
-FIELD_NAMES = [
-    "№ протокола", "Дата экзамена", "Фамилия", "Имя", "Отчество", "СНИЛС",
-    "Рег. номер", "№ программы", "Название программы", "Должность",
-    "Результат", "SetId", "Дата отправки", "Статус"
-]
 COL_STATUS = 13
-COL_UUID = 14
 COL_SETID = 11
 
 
@@ -178,9 +173,10 @@ class ExamJournalTab(QWidget):
     # ── Table ─────────────────────────────────────────────────
 
     def _create_table(self):
-        table = QTableWidget()
-        table.setColumnCount(15)
-        table.setHorizontalHeaderLabels(FIELD_NAMES + [""])
+        self._model = ExamJournalTableModel(self)
+
+        table = QTableView()
+        table.setModel(self._model)
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -189,52 +185,20 @@ class ExamJournalTab(QWidget):
         table.horizontalHeader().setStretchLastSection(False)
         table.verticalHeader().setDefaultSectionSize(30)
         table.verticalHeader().setVisible(False)
+        table.setSortingEnabled(True)
 
-        for col, w in enumerate([100, 100, 100, 100, 100, 120, 100, 70, 280, 100, 100, 120, 120, 90], 14):
+        # Hide the 15th column (uuid column) - no, we now use UserRole
+        # Set column widths matching old layout
+        for col, w in enumerate([100, 100, 100, 100, 100, 120, 100, 70, 280, 100, 100, 120, 120, 90]):
             table.setColumnWidth(col, w)
-        table.hideColumn(14)
 
         return table
 
     # ── Refresh ───────────────────────────────────────────────
 
     def refresh_journal(self):
-        self.table.setRowCount(0)
         filtered = self._get_filtered_records()
-
-        for row_idx, rec in enumerate(filtered):
-            self.table.insertRow(row_idx)
-            exam_date = rec.exam_date.split()[0] if rec.exam_date else ""
-            send_date = rec.send_date.split()[0] if rec.send_date else ""
-            status_display = "получен" if rec.status == "received" else "ожидает"
-            status_color = QColor("#28A745") if rec.status == "received" else QColor("#E67E22")
-
-            values = [
-                rec.protocol, exam_date, rec.last_name, rec.first_name,
-                rec.middle_name, rec.snils, rec.base_no, rec.program_id,
-                rec.program_title, rec.position, rec.result, rec.set_id,
-                send_date, status_display, rec.uuid
-            ]
-
-            for col, text in enumerate(values):
-                item = QTableWidgetItem(str(text))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
-                if col == COL_STATUS:
-                    item.setForeground(status_color)
-                    f = item.font()
-                    f.setBold(True)
-                    item.setFont(f)
-
-                self.table.setItem(row_idx, col, item)
-
-            # row background color by status
-            bg = QColor(255, 248, 225) if rec.status == "pending" else QColor(230, 255, 230)
-            for col in range(self.table.columnCount()):
-                it = self.table.item(row_idx, col)
-                if it and col != COL_STATUS:
-                    it.setBackground(bg)
-
+        self._model.load_records(filtered)
         total = len(self.journal.get_all_records())
         shown = len(filtered)
         self.status_label.setText(
@@ -290,9 +254,9 @@ class ExamJournalTab(QWidget):
 
     def _show_context_menu(self, position):
         if not self.table.selectedIndexes():
-            item = self.table.itemAt(position)
-            if item:
-                self.table.selectRow(item.row())
+            idx = self.table.indexAt(position)
+            if idx.isValid():
+                self.table.selectRow(idx.row())
         menu = QMenu(self)
         menu.addAction("Удалить", self._delete_selected)
         menu.addAction("Обновить по SetId", self._update_selected_by_setid)
@@ -308,9 +272,9 @@ class ExamJournalTab(QWidget):
 
         set_ids = set()
         for row in selected:
-            it = self.table.item(row, COL_SETID)
-            if it and it.text():
-                set_ids.add(it.text())
+            rec = self._model.get_record(row)
+            if rec and rec.set_id:
+                set_ids.add(rec.set_id)
 
         if not set_ids:
             QMessageBox.warning(self, "Ошибка", "У выбранных записей нет SetId")
@@ -382,7 +346,7 @@ class ExamJournalTab(QWidget):
             wb = Workbook()
             ws = wb.active
             ws.title = "Журнал"
-            ws.append(FIELD_NAMES)
+            ws.append(JOURNAL_FIELD_NAMES)
 
             hf = Font(bold=True, color="FFFFFF")
             hfill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
@@ -564,7 +528,7 @@ class ExamJournalTab(QWidget):
             wb = Workbook()
             ws = wb.active
             ws.title = "Журнал"
-            ws.append(FIELD_NAMES)
+            ws.append(JOURNAL_FIELD_NAMES)
             hf = Font(bold=True, color="FFFFFF")
             hfill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
             for cell in ws[1]:
@@ -676,9 +640,9 @@ class ExamJournalTab(QWidget):
 
         uuids = []
         for row in rows:
-            it = self.table.item(row, COL_UUID)
-            if it:
-                uuids.append(it.text())
+            rec = self._model.get_record(row)
+            if rec:
+                uuids.append(rec.uuid)
         self.journal.delete_by_uuid(uuids)
         self.refresh_journal()
         QMessageBox.information(self, "Успех", "Записи удалены")

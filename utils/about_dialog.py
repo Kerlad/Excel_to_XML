@@ -1,13 +1,14 @@
 import os
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget, QMessageBox, QFileDialog
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QFont, QDesktopServices
 from PySide6.QtCore import QUrl
 from utils.dialog_base import BaseDialog
 from utils.app_paths import get_resource_dir
+from utils.crypto import check_master_key_security, create_master_key_backup
 
 
-VERSION = "1.2.3"
+VERSION = "1.3.0"
 
 
 class ClickableLabel(QLabel):
@@ -94,6 +95,26 @@ class AboutDialog(BaseDialog):
         info_layout.addWidget(email_link)
 
         bl.addWidget(info_widget)
+
+        security_widget = QWidget()
+        security_widget.setObjectName("aboutInfoWidget")
+        security_layout = QVBoxLayout(security_widget)
+        security_layout.setSpacing(4)
+        security_layout.setContentsMargins(12, 10, 12, 10)
+
+        self._security_status_label = QLabel()
+        self._update_security_status()
+        self._security_status_label.setObjectName("aboutInfoLabel")
+        self._security_status_label.setWordWrap(True)
+        security_layout.addWidget(self._security_status_label)
+
+        backup_btn = QPushButton("Создать защищённый бэкап master.key")
+        backup_btn.setObjectName("dialogPrimaryBtn")
+        backup_btn.setMinimumHeight(36)
+        backup_btn.clicked.connect(self._create_key_backup)
+        security_layout.addWidget(backup_btn)
+
+        bl.addWidget(security_widget)
         bl.addStretch()
 
         close_btn = QPushButton("Закрыть")
@@ -102,3 +123,23 @@ class AboutDialog(BaseDialog):
         self._button_layout.addStretch()
         self._button_layout.addWidget(close_btn)
         close_btn.clicked.connect(self.close)
+
+    def _update_security_status(self):
+        mode, msg = check_master_key_security()
+        if mode == 'dpapi':
+            html = f'<span style="color:#27AE60;"><b>✓ Безопасность:</b> {msg}</span>'
+        elif mode == 'raw':
+            html = f'<span style="color:#E74C3C;"><b>✗ ВНИМАНИЕ!</b> {msg}</span>'
+        else:
+            html = f'<span style="color:#F39C12;"><b>⚠</b> {msg}</span>'
+        self._security_status_label.setText(html)
+
+    def _create_key_backup(self):
+        backup_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для бэкапа master.key")
+        if not backup_dir:
+            return
+        ok, result = create_master_key_backup(backup_dir)
+        if ok:
+            QMessageBox.information(self, "Успех", f"Бэкап создан:\n{result}")
+        else:
+            QMessageBox.warning(self, "Ошибка", f"Не удалось создать бэкап:\n{result}")

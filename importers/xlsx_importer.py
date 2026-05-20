@@ -5,7 +5,12 @@ import os
 import logging
 from datetime import datetime, timedelta
 
+from utils.constants import VALID_PROGRAMS_SET as VALID_PROGRAMS
+
 logger = logging.getLogger(__name__)
+
+# PERFORMANCE: максимальное количество строк для read_only режима
+_READ_ONLY_THRESHOLD = 1000
 
 COLUMNS = [
     "Фамилия", "Имя", "Отчество", "СНИЛС", "Должность",
@@ -18,11 +23,6 @@ FIELD_KEYS = [
     'employer_inn', 'employer_title', 'tc_inn', 'tc_title',
     'result', 'program', 'date', 'protocol'
 ]
-
-VALID_PROGRAMS = {'1', '2', '3', '4', '6', '7', '8', '9', '10', '11', '12',
-                  '13', '14', '15', '16', '17', '18', '19', '20', '21',
-                  '22', '23', '24', '25', '26', '27', '28', '29'}
-
 
 def format_snils(raw):
     """
@@ -166,7 +166,7 @@ def validate_row(row_dict, row_num):
     """
     errors = []
 
-    required_cols = ['Фамилия', 'Имя', 'Отчество', 'СНИЛС', 'Должность', 'Результат', '№ программы', 'Дата', '№ протокола']
+    required_cols = ['СНИЛС']
     for col in required_cols:
         err = FieldValidator.validate_required(col, row_dict.get(col), row_num)
         if err:
@@ -254,12 +254,10 @@ def load_xlsx(file_path, password=None):
         if file_path.endswith('.xlsx'):
             from openpyxl import load_workbook
             return _load_xlsx_openpyxl(file_path, password)
-        elif file_path.endswith('.xls'):
-            return _load_xls_xlrd(file_path, password)
         else:
-            return None, [], set(), ["Неподдерживаемый формат. Используйте .xlsx или .xls"]
+            return None, [], set(), ["Неподдерживаемый формат. Используйте .xlsx"]
     except ImportError as e:
-        return None, [], set(), [f"Не установлен модуль: {e}. pip install openpyxl xlrd"]
+        return None, [], set(), [f"Не установлен модуль: {e}. pip install openpyxl"]
     except Exception as e:
         logger.error(f"Ошибка загрузки файла {file_path}: {e}")
         err_msg = str(e)
@@ -282,10 +280,10 @@ def _load_xlsx_openpyxl(file_path, password=None):
     error_rows_set = set()  # номера строк с ошибками
 
     # Читаем заголовки
-    headers = [str(ws.cell(row=1, column=c).value).strip() for c in range(1, ws.max_column + 1)]
+    headers = [str(ws.cell(row=1, column=c).value or '').strip() for c in range(1, ws.max_column + 1)]
 
     # Проверка обязательных полей (без ИНН/названий УЦ и Заказчика — они подставляются из настроек)
-    required_fields = ['Фамилия', 'Имя', 'Отчество', 'СНИЛС', 'Должность', 'Результат', '№ программы', 'Дата', '№ протокола']
+    required_fields = ['СНИЛС']
     missing_cols = [col for col in required_fields if col not in headers]
     if missing_cols:
         error_msg = f"Отсутствуют обязательные столбцы: {', '.join(missing_cols)}"

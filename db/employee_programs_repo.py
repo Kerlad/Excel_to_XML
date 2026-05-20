@@ -19,6 +19,26 @@ class EmployeeProgramsRepo:
             (employee_id,))
 
     @staticmethod
+    def get_by_employee_ids(employee_ids: List[int]) -> dict:
+        """PERFORMANCE: batch load programs for multiple employees in ONE query.
+        Returns a dict mapping employee_id -> list of program dicts."""
+        if not employee_ids:
+            return {}
+        db = DatabaseManager.get_instance()
+        placeholders = ','.join('?' for _ in employee_ids)
+        rows = db.fetchall(
+            f"SELECT * FROM {EmployeeProgramsRepo.TABLE} "
+            f"WHERE employee_id IN ({placeholders}) ORDER BY employee_id, program_id",
+            tuple(employee_ids))
+        result: dict = {}
+        for r in rows:
+            eid = r['employee_id']
+            if eid not in result:
+                result[eid] = []
+            result[eid].append(r)
+        return result
+
+    @staticmethod
     def get(employee_id: int, program_id: int) -> Optional[dict]:
         db = DatabaseManager.get_instance()
         return db.fetchone(
@@ -90,7 +110,7 @@ class EmployeeProgramsRepo:
         db = DatabaseManager.get_instance()
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         existing = EmployeeProgramsRepo.get(employee_id, program_id)
-        status = EmployeeProgramsRepo._calc_status(exam_date, result)
+        status = EmployeeProgramsRepo._calc_status(exam_date, result, program_id)
         with db.transaction() as conn:
             if existing:
                 conn.execute(f"""
@@ -129,12 +149,14 @@ class EmployeeProgramsRepo:
         return counts
 
     @staticmethod
-    def _calc_status(exam_date: Optional[str], result: Optional[int]) -> str:
+    def _calc_status(exam_date: Optional[str], result: Optional[int], program_id: int = 0) -> str:
         if not exam_date or result == 0:
             return 'not_trained'
         try:
+            from utils.training_rules import get_training_period_years
             dt = datetime.strptime(exam_date.split()[0], '%d.%m.%Y')
-            if dt + relativedelta(years=3) < datetime.now():
+            years = get_training_period_years(program_id, True)
+            if dt + relativedelta(years=years) < datetime.now():
                 return 'expired'
             return 'trained'
         except (ValueError, IndexError):

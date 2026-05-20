@@ -7,12 +7,11 @@ import json
 import re
 import time
 import logging
-import xml.etree.ElementTree as ET
 from typing import Dict, Any, Optional
 
 # Import payload builder
 from xml.sax.saxutils import escape
-from .payload_builder import build_request_xml, build_olot_archive, build_multipart_payload, API_URL, GET_URL, HEADERS
+from .payload_builder import build_multipart_payload, HEADERS
 
 # Import response parser
 from .response_parser import parse_send_response, parse_setid_response, parse_snils_response
@@ -23,7 +22,7 @@ from .backends import BackendRegistry
 # Import proxy manager
 import utils.proxy_manager as proxy_manager
 from utils.audit import log_audit
-from utils.logger import mask_sensitive
+from utils.logger import mask_sensitive, filter_sensitive_text
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,8 @@ _LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 
 def _save_error_response(response_bytes: bytes, status_code: int = 0):
-    """Сохраняет полный ответ сервера в /log/error_response.txt (UTF-8 BOM)."""
+    """Сохраняет полный ответ сервера в /log/error_response.txt (UTF-8 BOM).
+    Данные фильтруются через SensitiveDataFilter для маскировки PII (СНИЛС, ФИО, ключи)."""
     try:
         os.makedirs(_LOG_DIR, exist_ok=True)
         path = os.path.join(_LOG_DIR, "error_response.txt")
@@ -40,6 +40,7 @@ def _save_error_response(response_bytes: bytes, status_code: int = 0):
             text += response_bytes.decode("utf-8")
         except Exception:
             text += str(response_bytes)
+        text = filter_sensitive_text(text)
         with open(path, "w", encoding="utf-8-sig") as f:
             f.write(text)
         logger.info(f"Error response saved to {path}")
@@ -109,6 +110,62 @@ def validate_api_key(api_key: str) -> tuple[bool, str]:
     if len(api_key) != 32:
         return False, f"Длина ключа: {len(api_key)} (требуется 32 символа)"
     return True, ""
+
+
+def validate_api_key_remote(api_key: str, proxy_settings: dict = None) -> tuple[bool, str]:
+    """Проверяет API-ключ через тестовый запрос к серверу Минтруда.
+    Отправляет GetEducatedPersonXML с PageSize=1 для проверки валидности ключа."""
+    try:
+        url = f"{GET_URL}?PageSize=1"
+        from xml.sax.saxutils import escape
+        xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
+<EducatedPersonFilter>
+    <ApiKey>{escape(api_key)}</ApiKey>
+    <PageNo>1</PageNo>
+    <PageSize>1</PageSize>
+</EducatedPersonFilter>'''
+        files = {'file': ('request.xml', xml_content.encode('utf-8'), 'text/xml')}
+        try:
+            import requests as req
+            proxies = None
+            verify = True
+            if proxy_settings:
+                mode = proxy_settings.get('mode', 'off')
+                if mode == 'auto':
+                    import utils.proxy_manager as pm
+                    proxy_url = pm.detect_windows_proxy()
+                    if proxy_url:
+                        proxies = {'http': proxy_url, 'https': proxy_url}
+                elif mode == 'manual':
+                    url_str = proxy_settings.get('url', '').strip()
+                    if url_str:
+                        proxies = {'http': url_str, 'https': url_str}
+                verify = proxy_settings.get('tls_verify', True)
+            resp = req.post(url, files=files, proxies=proxies, verify=verify, timeout=15)
+            if resp.status_code == 200:
+                try:
+                    from defusedxml.ElementTree import fromstring as _fromstring
+                    root = _fromstring(resp.content)
+                except ImportError:
+                    from xml.etree.ElementTree import fromstring as _fromstring
+                    root = _fromstring(resp.content)
+                if root.tag in ('Response', 'EducatedPersons'):
+                    return True, 'Ключ действителен'
+                elif root.tag == 'Error':
+                    msg_elem = root.find('Message')
+                    msg = msg_elem.text if msg_elem is not None else 'Ошибка сервера'
+                    return False, f'Ключ недействителен: {msg}'
+                return True, 'Ключ действителен'
+            elif resp.status_code == 401:
+                return False, 'Ключ недействителен (HTTP 401)'
+            else:
+                return False, f'Ошибка сервера (HTTP {resp.status_code})'
+        except ImportError:
+            return False, 'Библиотека requests не установлена'
+        except Exception as e:
+            return False, f'Ошибка подключения: {e}'
+    except Exception as e:
+        return False, f'Ошибка валидации: {e}'
 
 
 # ============ Unified Transport Client ============
@@ -372,6 +429,8 @@ class MintrudClient:
         
         backends_to_try = self._get_backend_fallback_list()
         last_error = ""
+        response_bytes = b""
+        status_code = 0
         
         for backend_instance, backend_name in backends_to_try:
             try:
