@@ -2,6 +2,7 @@
 Payload builder for Mintrud API.
 Builds Request.xml, .olot archives, and multipart payloads.
 """
+import os
 import io
 import zipfile
 from xml.sax.saxutils import escape
@@ -35,14 +36,15 @@ def build_request_xml(api_key: str, need_send: bool = False) -> bytes:
     return xml.encode('utf-8')
 
 
-def build_olot_archive(xml_file_path: str, include_signature: bool = False) -> bytes:
+def build_olot_archive(xml_file_path: str, sig_file_path: str = None) -> bytes:
     """
     Build .olot archive (ZIP with Data.xml inside).
+    Optionally includes .sig signature file for РОЛ sending.
     Server requires Data.xml with capital D.
     
     Args:
         xml_file_path: Path to the XML data file
-        include_signature: Whether to include signature (not implemented)
+        sig_file_path: Optional path to .sig signature file
     
     Returns:
         Bytes of the .olot archive
@@ -56,6 +58,13 @@ def build_olot_archive(xml_file_path: str, include_signature: bool = False) -> b
     olot_buffer = io.BytesIO()
     with zipfile.ZipFile(olot_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.writestr('Data.xml', data_xml_content)
+        if sig_file_path:
+            if not os.path.exists(sig_file_path):
+                raise FileNotFoundError(f"Файл подписи не найден: {sig_file_path}")
+            sig_filename = os.path.basename(sig_file_path)
+            with open(sig_file_path, 'rb') as f:
+                sig_content = f.read()
+            zf.writestr(sig_filename, sig_content)
     
     return olot_buffer.getvalue()
 
@@ -63,7 +72,8 @@ def build_olot_archive(xml_file_path: str, include_signature: bool = False) -> b
 def build_multipart_payload(
     api_key: str,
     xml_file_path: str,
-    need_send: bool = False
+    need_send: bool = False,
+    sig_file_path: str = None
 ) -> tuple[Dict[str, tuple], Dict[str, str]]:
     """
     Build complete multipart/form-data payload for API request.
@@ -72,6 +82,7 @@ def build_multipart_payload(
         api_key: API key for authentication
         xml_file_path: Path to the XML data file
         need_send: Whether to send immediately
+        sig_file_path: Optional path to .sig signature file for РОЛ
     
     Returns:
         Tuple of (files_dict, headers_dict):
@@ -79,7 +90,7 @@ def build_multipart_payload(
         - headers_dict: Additional headers
     """
     request_xml = build_request_xml(api_key, need_send)
-    olot_data = build_olot_archive(xml_file_path)
+    olot_data = build_olot_archive(xml_file_path, sig_file_path=sig_file_path)
     
     files = {
         'xml': ('Request.xml', request_xml, 'text/xml'),

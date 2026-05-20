@@ -296,6 +296,74 @@ class MintrudClient:
         
         return {"success": False, "error": last_error or "All backends failed"}
     
+    def send_xml_signed(self, api_key: str, xml_file_path: str, sig_file_path: str) -> Dict[str, Any]:
+        """
+        Send XML file with electronic signature (.sig) to server for РОЛ.
+        
+        Args:
+            api_key: API key
+            xml_file_path: Path to XML data file
+            sig_file_path: Path to .sig signature file
+        
+        Returns:
+            Dict with success, set_id, send_educated_person, message, error
+        """
+        ok, err = validate_api_key(api_key)
+        if not ok:
+            return {"success": False, "error": err}
+        
+        if not os.path.exists(xml_file_path):
+            return {"success": False, "error": "Файл XML не найден"}
+        
+        if not sig_file_path or not os.path.exists(sig_file_path):
+            return {"success": False, "error": "Файл подписи .sig не найден"}
+        
+        files, headers = build_multipart_payload(api_key, xml_file_path, need_send=True, sig_file_path=sig_file_path)
+        proxies = self._get_proxies()
+        verify = self._get_verify()
+        
+        logger.info(f"Sending signed XML to {API_URL}")
+        logger.info(f"Initial backend: {self.backend_name}")
+        
+        backends_to_try = self._get_backend_fallback_list()
+        last_error = ""
+        
+        for backend_instance, backend_name in backends_to_try:
+            try:
+                logger.info(f"Trying backend: {backend_name}")
+                success, status_code, response_bytes, error_msg = backend_instance.send(
+                    url=API_URL,
+                    files=files,
+                    headers=headers,
+                    timeout=60,
+                    verify=verify,
+                    proxies=proxies
+                )
+                
+                if success:
+                    result = parse_send_response(response_bytes, status_code)
+                    set_id = result.get("set_id", "")
+                    log_audit("SEND_XML_SIGNED", f"set_id={set_id}")
+                    return result
+                
+                last_error = error_msg
+                logger.warning(f"Backend {backend_name} failed: {mask_sensitive(error_msg)}")
+                if response_bytes:
+                    _save_error_response(response_bytes, status_code)
+
+                if not _is_ssl_error(error_msg):
+                    return {"success": False, "error": error_msg}
+                    
+                logger.info(f"SSL error detected, trying next backend...")
+                
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Backend {backend_name} exception: {mask_sensitive(str(e))}")
+                if not _is_ssl_error(str(e)):
+                    return {"success": False, "error": str(e)}
+        
+        return {"success": False, "error": last_error or "All backends failed"}
+    
     def _try_backends(self, api_key: str, xml_content: str, url: str) -> Dict[str, Any]:
         """Try sending request through backends with SSL fallback."""
         files = {'file': ('request.xml', xml_content.encode('utf-8'), 'text/xml')}
@@ -464,6 +532,12 @@ def push_xml(api_key: str, xml_file_path: str, xsd_path=None, proxy_settings=Non
     """Legacy function for sending XML."""
     client = MintrudClient(backend="auto", proxy_settings=proxy_settings)
     return client.send_xml(api_key, xml_file_path)
+
+
+def push_xml_signed(api_key: str, xml_file_path: str, sig_file_path: str, proxy_settings=None):
+    """Legacy function for sending XML with electronic signature."""
+    client = MintrudClient(backend="auto", proxy_settings=proxy_settings)
+    return client.send_xml_signed(api_key, xml_file_path, sig_file_path)
 
 
 def get_by_set_id(api_key: str, set_id: str, page_size=5000, proxy_settings=None):

@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QCoreApplication, QThread, QObject, Signal
 from PySide6.QtGui import QFont
 from lxml import etree
 from api.mintrud_api import (
-    load_api_key, save_api_key, push_xml,
+    load_api_key, save_api_key, push_xml, push_xml_signed,
     get_by_set_id, get_by_snils, export_records_to_xlsx
 )
 from utils.proxy_manager import (
@@ -107,6 +107,7 @@ class DataTransferTab(QWidget):
 
         self._scroll_layout.addWidget(self._create_api_key_group())
         self._scroll_layout.addWidget(self._create_proxy_group())
+        self._scroll_layout.addWidget(self._create_sig_group())
         self._scroll_layout.addWidget(self._create_send_xml_group())
         self._scroll_layout.addWidget(self._create_query_setid_group())
         self._scroll_layout.addWidget(self._create_query_snils_group())
@@ -120,6 +121,8 @@ class DataTransferTab(QWidget):
         self.proxy_mode_group.buttonClicked.connect(self._on_proxy_mode_changed)
         self.proxy_save_btn.clicked.connect(self.save_proxy_settings_ui)
         self.proxy_test_btn.clicked.connect(self.test_proxy)
+        self.select_sig_btn.clicked.connect(self.select_sig_file)
+        self.send_xml_signed_btn.clicked.connect(self.send_xml_signed)
 
     def _load_settings(self):
         self.load_api_key()
@@ -310,6 +313,44 @@ class DataTransferTab(QWidget):
             self.proxy_auto_info.setVisible(False)
 
     # ============================================================
+    # Group: Signature file (.sig)
+    # ============================================================
+
+    def _create_sig_group(self):
+        group = QGroupBox("Электронная подпись (.sig)")
+
+        row = QHBoxLayout(group)
+        self.sig_file_input = QLineEdit()
+        self.sig_file_input.setReadOnly(True)
+        self.sig_file_input.setPlaceholderText("Файл .sig не выбран (только для отправки в РОЛ)")
+
+        self.select_sig_btn = QPushButton("Выбрать")
+
+        row.addWidget(QLabel("Файл подписи:"))
+        row.addWidget(self.sig_file_input)
+        row.addWidget(self.select_sig_btn)
+        row.addStretch()
+
+        return group
+
+    def select_sig_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Выберите файл подписи", "", "Signature Files (*.sig);;All Files (*.*)"
+        )
+        if not file_path:
+            return
+
+        if not os.path.exists(file_path):
+            QMessageBox.warning(self, "Ошибка", "Файл не найден")
+            return
+
+        if os.path.getsize(file_path) == 0:
+            QMessageBox.warning(self, "Ошибка", "Файл пустой")
+            return
+
+        self.sig_file_input.setText(file_path)
+
+    # ============================================================
     # Group: Send XML
     # ============================================================
 
@@ -345,6 +386,20 @@ class DataTransferTab(QWidget):
         self.send_xml_btn.setMinimumHeight(44)
         self.send_xml_btn.clicked.connect(self.send_xml)
         send_row.addWidget(self.send_xml_btn)
+
+        send_row.addSpacing(12)
+
+        self.send_xml_signed_btn = QPushButton("\u2713 Отправить XML и ПОДПИСАТЬ")
+        self.send_xml_signed_btn.setStyleSheet("""
+            QPushButton { color: white; background-color: #E74C3C;
+                border: none; padding: 12px 28px;
+                border-radius: 6px; font-weight: bold; font-size: 14px}
+            QPushButton:hover { background-color: #C0392B}
+            QPushButton:disabled { background-color: #95A5A6}
+        """)
+        self.send_xml_signed_btn.setMinimumHeight(44)
+        send_row.addWidget(self.send_xml_signed_btn)
+
         send_row.addStretch()
         layout.addLayout(send_row)
 
@@ -663,6 +718,72 @@ class DataTransferTab(QWidget):
             self.send_progress.setVisible(False)
             self.send_xml_btn.setEnabled(True)
             self.send_xml_btn.setText("\u2B06 Отправить XML на сервер")
+
+    def send_xml_signed(self):
+        api_key = self.api_key_input.text().strip()
+        xml_file = self.xml_file_input.text()
+        sig_file = self.sig_file_input.text()
+
+        if len(api_key) != 32:
+            QMessageBox.warning(self, "Ошибка", "Проверьте API ключ (32 символа)")
+            return
+
+        if not xml_file or not os.path.exists(xml_file):
+            QMessageBox.warning(self, "Ошибка", "Выберите XML файл")
+            return
+
+        if not sig_file or not os.path.exists(sig_file):
+            QMessageBox.warning(self, "Ошибка", "Выберите файл подписи .sig")
+            return
+
+        reply = QMessageBox.question(
+            self, "Подтверждение",
+            "Отправить XML с электронной подписью в РОЛ?\n\n"
+            "Будет выполнена отправка подписанного набора в реестр.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        xml_records_data = self._parse_xml_for_journal(xml_file)
+        proxy_settings = self._get_proxy_settings()
+
+        self.send_progress.setVisible(True)
+        self.send_xml_signed_btn.setEnabled(False)
+        self.send_xml_signed_btn.setText("Отправка...")
+        QCoreApplication.processEvents()
+
+        try:
+            result = push_xml_signed(api_key, xml_file, sig_file, proxy_settings=proxy_settings)
+
+            if result["success"]:
+                set_id = result.get("set_id", "")
+                self.last_setid_display.setText(set_id)
+
+                if self._journal_add_callback and xml_records_data:
+                    self._journal_add_callback(xml_records_data, set_id, xml_file)
+
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Успех")
+                msg.setText("Подписанные данные отправлены в РОЛ")
+                msg.setInformativeText(
+                    f'<span style="color:red; font-weight:bold; font-size:14px;">'
+                    f'Запишите номер набора: {set_id}</span>'
+                )
+                msg.setTextFormat(Qt.TextFormat.RichText)
+                msg.exec()
+            else:
+                error_msg = result.get("error", "Неизвестная ошибка")
+                raw_response = result.get("raw_response", "")
+                full_error = error_msg
+                if raw_response:
+                    full_error += f"\n\nОтвет сервера:\n{raw_response[:500]}"
+                QMessageBox.critical(self, "Ошибка загрузки", full_error)
+        finally:
+            self.send_progress.setVisible(False)
+            self.send_xml_signed_btn.setEnabled(True)
+            self.send_xml_signed_btn.setText("\u2713 Отправить XML и ПОДПИСАТЬ")
 
     # ============================================================
     # Query Logic

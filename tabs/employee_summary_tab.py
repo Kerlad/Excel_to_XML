@@ -22,6 +22,7 @@ from db import (
 )
 from api.mintrud_api import load_api_key, get_by_snils
 from utils.proxy_manager import load_proxy_settings
+from utils.training_rules import get_dynamic_status, compute_expiry_date, get_training_period_years
 
 logger = logging.getLogger(__name__)
 
@@ -396,23 +397,25 @@ class EmployeeSummaryTab(QWidget):
     _programs_cache = None
 
     @classmethod
-    def _load_saved_programs(cls, data_dir):
+    def _load_saved_settings(cls, data_dir):
         path = os.path.join(data_dir, "summary_programs.json")
+        result = {'programs': None, 'b_period_3years': True}
         try:
             if os.path.exists(path):
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                return [p for p in data.get('programs', []) if p in VALID_PROGRAMS]
+                result['programs'] = [p for p in data.get('programs', []) if p in VALID_PROGRAMS]
+                result['b_period_3years'] = data.get('b_period_3years', True)
         except Exception:
             pass
-        return None
+        return result
 
     @classmethod
-    def _save_programs(cls, data_dir, programs):
+    def _save_settings(cls, data_dir, programs, b_period_3years=True):
         path = os.path.join(data_dir, "summary_programs.json")
         try:
             with open(path, 'w', encoding='utf-8') as f:
-                json.dump({'programs': programs}, f)
+                json.dump({'programs': programs, 'b_period_3years': b_period_3years}, f)
         except Exception:
             pass
 
@@ -420,8 +423,9 @@ class EmployeeSummaryTab(QWidget):
         super().__init__(parent)
         from utils.app_paths import get_app_data_dir
         self.data_dir = get_app_data_dir()
-        saved = self._load_saved_programs(self.data_dir)
-        self._selected_programs = saved if saved else DEFAULT_PROGRAMS.copy()
+        saved = self._load_saved_settings(self.data_dir)
+        self._selected_programs = saved['programs'] if saved['programs'] else DEFAULT_PROGRAMS.copy()
+        self._b_period_3years = saved['b_period_3years']
         self._current_filter_status = "all"
         self._current_filter_program = "all"
         self._current_filter_position = ""
@@ -453,6 +457,7 @@ class EmployeeSummaryTab(QWidget):
             return sa
 
         scroll_layout.addWidget(self._build_stats())
+        scroll_layout.addWidget(_make_hscroll(self._build_period_row()))
         scroll_layout.addWidget(_make_hscroll(self._build_report_row()))
         scroll_layout.addWidget(_make_hscroll(self._build_toolbar()))
         scroll_layout.addWidget(_make_hscroll(self._build_filters()))
@@ -535,6 +540,26 @@ class EmployeeSummaryTab(QWidget):
         layout.addWidget(delete_btn)
 
         return w
+
+    # ── Period settings row ───────────────────────────────
+
+    def _build_period_row(self):
+        w = QWidget(); w.setObjectName("periodRowContainer")
+        layout = QHBoxLayout(w); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(8)
+
+        self.period_cb = QCheckBox("Обучение по программам В (№6-29) — 1 раз в 3 года")
+        self.period_cb.setObjectName("periodCheckBox")
+        self.period_cb.setChecked(self._b_period_3years)
+        self.period_cb.toggled.connect(self._on_period_toggled)
+        layout.addWidget(self.period_cb)
+        layout.addStretch()
+
+        return w
+
+    def _on_period_toggled(self, checked):
+        self._b_period_3years = checked
+        self._save_settings(self.data_dir, self._selected_programs, self._b_period_3years)
+        self.refresh_table()
 
     # ── Report row (plan / snapshot / trained) ────────────
 
@@ -709,15 +734,20 @@ class EmployeeSummaryTab(QWidget):
                 if not pd or pd.get('need_training') != 1:
                     row_programs[p] = {'need_training': 0, 'exam_date': '', 'protocol': '', 'base_no': '', 'status': ''}
                     continue
-                s = pd.get('status', 'not_trained')
+                stored_status = pd.get('status', 'not_trained')
+                prog_id = int(p)
+                effective_status = get_dynamic_status(
+                    stored_status, pd.get('exam_date', ''),
+                    prog_id, self._b_period_3years
+                )
                 row_programs[p] = { 'need_training': pd.get('need_training', 0),
                     'exam_date': pd.get('exam_date', ''), 'protocol': pd.get('protocol', ''),
-                    'base_no': pd.get('base_no', ''), 'status': s,}
-                if s == 'not_trained':
+                    'base_no': pd.get('base_no', ''), 'status': effective_status,}
+                if effective_status == 'not_trained':
                     overall_status = 'not_trained'
-                elif s == 'expired' and overall_status != 'not_trained':
+                elif effective_status == 'expired' and overall_status != 'not_trained':
                     overall_status = 'expired'
-                elif s == 'trained' and overall_status is None:
+                elif effective_status == 'trained' and overall_status is None:
                     overall_status = 'trained'
 
             if status_filter != "Все":
@@ -780,7 +810,11 @@ class EmployeeSummaryTab(QWidget):
         for p in programs:
             if p.get('need_training') != 1:
                 continue
-            s = p.get('status', 'not_trained')
+            stored_status = p.get('status', 'not_trained')
+            s = get_dynamic_status(
+                stored_status, p.get('exam_date', ''),
+                p.get('program_id', 0), self._b_period_3years
+            )
             if s == 'not_trained':
                 return 'not_trained'
             if s == 'expired':
@@ -921,6 +955,7 @@ class EmployeeSummaryTab(QWidget):
         if not emp:
             return
         progs = EmployeeProgramsRepo.get_by_employee(emp_id)
+        old_progs = {str(p['program_id']): p for p in progs}
         dialog = EmployeeEditDialog(emp, progs, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_progs = [p.strip() for p in dialog.programs.text().split(',') if p.strip() in VALID_PROGRAMS]
@@ -930,7 +965,15 @@ class EmployeeSummaryTab(QWidget):
                 'required_programs': ';'.join(new_progs),})
             EmployeeProgramsRepo.delete_by_employee(emp_id)
             for p in new_progs:
-                EmployeeProgramsRepo.upsert(emp_id, {'program_id': int(p), 'need_training': 1})
+                old = old_progs.get(p, {})
+                EmployeeProgramsRepo.upsert(emp_id, {
+                    'program_id': int(p),
+                    'need_training': 1,
+                    'exam_date': old.get('exam_date'),
+                    'protocol': old.get('protocol'),
+                    'base_no': old.get('base_no'),
+                    'result': old.get('result'),
+                })
             self.refresh_table()
 
     def _delete_all_data(self):
@@ -979,7 +1022,7 @@ class EmployeeSummaryTab(QWidget):
                 QMessageBox.warning(self, "Ошибка", "Максимум 6 программ одновременно")
                 return
             self._selected_programs = checked
-            self._save_programs(self.data_dir, checked)
+            self._save_settings(self.data_dir, checked, self._b_period_3years)
             dialog.accept()
             self.refresh_table()
         ok_btn.clicked.connect(apply)
@@ -1249,13 +1292,15 @@ class EmployeeSummaryTab(QWidget):
             if not need_progs:
                 continue
             for p in need_progs:
-                prog_status = p.get('status', 'not_trained')
+                prog_id = p.get('program_id', 0)
+                stored_status = p.get('status', 'not_trained')
                 last_exam = p.get('exam_date', '')
+                prog_status = get_dynamic_status(stored_status, last_exam, prog_id, self._b_period_3years)
                 expiry = ''
                 if prog_status == 'trained' and last_exam:
                     try:
-                        exam_dt = datetime.strptime(last_exam.split()[0], '%d.%m.%Y')
-                        expiry = (exam_dt + relativedelta(years=3)).strftime('%d.%m.%Y')
+                        expiry_date = compute_expiry_date(last_exam, prog_id, self._b_period_3years)
+                        expiry = expiry_date.strftime('%d.%m.%Y')
                     except (ValueError, IndexError):
                         pass
                 elif prog_status == 'not_trained':
@@ -1310,8 +1355,10 @@ class EmployeeSummaryTab(QWidget):
                     if exam_year == year:
                         count_trained += 1
                         count_liable += 1
-                    elif exam_year == year - 3:
-                        count_liable += 1
+                    else:
+                        period = get_training_period_years(row['program_id'], self._b_period_3years)
+                        if exam_year == year - period:
+                            count_liable += 1
                 except (ValueError, IndexError):
                     count_liable += 1
                     continue
@@ -1390,8 +1437,10 @@ class EmployeeSummaryTab(QWidget):
                 if not need_progs:
                     continue
                 for p in need_progs:
-                    prog_status = p.get('status', 'not_trained')
+                    prog_id = p.get('program_id', 0)
+                    stored_status = p.get('status', 'not_trained')
                     last_exam = p.get('exam_date', '')
+                    prog_status = get_dynamic_status(stored_status, last_exam, prog_id, self._b_period_3years)
 
                     reason = None; priority = None; expiry = ""
 
@@ -1406,8 +1455,7 @@ class EmployeeSummaryTab(QWidget):
                     else:
                         if cb_expiring.isChecked() and last_exam:
                             try:
-                                exam_date = datetime.strptime(last_exam.split()[0], '%d.%m.%Y')
-                                expiry_date = exam_date + relativedelta(years=3)
+                                expiry_date = compute_expiry_date(last_exam, prog_id, self._b_period_3years)
                                 if expiry_date.year == plan_year:
                                     reason = "Истекает срок действия"; priority = "Средний"
                                     expiry = expiry_date.strftime('%d.%m.%Y')

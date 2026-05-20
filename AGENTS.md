@@ -45,6 +45,15 @@
 - For trained employees → includes if "Истекает срок действия" and expiry year matches plan year
 - One row per employee (not one per program)
 
+### FR-009: Training Period Toggle for Type B Programs (№6-29)
+- Programs 1-5 (Type A): always 3-year training period
+- Programs 6-29 (Type B): configurable via checkbox "Обучение по программам В (№6-29) — 1 раз в 3 года"
+  - Checked (default): 3-year period (post-September 2026 rule)
+  - Unchecked: 1-year period (pre-September 2026 rule)
+- Checkbox state persisted in `summary_programs.json` (`b_period_3years`)
+- Affects: `_get_employee_status()`, `_build_table()`, `_show_current_snapshot()`, `_generate_plan()`, `_generate_trained_report()`
+- Central logic in `utils/training_rules.py` — delete this file + remove references from `employee_summary_tab.py` to disable
+
 ### FR-005: SetId Capture on XML Send
 - SetId from `send_xml` response is saved to UI display field and journal
 - Located in `data_transfer_tab.py:send_xml()` and `data_transfer_tab_base.py:_send_xml()`
@@ -74,6 +83,7 @@
 - `utils/crypto.py` — Fernet + DPAPI encryption
 - `utils/audit.py` — audit logging
 - `utils/logger.py` — SensitiveDataFilter
+- `utils/training_rules.py` — training period rules (program A vs B period, easily removable)
 - `network/client.py` — network diagnostics
 - `db/employee_programs_repo.py` — program data per employee
 - `db/employees_repo.py` — employee CRUD
