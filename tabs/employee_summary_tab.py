@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import time
 import logging
@@ -12,10 +12,10 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QComboBox, QScrollArea,
     QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView, QFrame, QDialog, QCheckBox,
-    QGridLayout
+    QGridLayout, QListWidget, QListWidgetItem, QMenu
 )
 from PySide6.QtCore import Qt, QThread, Signal, QDate
-from PySide6.QtGui import QColor, QBrush
+from PySide6.QtGui import QColor, QFont, QIcon, QPalette
 
 from db import (
     DatabaseManager, EmployeesRepo, EmployeeProgramsRepo
@@ -27,16 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_api_date(date_str: str) -> str:
-    """Normalize API date to DD.MM.YYYY. Handles ISO, ISO+T, and already-normalized formats."""
     if not date_str:
         return ""
     date_str = date_str.strip()
-    # Already DD.MM.YYYY or DD.MM.YYYY HH:MM:SS
     if '.' in date_str:
         parts = date_str.split()[0]
         if len(parts) == 10 and parts[2] == '.' and parts[5] == '.':
             return parts
-    # ISO: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
     if 'T' in date_str:
         date_str = date_str.split('T')[0]
     if '-' in date_str:
@@ -52,8 +49,7 @@ def _normalize_api_date(date_str: str) -> str:
 VALID_PROGRAMS = [str(i) for i in range(1, 30) if i != 5]
 DEFAULT_PROGRAMS = ["1", "2", "3", "4", "18", "23"]
 
-PROGRAM_TITLES = {
-    "1": "Оказание первой помощи пострадавшим",
+PROGRAM_TITLES = { "1": "Оказание первой помощи пострадавшим",
     "2": "Использование СИЗ",
     "3": "Общие вопросы охраны труда",
     "4": "Безопасные методы при воздействии вредных факторов",
@@ -80,11 +76,10 @@ PROGRAM_TITLES = {
     "26": "Перемещение тяжеловесных грузов",
     "27": "Работы с радиоактивными веществами",
     "28": "Работы с ручным инструментом",
-    "29": "Работы в театрах",
-}
+    "29": "Работы в театрах",}
 
-BASE_COLUMNS = 3  # ФИО, СНИЛС, Должность (hidden employee_id — в конце)
-SUB_COLUMNS = 4   # Потребность, Дата, Протокол, Рег.номер
+BASE_COLUMNS = 3
+SUB_COLUMNS = 4
 
 
 class ApiQueryThread(QThread):
@@ -134,39 +129,26 @@ class ApiQueryThread(QThread):
             base_no = rec.get('baseNo', '')
             is_passed = rec.get('isPassed', '')
             result = 1 if is_passed and is_passed.lower() in ('true', '1', 'да', 'удовлетворительно') else 0
-
             if prog_id not in seen_programs or (exam_date and exam_date > seen_programs[prog_id].get('exam_date', '')):
-                seen_programs[prog_id] = {
-                    'exam_date': exam_date,
-                    'protocol': protocol,
-                    'base_no': base_no,
-                    'result': result,
-                }
-
+                seen_programs[prog_id] = { 'exam_date': exam_date,
+                    'protocol': protocol, 'base_no': base_no, 'result': result,}
         for prog_id, data in seen_programs.items():
             try:
                 EmployeeProgramsRepo.update_from_api(
                     employee_id, int(prog_id),
-                    data['exam_date'], data['protocol'],
-                    data['base_no'], data['result']
+                    data['exam_date'], data['protocol'], data['base_no'], data['result']
                 )
             except (ValueError, TypeError):
                 pass
-
-        # Fill empty employee fields from API response
         if records:
             first_rec = records[0]
             emp = EmployeesRepo.get_by_id(employee_id)
             if emp:
                 updates = {}
-                if not emp.get('last_name'):
-                    updates['last_name'] = first_rec.get('LastName', '')
-                if not emp.get('first_name'):
-                    updates['first_name'] = first_rec.get('FirstName', '')
-                if not emp.get('middle_name'):
-                    updates['middle_name'] = first_rec.get('MiddleName', '')
-                if not emp.get('position'):
-                    updates['position'] = first_rec.get('Position', '')
+                if not emp.get('last_name'): updates['last_name'] = first_rec.get('LastName', '')
+                if not emp.get('first_name'): updates['first_name'] = first_rec.get('FirstName', '')
+                if not emp.get('middle_name'): updates['middle_name'] = first_rec.get('MiddleName', '')
+                if not emp.get('position'): updates['position'] = first_rec.get('Position', '')
                 if updates:
                     updates['snils'] = emp['snils']
                     EmployeesRepo.upsert(updates)
@@ -177,8 +159,6 @@ class PlanDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(plan_title)
         self.setMinimumSize(900, 600)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("PlanDialog { background-color: white; }")
 
         layout = QVBoxLayout(self)
 
@@ -195,20 +175,17 @@ class PlanDialog(QDialog):
             ("Низкий", str(low), "#28a745"),
         ]:
             card = QFrame()
+            card.setObjectName("planStatCard")
             card.setStyleSheet(f"""
-                QFrame {{
-                    border: 2px solid {color};
-                    border-radius: 8px;
-                    padding: 10px;
-                    background-color: #f8f9fa;
-                }}
+                QFrame {{ border: 2px solid {color}; border-radius: 8px;
+                    padding: 10px;}}
             """)
             card_layout = QVBoxLayout(card)
             val_label = QLabel(value)
-            val_label.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {color};")
+            val_label.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {color}; background-color: transparent;")
             val_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             desc_label = QLabel(label)
-            desc_label.setStyleSheet("font-size: 12px;")
+            desc_label.setStyleSheet("font-size: 12px; background-color: transparent;")
             desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             card_layout.addWidget(val_label)
             card_layout.addWidget(desc_label)
@@ -219,7 +196,7 @@ class PlanDialog(QDialog):
         table.setColumnCount(9)
         table.setHorizontalHeaderLabels([
             "№", "ФИО", "СНИЛС", "Должность", "Программа",
-            "Последняя дата обучения", "Дата окончания действия",
+            "Последняя\nдата\nобучения", "Дата\nокончания\nдействия",
             "Основание", "Приоритет"
         ])
         table.setAlternatingRowColors(True)
@@ -227,6 +204,8 @@ class PlanDialog(QDialog):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        table.setWordWrap(True)
 
         for i, p in enumerate(plan_data, 1):
             row = table.rowCount()
@@ -234,45 +213,27 @@ class PlanDialog(QDialog):
             items = [
                 str(i),
                 f"{p['last_name']} {p['first_name']} {p['middle_name']}".strip(),
-                p['snils'],
-                p['position'],
-                p['program'],
-                p['last_exam_date'],
-                p['expiry_date'],
-                p['reason'],
-                p['priority'],
+                p['snils'], p['position'], p['program'],
+                p['last_exam_date'], p['expiry_date'],
+                p['reason'], p['priority'],
             ]
             for col, text in enumerate(items):
                 item = QTableWidgetItem(str(text))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if col == 8:
                     color_map = {'Высокий': '#dc3545', 'Средний': '#ffc107', 'Низкий': '#28a745'}
-                    item.setForeground(QColor(color_map.get(text, '#000')))
-                    font = item.font()
-                    font.setBold(True)
-                    item.setFont(font)
+                    item.setForeground(QColor(color_map.get(text, '#E0E0E0')))
+                    font = item.font(); font.setBold(True); item.setFont(font)
                 table.setItem(row, col, item)
 
         layout.addWidget(table)
 
         btn_layout = QHBoxLayout()
         export_btn = QPushButton("Экспорт XLSX")
-        export_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1; color: white; border: none;
-                padding: 8px 16px; border-radius: 5px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #3151B1; }
-        """)
+        export_btn.setObjectName("planExportBtn")
         export_btn.clicked.connect(lambda: self._export_plan(plan_data, plan_title))
         close_btn = QPushButton("Закрыть")
-        close_btn.setStyleSheet("""
-            QPushButton {
-                color: red; border: 2px solid red; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold; background-color: white;
-            }
-            QPushButton:hover { background-color: #FFE0E0; }
-        """)
+        close_btn.setObjectName("planCloseBtn")
         close_btn.clicked.connect(self.close)
         btn_layout.addWidget(export_btn)
         btn_layout.addStretch()
@@ -281,70 +242,166 @@ class PlanDialog(QDialog):
 
     def _export_plan(self, plan_data, plan_title):
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Сохранить XLSX",
-            f"{plan_title}.xlsx",
-            "Excel Files (*.xlsx)"
+            self, "Сохранить XLSX", f"{plan_title}.xlsx", "Excel Files (*.xlsx)"
         )
         if not file_path:
             return
         try:
             from openpyxl import Workbook
             from openpyxl.styles import Font, PatternFill, Alignment
-
             wb = Workbook()
             ws = wb.active
             ws.title = "План"
-
-            headers = [
-                "№", "ФИО", "СНИЛС", "Должность", "Программа",
-                "Последняя дата обучения", "Дата окончания действия",
-                "Основание", "Приоритет"
-            ]
+            headers = ["№", "ФИО", "СНИЛС", "Должность", "Программа",
+                "Последняя\nдата\nобучения", "Дата\nокончания\nдействия", "Основание", "Приоритет"]
             ws.append(headers)
-            header_font = Font(bold=True, color="FFFFFF")
-            header_fill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
+            hf = Font(bold=True, color="FFFFFF")
+            hfill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
             for cell in ws[1]:
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center")
-
+                cell.font = hf; cell.fill = hfill; cell.alignment = Alignment(horizontal="center")
             for i, p in enumerate(plan_data, 1):
-                ws.append([
-                    i,
-                    f"{p['last_name']} {p['first_name']} {p['middle_name']}".strip(),
+                ws.append([i, f"{p['last_name']} {p['first_name']} {p['middle_name']}".strip(),
                     p['snils'], p['position'], p['program'],
-                    p['last_exam_date'], p['expiry_date'],
-                    p['reason'], p['priority'],
-                ])
-
+                    p['last_exam_date'], p['expiry_date'], p['reason'], p['priority']])
             ws2 = wb.create_sheet("Сводка")
             ws2.append(["Программа", "Кол-во"])
             from collections import Counter
-            prog_counts = Counter(p['program'] for p in plan_data)
-            for prog, cnt in sorted(prog_counts.items()):
+            for prog, cnt in sorted(Counter(p['program'] for p in plan_data).items()):
                 ws2.append([prog, cnt])
             for cell in ws2[1]:
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center")
-
+                cell.font = hf; cell.fill = hfill; cell.alignment = Alignment(horizontal="center")
             wb.save(file_path)
             QMessageBox.information(self, "Успех", f"Файл сохранён:\n{file_path}")
         except Exception as e:
             QMessageBox.warning(self, "Ошибка", f"Ошибка экспорта: {e}")
 
 
+# ──────── EmployeeAddDialog ────────
+
+class EmployeeAddDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Добавление сотрудника")
+        self.setMinimumWidth(480)
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        self.last_name = QLineEdit(); self.last_name.setPlaceholderText("Иванов")
+        form.addRow("Фамилия:", self.last_name)
+        self.first_name = QLineEdit(); self.first_name.setPlaceholderText("Иван")
+        form.addRow("Имя:", self.first_name)
+        self.middle_name = QLineEdit(); self.middle_name.setPlaceholderText("Иванович")
+        form.addRow("Отчество:", self.middle_name)
+        self.snils = QLineEdit(); self.snils.setPlaceholderText("123-456-789 00")
+        form.addRow("СНИЛС:", self.snils)
+        self.position = QLineEdit(); self.position.setPlaceholderText("Слесарь")
+        form.addRow("Должность:", self.position)
+
+        prog_row = QHBoxLayout()
+        self.programs = QLineEdit(); self.programs.setPlaceholderText("1, 2, 3")
+        prog_row.addWidget(self.programs, 1)
+        help_btn = QPushButton("Справка")
+        help_btn.setObjectName("programHelpBtn")
+        help_btn.clicked.connect(self._show_programs_help)
+        prog_row.addWidget(help_btn)
+        form.addRow("Программы:", prog_row)
+
+        layout.addLayout(form)
+
+        btn_row = QHBoxLayout()
+        save_btn = QPushButton("Добавить"); save_btn.setObjectName("dialogPrimaryBtn")
+        save_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Отмена"); cancel_btn.setObjectName("dialogDangerBtn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(save_btn); btn_row.addStretch(); btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
+
+    def _show_programs_help(self):
+        from PySide6.QtGui import QPalette
+        d = QDialog(self)
+        d.setWindowTitle("Программы обучения"); d.setMinimumSize(600, 500)
+        dl = QVBoxLayout(d)
+        lw = QListWidget(); lw.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        current = [p.strip() for p in self.programs.text().split(",") if p.strip()]
+        blue = {"1", "2", "3", "4", "18", "23"}
+
+        pal = d.palette()
+        primary = pal.color(QPalette.ColorRole.Highlight)
+        current_bg = QColor(primary.red(), primary.green(), primary.blue(), 35)
+
+        for pid in VALID_PROGRAMS:
+            title = PROGRAM_TITLES.get(pid, "")
+            item = QListWidgetItem(f"{pid}: {title}")
+            item.setData(Qt.ItemDataRole.UserRole, pid)
+            if pid in current:
+                item.setBackground(current_bg)
+            if pid in blue:
+                item.setForeground(primary)
+            lw.addItem(item)
+        def add_sel():
+            sel = lw.selectedItems()
+            if not sel: return
+            new_set = set(current)
+            for it in sel: new_set.add(it.data(Qt.ItemDataRole.UserRole))
+            self.programs.setText(", ".join(sorted(new_set, key=lambda x: int(x) if x.isdigit() else 0)))
+            d.accept()
+        lw.itemDoubleClicked.connect(lambda item: (
+            current.append(item.data(Qt.ItemDataRole.UserRole))
+            or self.programs.setText(", ".join(current))))
+        dl.addWidget(lw)
+        br = QHBoxLayout()
+        ab = QPushButton("Добавить выбранные"); ab.setObjectName("dialogPrimaryBtn"); ab.clicked.connect(add_sel)
+        br.addWidget(ab); br.addStretch()
+        cb = QPushButton("Отмена"); cb.setObjectName("dialogDangerBtn"); cb.clicked.connect(d.reject)
+        br.addWidget(cb); dl.addLayout(br)
+        d.exec()
+
+
+# ──────── EmployeeEditDialog ────────
+
+class EmployeeEditDialog(QDialog):
+    def __init__(self, emp, progs, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Редактирование сотрудника")
+        self.setMinimumWidth(480)
+        self.emp = emp
+        self.progs = progs
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout(); form.setSpacing(8)
+
+        self.last_name = QLineEdit(emp['last_name']); form.addRow("Фамилия:", self.last_name)
+        self.first_name = QLineEdit(emp['first_name']); form.addRow("Имя:", self.first_name)
+        self.middle_name = QLineEdit(emp['middle_name']); form.addRow("Отчество:", self.middle_name)
+        self.snils = QLineEdit(emp['snils']); form.addRow("СНИЛС:", self.snils)
+        self.position = QLineEdit(emp['position']); form.addRow("Должность:", self.position)
+        prog_ids = [str(p['program_id']) for p in progs if p.get('need_training') == 1]
+        self.programs = QLineEdit(",".join(prog_ids)); form.addRow("Программы:", self.programs)
+
+        layout.addLayout(form)
+        btn_row = QHBoxLayout()
+        save_btn = QPushButton("Сохранить"); save_btn.setObjectName("dialogPrimaryBtn")
+        save_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Отмена"); cancel_btn.setObjectName("dialogDangerBtn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(save_btn); btn_row.addStretch(); btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
+
+
+# ──────── EmployeeSummaryTab ────────
+
 class EmployeeSummaryTab(QWidget):
     _programs_cache = None
 
     @classmethod
     def _load_saved_programs(cls, data_dir):
-        import json as _json
         path = os.path.join(data_dir, "summary_programs.json")
         try:
             if os.path.exists(path):
                 with open(path, 'r', encoding='utf-8') as f:
-                    data = _json.load(f)
+                    data = json.load(f)
                 return [p for p in data.get('programs', []) if p in VALID_PROGRAMS]
         except Exception:
             pass
@@ -352,17 +409,15 @@ class EmployeeSummaryTab(QWidget):
 
     @classmethod
     def _save_programs(cls, data_dir, programs):
-        import json as _json
         path = os.path.join(data_dir, "summary_programs.json")
         try:
             with open(path, 'w', encoding='utf-8') as f:
-                _json.dump({'programs': programs}, f)
+                json.dump({'programs': programs}, f)
         except Exception:
             pass
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("background-color: transparent;")
         from utils.app_paths import get_app_data_dir
         self.data_dir = get_app_data_dir()
         saved = self._load_saved_programs(self.data_dir)
@@ -373,362 +428,186 @@ class EmployeeSummaryTab(QWidget):
         self._problem_only = False
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(8)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("background-color: transparent; border: none;")
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
 
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
-        scroll_layout.setSpacing(10)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(8)
 
-        scroll_layout.addWidget(self._create_stats_panel())
-        scroll_layout.addWidget(self._create_manual_entry_group())
-        scroll_layout.addWidget(self._create_action_buttons())
-        scroll_layout.addWidget(self._create_filter_panel())
-        scroll_layout.addWidget(self._create_plan_buttons())
-        scroll_layout.addWidget(self._create_table())
+        def _make_hscroll(widget: QWidget) -> QScrollArea:
+            sa = QScrollArea()
+            sa.setWidgetResizable(False)
+            sa.setFrameShape(QFrame.Shape.NoFrame)
+            sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            sa.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            sa.setWidget(widget)
+            h = widget.sizeHint().height()
+            if h > 0:
+                sa.setFixedHeight(h + 4)
+            return sa
+
+        scroll_layout.addWidget(self._build_stats())
+        scroll_layout.addWidget(_make_hscroll(self._build_report_row()))
+        scroll_layout.addWidget(_make_hscroll(self._build_toolbar()))
+        scroll_layout.addWidget(_make_hscroll(self._build_filters()))
         scroll_layout.addStretch()
 
         scroll.setWidget(scroll_widget)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         main_layout.addWidget(scroll)
+        main_layout.addWidget(self._build_table_widget(), 1)
 
         self.refresh_table()
 
-    def _btn_style(self, bg="#4169E1", hover="#3151B1"):
-        return f"""
-            QPushButton {{
-                background-color: {bg}; color: white; border: none;
-                padding: 8px 16px; border-radius: 5px; font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: {hover}; }}
-        """
+    # ── Stats Cards ────────────────────────────────────────
 
-    def _group_style(self):
-        return """
-            QGroupBox {
-                border: 2px solid #4169E1; border-radius: 10px;
-                margin-top: 10px; padding: 15px; background-color: transparent;
-            }
-            QGroupBox::title {
-                color: #4169E1; font-weight: bold; font-size: 14px;
-                subcontrol-origin: margin; left: 10px; padding: 0 5px;
-            }
-        """
-
-    def _create_stats_panel(self):
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
+    def _build_stats(self):
+        container = QWidget()
+        container.setObjectName("statsContainer")
+        layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        self.stats_cards = []
-        stat_defs = [
-            ("Всего сотрудников", "0", "#4169E1"),
-            ("Обучено", "0", "#28a745"),
-            ("Не обучено", "0", "#dc3545"),
-            ("Просрочено", "0", "#ffc107"),
-            ("Актуальность данных", "нет", "#17a2b8"),
-        ]
+        self.stat_total = QLabel("0"); self.stat_total.setObjectName("statValue")
+        self.stat_trained = QLabel("0"); self.stat_trained.setObjectName("statValueGreen")
+        self.stat_untrained = QLabel("0"); self.stat_untrained.setObjectName("statValueRed")
+        self.stat_expired = QLabel("0"); self.stat_expired.setObjectName("statValueYellow")
+        self.stat_sync = QLabel("нет"); self.stat_sync.setObjectName("statValueInfo")
 
-        for label, default, color in stat_defs:
-            card = QFrame()
-            card.setStyleSheet(f"""
-                QFrame {{
-                    border: 2px solid {color};
-                    border-radius: 8px;
-                    padding: 8px;
-                    background-color: #f8f9fa;
-                }}
-            """)
-            card_layout = QVBoxLayout(card)
-            card_layout.setSpacing(2)
-
-            val_label = QLabel(default)
-            val_label.setStyleSheet(f"font-size: 22px; font-weight: bold; color: {color};")
-            val_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            card_layout.addWidget(val_label)
-
-            desc_label = QLabel(label)
-            desc_label.setStyleSheet("font-size: 11px;")
-            desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            card_layout.addWidget(desc_label)
-
-            self.stats_cards.append(val_label)
+        for value_lbl, label, obj_name in [
+            (self.stat_total, "Всего сотрудников", "statCardBlue"),
+            (self.stat_trained, "Обучено сотрудников", "statCardGreen"),
+            (self.stat_untrained, "Не обучено сотрудников", "statCardRed"),
+            (self.stat_expired, "Просрочено сотрудников", "statCardYellow"),
+            (self.stat_sync, "Актуальность данных", "statCardInfo"),
+        ]:
+            card = QFrame(); card.setObjectName(obj_name)
+            cl = QVBoxLayout(card); cl.setSpacing(2); cl.setContentsMargins(8, 4, 8, 4)
+            value_lbl.setObjectName("statValue")
+            label_lbl = QLabel(label); label_lbl.setObjectName("statLabel")
+            cl.addWidget(value_lbl, 0, Qt.AlignmentFlag.AlignCenter)
+            cl.addWidget(label_lbl, 0, Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(card)
 
-        return widget
+        return container
 
-    def _create_manual_entry_group(self):
-        group = QGroupBox()
-        group.setStyleSheet(self._group_style())
-        group.setTitle("Ручной ввод данных работника")
+    # ── Toolbar ────────────────────────────────────────────
 
-        layout = QHBoxLayout(group)
-        layout.setSpacing(15)
+    def _build_toolbar(self):
+        w = QWidget(); w.setObjectName("toolbarContainer")
+        layout = QHBoxLayout(w); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(6)
 
-        form = QFormLayout()
-        form.setSpacing(8)
+        add_btn = QPushButton("+ Добавить сотрудника"); add_btn.setObjectName("toolbarPrimaryBtn")
+        add_btn.clicked.connect(self._add_employee_dialog)
+        layout.addWidget(add_btn)
 
-        self.me_last_name = QLineEdit()
-        self.me_last_name.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        form.addRow("Фамилия:", self.me_last_name)
+        import_btn = QPushButton("Импорт из xlsx"); import_btn.setObjectName("toolbarBtn")
+        import_btn.clicked.connect(self._import_xlsx)
+        layout.addWidget(import_btn)
 
-        self.me_first_name = QLineEdit()
-        self.me_first_name.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        form.addRow("Имя:", self.me_first_name)
+        export_btn = QPushButton("Экспорт в xlsx"); export_btn.setObjectName("toolbarBtn")
+        export_btn.clicked.connect(lambda: self._export_xlsx(filtered=True))
+        layout.addWidget(export_btn)
 
-        self.me_middle_name = QLineEdit()
-        self.me_middle_name.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        form.addRow("Отчество:", self.me_middle_name)
+        export_all_btn = QPushButton("Экспорт (все)"); export_all_btn.setObjectName("toolbarBtn")
+        export_all_btn.clicked.connect(lambda: self._export_xlsx(filtered=False))
+        layout.addWidget(export_all_btn)
 
-        self.me_snils = QLineEdit()
-        self.me_snils.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        self.me_snils.setPlaceholderText("123-456-789 00")
-        form.addRow("СНИЛС:", self.me_snils)
-
-        layout.addLayout(form)
-
-        form2 = QFormLayout()
-        form2.setSpacing(8)
-
-        self.me_position = QLineEdit()
-        self.me_position.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        form2.addRow("Должность:", self.me_position)
-
-        prog_row = QHBoxLayout()
-        self.me_program = QLineEdit()
-        self.me_program.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        self.me_program.setPlaceholderText("1,2,3")
-        help_btn = QPushButton("Справка")
-        help_btn.setStyleSheet(self._btn_style())
-        help_btn.clicked.connect(self._show_programs_help)
-        prog_row.addWidget(self.me_program)
-        prog_row.addWidget(help_btn)
-        form2.addRow("Программы:", prog_row)
-
-        btn_layout = QHBoxLayout()
-        add_btn = QPushButton("Добавить запись")
-        add_btn.setStyleSheet(self._btn_style())
-        add_btn.clicked.connect(self._add_manual_entry)
-        cancel_btn = QPushButton("Отмена")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                color: red; border: 2px solid red; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold; background-color: white;
-            }
-            QPushButton:hover { background-color: #FFE0E0; }
-        """)
-        cancel_btn.clicked.connect(self._clear_manual_entry)
-        btn_layout.addWidget(add_btn)
-        btn_layout.addWidget(cancel_btn)
-        form2.addRow("", btn_layout)
-
-        layout.addLayout(form2)
-        return group
-
-    def _create_action_buttons(self):
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 5, 0, 5)
-
-        self.import_btn = QPushButton("Импорт .xlsx")
-        self.import_btn.setStyleSheet(self._btn_style())
-        self.import_btn.clicked.connect(self._import_xlsx)
-        layout.addWidget(self.import_btn)
-
-        self.export_btn = QPushButton("Экспорт .xlsx")
-        self.export_btn.setStyleSheet(self._btn_style())
-        self.export_btn.clicked.connect(lambda: self._export_xlsx(filtered=True))
-        layout.addWidget(self.export_btn)
-
-        self.export_all_btn = QPushButton("Экспорт .xlsx (все)")
-        self.export_all_btn.setStyleSheet(self._btn_style())
-        self.export_all_btn.clicked.connect(lambda: self._export_xlsx(filtered=False))
-        layout.addWidget(self.export_all_btn)
-
-        self.query_btn = QPushButton("Запросить из реестра")
-        self.query_btn.setStyleSheet(self._btn_style(bg="#28a745", hover="#218838"))
+        self.query_btn = QPushButton("Запросить из реестра"); self.query_btn.setObjectName("toolbarSuccessBtn")
         self.query_btn.clicked.connect(self._query_reestr)
         layout.addWidget(self.query_btn)
 
-        self.snapshot_btn = QPushButton("Текущая ситуация")
-        self.snapshot_btn.setStyleSheet(self._btn_style(bg="#17a2b8", hover="#138496"))
-        self.snapshot_btn.clicked.connect(self._show_current_snapshot)
-        layout.addWidget(self.snapshot_btn)
+        prog_btn = QPushButton("Выбрать программы"); prog_btn.setObjectName("toolbarPurpleBtn")
+        prog_btn.clicked.connect(self._show_program_selector)
+        layout.addWidget(prog_btn)
 
         layout.addStretch()
-        # Кнопка выбора столбцов программ
-        self.program_selector_btn = QPushButton("Выбрать программы")
-        self.program_selector_btn.setStyleSheet(self._btn_style(bg="#6f42c1", hover="#5a32a3"))
-        self.program_selector_btn.clicked.connect(self._show_program_selector)
-        layout.addWidget(self.program_selector_btn)
-        # Кнопка удаления всех данных
-        self.delete_all_btn = QPushButton("Удалить данные")
-        self.delete_all_btn.setStyleSheet("""
-            QPushButton {
-                color: red; border: 2px solid red; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold; background-color: white;
-            }
-            QPushButton:hover { background-color: #FFE0E0; }
-        """)
-        self.delete_all_btn.clicked.connect(self._delete_all_data)
-        layout.addWidget(self.delete_all_btn)
-        return widget
 
-    def _create_filter_panel(self):
-        group = QGroupBox()
-        group.setStyleSheet(self._group_style())
-        group.setTitle("Фильтры")
+        delete_btn = QPushButton("Удалить данные"); delete_btn.setObjectName("toolbarDangerBtn")
+        delete_btn.clicked.connect(self._delete_all_data)
+        layout.addWidget(delete_btn)
 
-        layout = QHBoxLayout(group)
-        layout.setSpacing(15)
+        return w
+
+    # ── Report row (plan / snapshot / trained) ────────────
+
+    def _build_report_row(self):
+        w = QWidget(); w.setObjectName("reportRowContainer")
+        layout = QHBoxLayout(w); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(8)
+
+        plan_current_btn = QPushButton("План на текущий год"); plan_current_btn.setObjectName("planBtn")
+        plan_current_btn.clicked.connect(lambda: self._generate_plan(current_year=True))
+        layout.addWidget(plan_current_btn)
+
+        plan_next_btn = QPushButton("План на след. год"); plan_next_btn.setObjectName("planBtn")
+        plan_next_btn.clicked.connect(lambda: self._generate_plan(current_year=False))
+        layout.addWidget(plan_next_btn)
+
+        snapshot_btn = QPushButton("Текущая ситуация"); snapshot_btn.setObjectName("planBtnInfo")
+        snapshot_btn.clicked.connect(self._show_current_snapshot)
+        layout.addWidget(snapshot_btn)
+
+        report_btn = QPushButton("Отчет по обученным"); report_btn.setObjectName("planBtnSuccess")
+        report_btn.clicked.connect(self._generate_trained_report)
+        layout.addWidget(report_btn)
+
+        layout.addStretch()
+        return w
+
+    # ── Filters ───────────────────────────────────────────
+
+    def _build_filters(self):
+        w = QWidget(); w.setObjectName("filterContainer")
+        layout = QHBoxLayout(w); layout.setContentsMargins(8, 4, 8, 4); layout.setSpacing(10)
 
         layout.addWidget(QLabel("Программа:"))
-        self.filter_program = QComboBox()
+        self.filter_program = QComboBox(); self.filter_program.setObjectName("filterCombo")
         self.filter_program.addItem("Все", "all")
         for p in VALID_PROGRAMS:
             self.filter_program.addItem(f"{p}", p)
-        self.filter_program.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.filter_program.currentIndexChanged.connect(self._apply_filters)
         layout.addWidget(self.filter_program)
 
         layout.addWidget(QLabel("Статус:"))
-        self.filter_status = QComboBox()
+        self.filter_status = QComboBox(); self.filter_status.setObjectName("filterCombo")
         self.filter_status.addItems(["Все", "Обучен", "Не обучен", "Просрочено"])
-        self.filter_status.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
         self.filter_status.currentIndexChanged.connect(self._apply_filters)
         layout.addWidget(self.filter_status)
 
         layout.addWidget(QLabel("Должность:"))
-        self.filter_position = QLineEdit()
-        self.filter_position.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
+        self.filter_position = QLineEdit(); self.filter_position.setObjectName("filterInput")
         self.filter_position.setPlaceholderText("Фильтр по должности")
         self.filter_position.textChanged.connect(self._apply_filters)
         layout.addWidget(self.filter_position)
 
-        self.problem_cb = QCheckBox("Только проблемные")
-        self.problem_cb.setStyleSheet("color: inherit;")
+        self.problem_cb = QCheckBox("Только проблемные"); self.problem_cb.setObjectName("filterCheck")
         self.problem_cb.toggled.connect(self._apply_filters)
         layout.addWidget(self.problem_cb)
 
-        return group
+        return w
 
-    def _create_plan_buttons(self):
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 5, 0, 5)
+    # ── Table ─────────────────────────────────────────────
 
-        self.plan_current_btn = QPushButton("Сформировать план на текущий год")
-        self.plan_current_btn.setStyleSheet(self._btn_style())
-        self.plan_current_btn.clicked.connect(lambda: self._generate_plan(current_year=True))
-        layout.addWidget(self.plan_current_btn)
-
-        self.plan_next_btn = QPushButton("Сформировать план на следующий год")
-        self.plan_next_btn.setStyleSheet(self._btn_style())
-        self.plan_next_btn.clicked.connect(lambda: self._generate_plan(current_year=False))
-        layout.addWidget(self.plan_next_btn)
-
-        self.report_trained_btn = QPushButton("Сформировать отчет по обученным")
-        self.report_trained_btn.setStyleSheet(self._btn_style(bg="#17a2b8", hover="#138496"))
-        self.report_trained_btn.clicked.connect(self._generate_trained_report)
-        layout.addWidget(self.report_trained_btn)
-
-        layout.addStretch()
-        return widget
-
-    def _show_program_selector(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Выбор программ для отображения")
-        dialog.setMinimumSize(500, 500)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dialog.setStyleSheet("QDialog { background-color: white; }")
-
-        from PySide6.QtWidgets import QListWidget, QListWidgetItem
-
-        list_widget = QListWidget()
-        list_widget.setStyleSheet("""
-            QListWidget { border: 1px solid #CCCCCC; background-color: white; }
-            QListWidget::item { padding: 6px; }
-        """)
-
-        selected = set(self._selected_programs)
-        for p in VALID_PROGRAMS:
-            item = QListWidgetItem(f"{p}: {PROGRAM_TITLES.get(p, '')}")
-            item.setData(Qt.ItemDataRole.UserRole, p)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if p in selected else Qt.CheckState.Unchecked)
-            list_widget.addItem(item)
-
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Отметьте программы для отображения (макс. 6):"))
-        layout.addWidget(list_widget)
-
-        btn_layout = QHBoxLayout()
-        ok_btn = QPushButton("Применить")
-        ok_btn.setStyleSheet(self._btn_style())
-        ok_btn.clicked.connect(lambda: self._apply_program_selection(list_widget, dialog))
-        cancel_btn = QPushButton("Отмена")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                color: red; border: 2px solid red; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold; background-color: white;
-            }
-            QPushButton:hover { background-color: #FFE0E0; }
-        """)
-        cancel_btn.clicked.connect(dialog.reject)
-        btn_layout.addWidget(ok_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(cancel_btn)
-        layout.addLayout(btn_layout)
-        dialog.exec()
-
-    def _apply_program_selection(self, list_widget, dialog):
-        checked = []
-        for i in range(list_widget.count()):
-            item = list_widget.item(i)
-            if item.checkState() == Qt.CheckState.Checked:
-                checked.append(item.data(Qt.ItemDataRole.UserRole))
-        if not checked:
-            QMessageBox.warning(self, "Ошибка", "Выберите хотя бы одну программу")
-            return
-        if len(checked) > 6:
-            QMessageBox.warning(self, "Ошибка", "Максимум 6 программ одновременно")
-            return
-        self._selected_programs = checked
-        self._save_programs(self.data_dir, checked)
-        dialog.accept()
-        self.refresh_table()
-
-    def _create_table(self):
+    def _build_table_widget(self):
         self.table = QTableWidget()
+        self.table.setObjectName("summaryTable")
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.table.verticalHeader().setDefaultSectionSize(25)
+        self.table.verticalHeader().setDefaultSectionSize(28)
         self.table.verticalHeader().setVisible(False)
         self.table.setSortingEnabled(True)
 
-        self.table.horizontalHeader().setStyleSheet("""
-            QHeaderView::section {
-                background-color: #4169E1; color: white; padding: 5px;
-                border: 1px solid #3050C0; font-weight: bold;
-            }
-        """)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: white; border: 2px solid #4169E1;
-                border-radius: 5px; gridline-color: #E0E0E0;
-            }
-            QTableWidget::item { padding: 5px; }
-        """)
-
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
-
         self.table.itemDoubleClicked.connect(self._on_item_double_click)
 
         return self.table
@@ -745,47 +624,43 @@ class EmployeeSummaryTab(QWidget):
 
         programs = self._selected_programs[:6]
         num_prog_cols = len(programs) * SUB_COLUMNS
-        num_cols = BASE_COLUMNS + num_prog_cols + 1  # +1 hidden emp_id
-        HEADER_ROWS = 2
+        num_cols = BASE_COLUMNS + num_prog_cols + 1
 
         self.table.setColumnCount(num_cols)
 
-        header_font = self.font()
-        header_font.setBold(True)
+        pal = self.table.palette()
+        hdr_bg = pal.color(QPalette.ColorRole.Highlight)
+        hdr_fg = QColor("white")
 
-        # Row 0: program group headers
         self.table.insertRow(0)
         base_headers = ["ФИО", "СНИЛС", "Должность"]
+        header_font = QFont()
+        header_font.setBold(True)
         for c in range(BASE_COLUMNS):
             item = QTableWidgetItem(base_headers[c])
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            item.setBackground(QColor("#4169E1"))
-            item.setForeground(QColor("white"))
+            item.setBackground(hdr_bg)
+            item.setForeground(hdr_fg)
             item.setFont(header_font)
             self.table.setItem(0, c, item)
-            self.table.setSpan(0, c, 1, 1)
 
         for pi, p in enumerate(programs):
             col = BASE_COLUMNS + pi * SUB_COLUMNS
             item = QTableWidgetItem(f"№{p}: {PROGRAM_TITLES.get(p, '')}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            item.setBackground(QColor("#4169E1"))
-            item.setForeground(QColor("white"))
+            item.setBackground(hdr_bg)
+            item.setForeground(hdr_fg)
             item.setFont(header_font)
             self.table.setItem(0, col, item)
             self.table.setSpan(0, col, 1, SUB_COLUMNS)
 
-        # empty cell at end of row 0
         item = QTableWidgetItem("")
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         self.table.setItem(0, num_cols - 1, item)
-        self.table.setSpan(0, num_cols - 1, 1, 1)
-        # also hide this column
         self.table.setColumnHidden(num_cols - 1, True)
 
-        # Row 1: sub-headers
         self.table.insertRow(1)
         for c in range(BASE_COLUMNS):
             item = QTableWidgetItem("")
@@ -793,7 +668,7 @@ class EmployeeSummaryTab(QWidget):
             self.table.setItem(1, c, item)
 
         sub_labels = ["Потребность", "Дата", "Протокол", "Рег.№"]
-        sub_font = self.font()
+        sub_font = QFont()
         sub_font.setBold(True)
         for pi, p in enumerate(programs):
             col = BASE_COLUMNS + pi * SUB_COLUMNS
@@ -801,16 +676,14 @@ class EmployeeSummaryTab(QWidget):
                 item = QTableWidgetItem(label)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                item.setBackground(QColor("#4169E1"))
-                item.setForeground(QColor("white"))
+                item.setBackground(hdr_bg)
+                item.setForeground(hdr_fg)
                 item.setFont(sub_font)
                 self.table.setItem(1, col + j, item)
 
-        # Row height for headers
-        self.table.setRowHeight(0, 35)
+        self.table.setRowHeight(0, 36)
         self.table.setRowHeight(1, 30)
 
-        # Filters
         status_filter = self.filter_status.currentText()
         prog_filter = self.filter_program.currentData()
         pos_filter = self.filter_position.text().strip().lower()
@@ -837,13 +710,9 @@ class EmployeeSummaryTab(QWidget):
                     row_programs[p] = {'need_training': 0, 'exam_date': '', 'protocol': '', 'base_no': '', 'status': ''}
                     continue
                 s = pd.get('status', 'not_trained')
-                row_programs[p] = {
-                    'need_training': pd.get('need_training', 0),
-                    'exam_date': pd.get('exam_date', ''),
-                    'protocol': pd.get('protocol', ''),
-                    'base_no': pd.get('base_no', ''),
-                    'status': s,
-                }
+                row_programs[p] = { 'need_training': pd.get('need_training', 0),
+                    'exam_date': pd.get('exam_date', ''), 'protocol': pd.get('protocol', ''),
+                    'base_no': pd.get('base_no', ''), 'status': s,}
                 if s == 'not_trained':
                     overall_status = 'not_trained'
                 elif s == 'expired' and overall_status != 'not_trained':
@@ -870,19 +739,13 @@ class EmployeeSummaryTab(QWidget):
                 pd = row_programs.get(p, {})
                 need = pd.get('need_training', 0)
                 need_text = "Да" if need == 1 else "Нет"
-                row_data.extend([
-                    need_text,
-                    pd.get('exam_date', ''),
-                    pd.get('protocol', ''),
-                    pd.get('base_no', ''),
-                ])
+                row_data.extend([need_text, pd.get('exam_date', ''), pd.get('protocol', ''), pd.get('base_no', '')])
 
             col_idx = 0
             for val in row_data:
                 text = str(val) if val is not None else ""
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                item.setForeground(QColor(0, 0, 0))
                 self.table.setItem(row_idx, col_idx, item)
                 col_idx += 1
 
@@ -912,7 +775,6 @@ class EmployeeSummaryTab(QWidget):
         self.table.setSortingEnabled(True)
 
     def _get_employee_status(self, emp_id: int, programs) -> str:
-        """Определяет статус сотрудника: not_trained > expired > trained."""
         has_trained = False
         has_expired = False
         for p in programs:
@@ -932,12 +794,14 @@ class EmployeeSummaryTab(QWidget):
         return 'not_trained'
 
     def _update_stats(self):
-        emp_count = EmployeesRepo.count()
-        self.stats_cards[0].setText(str(emp_count))
-
         trained = not_trained = expired = 0
+        emp_count = 0
         for emp in EmployeesRepo.get_all():
             progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
+            need_progs = [p for p in progs if p.get('need_training') == 1]
+            if not need_progs:
+                continue
+            emp_count += 1
             status = self._get_employee_status(emp['id'], progs)
             if status == 'trained':
                 trained += 1
@@ -945,28 +809,28 @@ class EmployeeSummaryTab(QWidget):
                 expired += 1
             else:
                 not_trained += 1
-        self.stats_cards[1].setText(str(trained))
-        self.stats_cards[2].setText(str(not_trained))
-        self.stats_cards[3].setText(str(expired))
+        self.stat_total.setText(str(emp_count))
+        self.stat_trained.setText(str(trained))
+        self.stat_untrained.setText(str(not_trained))
+        self.stat_expired.setText(str(expired))
 
         last_sync = ""
         rows = DatabaseManager.get_instance().fetchone(
             "SELECT MAX(last_sync) as ls FROM employees WHERE last_sync IS NOT NULL"
         )
         if rows and rows['ls']:
-            last_sync = rows['ls']
-        self.stats_cards[4].setText(last_sync or "нет")
+            parts = rows['ls'].split(' ', 1)
+            last_sync = '\n'.join(parts) if len(parts) > 1 else rows['ls']
+        self.stat_sync.setText(last_sync or "нет")
 
     def _apply_filters(self):
         self.refresh_table()
 
+    # ── Context menu ───────────────────────────────────────
+
     def _show_context_menu(self, position):
-        from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu { background-color: white; color: inherit; border: 1px solid #CCCCCC; }
-            QMenu::item:selected { background-color: #4169E1; color: white; }
-        """)
+        menu.setObjectName("summaryCtxMenu")
 
         edit_action = menu.addAction("Редактировать")
         query_action = menu.addAction("Запросить из реестра")
@@ -974,9 +838,9 @@ class EmployeeSummaryTab(QWidget):
 
         action = menu.exec(self.table.mapToGlobal(position))
         row = self.table.currentRow()
-        if row < 2:  # skip header rows
+        if row < 2:
             return
-        emp_id = self.table.item(row, self.table.columnCount() - 1).data(Qt.ItemDataRole.UserRole)
+        emp_id = self.table.item(row, self.table.columnCount() - 1).data(Qt.ItemDataRole.UserRole) if self.table.item(row, self.table.columnCount() - 1) else None
 
         if action == edit_action:
             if emp_id:
@@ -987,8 +851,7 @@ class EmployeeSummaryTab(QWidget):
         elif action == delete_action:
             if emp_id:
                 reply = QMessageBox.question(
-                    self, "Подтверждение",
-                    "Удалить сотрудника из сводки?",
+                    self, "Подтверждение", "Удалить сотрудника из сводки?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 if reply == QMessageBox.StandardButton.Yes:
@@ -999,7 +862,7 @@ class EmployeeSummaryTab(QWidget):
         if not item:
             return
         row = item.row()
-        if row < 2:  # skip header rows
+        if row < 2:
             return
         col = item.column()
         hidden_idx = self.table.columnCount() - 1
@@ -1008,7 +871,9 @@ class EmployeeSummaryTab(QWidget):
         for pi, p in enumerate(programs):
             col_start = BASE_COLUMNS + pi * SUB_COLUMNS
             if col == col_start:
-                emp_id = self.table.item(row, hidden_idx).data(Qt.ItemDataRole.UserRole)
+                emp_id = self.table.item(row, hidden_idx).data(Qt.ItemDataRole.UserRole) if self.table.item(row, hidden_idx) else None
+                if not emp_id:
+                    return
                 current = self.table.item(row, col).text() if self.table.item(row, col) else "Нет"
                 new_val = "Да" if current != "Да" else "Нет"
                 need = 1 if new_val == "Да" else 0
@@ -1016,11 +881,62 @@ class EmployeeSummaryTab(QWidget):
                 self.refresh_table()
                 return
 
+    # ── Dialogs ────────────────────────────────────────────
+
+    def _add_employee_dialog(self):
+        dialog = EmployeeAddDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            last_name = dialog.last_name.text().strip()
+            first_name = dialog.first_name.text().strip()
+            middle_name = dialog.middle_name.text().strip()
+            snils = dialog.snils.text().strip()
+            position = dialog.position.text().strip()
+            programs_str = dialog.programs.text().strip()
+
+            if not snils:
+                QMessageBox.warning(self, "Ошибка", "Заполните СНИЛС")
+                return
+
+            snils_clean = snils.replace('-', '').replace(' ', '')
+            if not snils_clean.isdigit() or len(snils_clean) != 11:
+                QMessageBox.warning(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
+                return
+
+            snils_fmt = f"{snils_clean[:3]}-{snils_clean[3:6]}-{snils_clean[6:9]} {snils_clean[9:]}"
+            programs = [p.strip() for p in programs_str.split(',') if p.strip() and p.strip() in VALID_PROGRAMS]
+
+            emp_data = { 'snils': snils_fmt, 'last_name': last_name, 'first_name': first_name,
+                'middle_name': middle_name, 'position': position,
+                'required_programs': ';'.join(programs),}
+            emp_id = EmployeesRepo.upsert(emp_data)
+
+            for p in programs:
+                EmployeeProgramsRepo.upsert(emp_id, {'program_id': int(p), 'need_training': 1})
+
+            self.refresh_table()
+            QMessageBox.information(self, "Успех", "Сотрудник добавлен")
+
+    def _edit_employee(self, emp_id):
+        emp = EmployeesRepo.get_by_id(emp_id)
+        if not emp:
+            return
+        progs = EmployeeProgramsRepo.get_by_employee(emp_id)
+        dialog = EmployeeEditDialog(emp, progs, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_progs = [p.strip() for p in dialog.programs.text().split(',') if p.strip() in VALID_PROGRAMS]
+            EmployeesRepo.upsert({ 'snils': dialog.snils.text().strip(),
+                'last_name': dialog.last_name.text().strip(), 'first_name': dialog.first_name.text().strip(),
+                'middle_name': dialog.middle_name.text().strip(), 'position': dialog.position.text().strip(),
+                'required_programs': ';'.join(new_progs),})
+            EmployeeProgramsRepo.delete_by_employee(emp_id)
+            for p in new_progs:
+                EmployeeProgramsRepo.upsert(emp_id, {'program_id': int(p), 'need_training': 1})
+            self.refresh_table()
+
     def _delete_all_data(self):
         reply = QMessageBox.question(
             self, "Подтверждение",
-            "Удалить ВСЕ данные из сводки по сотрудникам?\n"
-            "Это действие необратимо.",
+            "Удалить ВСЕ данные из сводки по сотрудникам?\nЭто действие необратимо.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1028,144 +944,55 @@ class EmployeeSummaryTab(QWidget):
             self.refresh_table()
             QMessageBox.information(self, "Успех", "Все данные удалены")
 
-    def _edit_employee(self, emp_id):
-        emp = EmployeesRepo.get_by_id(emp_id)
-        if not emp:
-            return
-        progs = EmployeeProgramsRepo.get_by_employee(emp_id)
-        prog_ids = [str(p['program_id']) for p in progs if p.get('need_training') == 1]
+    # ── Program selector ───────────────────────────────────
 
-        from PySide6.QtWidgets import QDialog, QFormLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton
+    def _show_program_selector(self):
         dialog = QDialog(self)
-        dialog.setWindowTitle("Редактирование сотрудника")
-        dialog.setMinimumWidth(450)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dialog.setStyleSheet("QDialog { background-color: white; } QLineEdit { color: inherit; border: 1px solid #CCCCCC; padding: 4px; }")
+        dialog.setWindowTitle("Выбор программ для отображения")
+        dialog.setMinimumSize(500, 500)
+
+        lw = QListWidget()
+        selected = set(self._selected_programs)
+        for p in VALID_PROGRAMS:
+            item = QListWidgetItem(f"{p}: {PROGRAM_TITLES.get(p, '')}")
+            item.setData(Qt.ItemDataRole.UserRole, p)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if p in selected else Qt.CheckState.Unchecked)
+            lw.addItem(item)
 
         layout = QVBoxLayout(dialog)
-        form = QFormLayout()
+        layout.addWidget(QLabel("Отметьте программы для отображения (макс. 6):"))
+        layout.addWidget(lw)
 
-        last_name_ed = QLineEdit(emp['last_name']); form.addRow("Фамилия:", last_name_ed)
-        first_name_ed = QLineEdit(emp['first_name']); form.addRow("Имя:", first_name_ed)
-        middle_name_ed = QLineEdit(emp['middle_name']); form.addRow("Отчество:", middle_name_ed)
-        snils_ed = QLineEdit(emp['snils']); form.addRow("СНИЛС:", snils_ed)
-        position_ed = QLineEdit(emp['position']); form.addRow("Должность:", position_ed)
-        programs_ed = QLineEdit(','.join(prog_ids)); form.addRow("Программы:", programs_ed)
-
-        layout.addLayout(form)
         btn_row = QHBoxLayout()
-        save_btn = QPushButton("Сохранить"); save_btn.setStyleSheet(self._btn_style())
-        save_btn.clicked.connect(dialog.accept)
-        cancel_btn = QPushButton("Отмена"); cancel_btn.setStyleSheet("color:red; border:2px solid red; padding:8px 16px; border-radius:5px; font-weight:bold; background-color:white;")
-        cancel_btn.clicked.connect(dialog.reject)
-        btn_row.addWidget(save_btn); btn_row.addStretch(); btn_row.addWidget(cancel_btn)
-        layout.addLayout(btn_row)
-
-        if dialog.exec() == 1:
-            new_progs = [p.strip() for p in programs_ed.text().split(',') if p.strip() in VALID_PROGRAMS]
-            EmployeesRepo.upsert({
-                'snils': snils_ed.text().strip(),
-                'last_name': last_name_ed.text().strip(),
-                'first_name': first_name_ed.text().strip(),
-                'middle_name': middle_name_ed.text().strip(),
-                'position': position_ed.text().strip(),
-                'required_programs': ';'.join(new_progs),
-            })
-            EmployeeProgramsRepo.delete_by_employee(emp_id)
-            for p in new_progs:
-                EmployeeProgramsRepo.upsert(emp_id, {'program_id': int(p), 'need_training': 1})
+        ok_btn = QPushButton("Применить"); ok_btn.setObjectName("dialogPrimaryBtn")
+        def apply():
+            checked = []
+            for i in range(lw.count()):
+                item = lw.item(i)
+                if item.checkState() == Qt.CheckState.Checked:
+                    checked.append(item.data(Qt.ItemDataRole.UserRole))
+            if not checked:
+                QMessageBox.warning(self, "Ошибка", "Выберите хотя бы одну программу")
+                return
+            if len(checked) > 6:
+                QMessageBox.warning(self, "Ошибка", "Максимум 6 программ одновременно")
+                return
+            self._selected_programs = checked
+            self._save_programs(self.data_dir, checked)
+            dialog.accept()
             self.refresh_table()
-
-    def _add_manual_entry(self):
-        last_name = self.me_last_name.text().strip()
-        first_name = self.me_first_name.text().strip()
-        middle_name = self.me_middle_name.text().strip()
-        snils = self.me_snils.text().strip()
-        position = self.me_position.text().strip()
-        programs_str = self.me_program.text().strip()
-
-        if not snils:
-            QMessageBox.warning(self, "Ошибка", "Заполните СНИЛС")
-            return
-
-        snils_clean = snils.replace('-', '').replace(' ', '')
-        if not snils_clean.isdigit() or len(snils_clean) != 11:
-            QMessageBox.warning(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
-            return
-
-        snils_fmt = f"{snils_clean[:3]}-{snils_clean[3:6]}-{snils_clean[6:9]} {snils_clean[9:]}"
-
-        programs = [p.strip() for p in programs_str.split(',') if p.strip() and p.strip() in VALID_PROGRAMS]
-
-        emp_data = {
-            'snils': snils_fmt,
-            'last_name': last_name,
-            'first_name': first_name,
-            'middle_name': middle_name,
-            'position': position,
-            'required_programs': ';'.join(programs),
-        }
-        emp_id = EmployeesRepo.upsert(emp_data)
-
-        for p in programs:
-            EmployeeProgramsRepo.upsert(emp_id, {'program_id': int(p), 'need_training': 1})
-
-        self._clear_manual_entry()
-        self.refresh_table()
-        QMessageBox.information(self, "Успех", "Сотрудник добавлен")
-
-    def _clear_manual_entry(self):
-        for w in [self.me_last_name, self.me_first_name, self.me_middle_name,
-                  self.me_snils, self.me_position, self.me_program]:
-            w.clear()
-
-    def _show_programs_help(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Программы обучения")
-        dialog.setMinimumSize(650, 700)
-        layout = QVBoxLayout(dialog)
-
-        from PySide6.QtWidgets import QListWidget, QListWidgetItem
-        list_widget = QListWidget()
-        list_widget.setStyleSheet("""
-            QListWidget { border: 1px solid #CCCCCC; background-color: white; }
-            QListWidget::item { padding: 5px; }
-        """)
-
-        blue_set = {"1", "2", "3", "4", "18", "23"}
-        for num in VALID_PROGRAMS:
-            title = PROGRAM_TITLES.get(num, "")
-            item = QListWidgetItem(f"{num}: {title}")
-            item.setData(Qt.ItemDataRole.UserRole, num)
-            if num in blue_set:
-                item.setForeground(QColor("#4169E1"))
-            list_widget.addItem(item)
-
-        layout.addWidget(list_widget)
-
-        btn_layout = QHBoxLayout()
-        close_btn = QPushButton("Закрыть")
-        close_btn.setStyleSheet(self._btn_style())
-        close_btn.clicked.connect(dialog.close)
-        btn_layout.addStretch()
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
-
-        def on_double_click(item):
-            num = item.data(Qt.ItemDataRole.UserRole)
-            current = self.me_program.text().strip()
-            programs = [p.strip() for p in current.split(',') if p.strip()]
-            if num not in programs:
-                programs.append(num)
-            self.me_program.setText(','.join(programs))
-
-        list_widget.itemDoubleClicked.connect(on_double_click)
+        ok_btn.clicked.connect(apply)
+        cancel_btn = QPushButton("Отмена"); cancel_btn.setObjectName("dialogDangerBtn")
+        cancel_btn.clicked.connect(dialog.reject)
+        btn_row.addWidget(ok_btn); btn_row.addStretch(); btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
         dialog.exec()
 
+    # ── Import / Export ────────────────────────────────────
+
     def _import_xlsx(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Выберите XLSX файл", "", "Excel Files (*.xlsx)"
-        )
+        file_path, _ = QFileDialog.getOpenFileName(self, "Выберите XLSX файл", "", "Excel Files (*.xlsx)")
         if not file_path:
             return
         try:
@@ -1185,7 +1012,7 @@ class EmployeeSummaryTab(QWidget):
             first_name_col = col_map.get('Имя')
             middle_name_col = col_map.get('Отчество')
             position_col = col_map.get('Должность')
-            fio_col = col_map.get('ФИО')  # support ФИО column (full name)
+            fio_col = col_map.get('ФИО')
 
             program_cols = {}
             for p in VALID_PROGRAMS:
@@ -1194,23 +1021,24 @@ class EmployeeSummaryTab(QWidget):
                 proto_key = f"программа #{p} Протокол"
                 reg_key = f"программа #{p} Рег.№"
                 if need_key in col_map:
-                    program_cols[p] = {
-                        'need': col_map[need_key],
-                        'date': col_map.get(date_key),
-                        'protocol': col_map.get(proto_key),
-                        'reg': col_map.get(reg_key),
-                    }
+                    program_cols[p] = { 'need': col_map[need_key],
+                        'date': col_map.get(date_key), 'protocol': col_map.get(proto_key),
+                        'reg': col_map.get(reg_key),}
 
             hidden_col = col_map.get('Потребность в обучении по программам')
+
+            if not program_cols and hidden_col is None:
+                QMessageBox.warning(self, "Ошибка", "Не найдены столбцы с потребностью в обучении по программам.\n\nОжидаются заголовки вида: 'программа #N Потребность' или 'Потребность в обучении по программам'")
+                return
 
             imported = 0
             for row_num in range(2, ws.max_row + 1):
                 snils_raw = str(ws.cell(row=row_num, column=snils_col + 1).value or '').strip()
                 if not snils_raw:
                     continue
-
                 snils_clean = snils_raw.replace('-', '').replace(' ', '')
                 if not snils_clean.isdigit() or len(snils_clean) != 11:
+                    logger.info("Import: row %d skipped — invalid SNILS '%s'", row_num, snils_raw)
                     continue
                 snils_fmt = f"{snils_clean[:3]}-{snils_clean[3:6]}-{snils_clean[6:9]} {snils_clean[9:]}"
 
@@ -1218,7 +1046,6 @@ class EmployeeSummaryTab(QWidget):
                 first_name = str(ws.cell(row=row_num, column=(first_name_col if first_name_col is not None else 0) + 1).value or '').strip() if first_name_col is not None else ''
                 middle_name = str(ws.cell(row=row_num, column=(middle_name_col if middle_name_col is not None else 0) + 1).value or '').strip() if middle_name_col is not None else ''
                 position = str(ws.cell(row=row_num, column=(position_col if position_col is not None else 0) + 1).value or '').strip() if position_col is not None else ''
-                # Parse ФИО column if no separate Фамилия/Имя
                 if (not last_name or not first_name) and fio_col is not None:
                     fio_raw = str(ws.cell(row=row_num, column=fio_col + 1).value or '').strip()
                     if fio_raw:
@@ -1241,17 +1068,10 @@ class EmployeeSummaryTab(QWidget):
                     if val in ('1', 'да', 'true', 'yes'):
                         required_programs.add(p)
 
-                if not required_programs:
-                    continue
-
-                emp_id = EmployeesRepo.upsert({
-                    'snils': snils_fmt,
-                    'last_name': last_name,
-                    'first_name': first_name,
-                    'middle_name': middle_name,
+                emp_id = EmployeesRepo.upsert({ 'snils': snils_fmt,
+                    'last_name': last_name, 'first_name': first_name, 'middle_name': middle_name,
                     'position': position,
-                    'required_programs': ';'.join(sorted(required_programs)),
-                })
+                    'required_programs': ';'.join(sorted(required_programs)),})
                 for p in required_programs:
                     prog_data = {'program_id': int(p), 'need_training': 1}
                     if p in program_cols:
@@ -1266,24 +1086,26 @@ class EmployeeSummaryTab(QWidget):
                                     prog_data['exam_date'] = str(date_val).strip()
                         if cols['protocol'] is not None:
                             pval = ws.cell(row=row_num, column=cols['protocol'] + 1).value
-                            if pval is not None:
-                                prog_data['protocol'] = str(pval).strip()
+                            if pval is not None: prog_data['protocol'] = str(pval).strip()
                         if cols['reg'] is not None:
                             rval = ws.cell(row=row_num, column=cols['reg'] + 1).value
-                            if rval is not None:
-                                prog_data['base_no'] = str(rval).strip()
+                            if rval is not None: prog_data['base_no'] = str(rval).strip()
                     EmployeeProgramsRepo.upsert(emp_id, prog_data)
                 imported += 1
 
-            QMessageBox.information(self, "Успех", f"Импортировано: {imported} сотрудников")
+            if imported == 0:
+                msg = "Не найдено сотрудников для импорта."
+                QMessageBox.information(self, "Результат", msg)
+            else:
+                QMessageBox.information(self, "Успех", f"Импортировано: {imported} сотрудников")
             self.refresh_table()
         except Exception as e:
+            logger.exception("Ошибка импорта XLSX")
             QMessageBox.warning(self, "Ошибка", f"Ошибка импорта: {e}")
 
     def _export_xlsx(self, filtered=True):
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Сохранить XLSX", "Сводка_сотрудников.xlsx", "Excel Files (*.xlsx)"
-        )
+            self, "Сохранить XLSX", "Сводка_сотрудников.xlsx", "Excel Files (*.xlsx)")
         if not file_path:
             return
         try:
@@ -1305,32 +1127,26 @@ class EmployeeSummaryTab(QWidget):
                 headers.append(f"программа #{p} Рег.№")
             ws.append(headers)
 
-            header_font = Font(bold=True, color="FFFFFF")
-            header_fill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
+            hf = Font(bold=True, color="FFFFFF")
+            hfill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
             for cell in ws[1]:
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center")
+                cell.font = hf; cell.fill = hfill; cell.alignment = Alignment(horizontal="center")
 
             for emp in employees:
                 progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
                 prog_map = {str(p['program_id']): p for p in progs}
-
                 fio = f"{emp['last_name']} {emp['first_name']} {emp['middle_name']}".strip()
                 row_data = [fio, emp['snils'], emp['position']]
-
                 for p in programs:
                     pd = prog_map.get(p, {})
                     need = "Да" if pd.get('need_training') == 1 else "Нет"
                     row_data.extend([need, pd.get('exam_date', ''), pd.get('protocol', ''), pd.get('base_no', '')])
-
                 ws.append(row_data)
 
             for col in ws.columns:
                 max_len = 0
                 for cell in col:
-                    if cell.value:
-                        max_len = max(max_len, len(str(cell.value)))
+                    if cell.value: max_len = max(max_len, len(str(cell.value)))
                 ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 50)
 
             wb.save(file_path)
@@ -1338,17 +1154,17 @@ class EmployeeSummaryTab(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Ошибка", f"Ошибка экспорта: {e}")
 
+    # ── API ──────────────────────────────────────────────
+
     def _query_reestr(self):
         api_key = load_api_key(self.data_dir)
         if not api_key:
             QMessageBox.warning(self, "Ошибка", "API ключ не найден. Сохраните ключ на вкладке 'Передача данных'")
             return
-
         employees = EmployeesRepo.get_all()
         if not employees:
             QMessageBox.information(self, "Информация", "Нет сотрудников для запроса")
             return
-
         proxy_settings = load_proxy_settings(self.data_dir)
 
         self.query_btn.setEnabled(False)
@@ -1364,10 +1180,7 @@ class EmployeeSummaryTab(QWidget):
         self.query_btn.setEnabled(True)
         self.query_btn.setText("Запросить из реестра")
         if errors > 0:
-            QMessageBox.warning(
-                self, "Результат",
-                f"Обновлено: {updated}\nОшибок: {errors}"
-            )
+            QMessageBox.warning(self, "Результат", f"Обновлено: {updated}\nОшибок: {errors}")
         else:
             QMessageBox.information(self, "Успех", f"Обновлено: {updated} сотрудников")
         self.refresh_table()
@@ -1377,11 +1190,9 @@ class EmployeeSummaryTab(QWidget):
         if not api_key:
             QMessageBox.warning(self, "Ошибка", "API ключ не найден")
             return
-
         emp = EmployeesRepo.get_by_id(emp_id)
         if not emp:
             return
-
         proxy_settings = load_proxy_settings(self.data_dir)
         snils_clean = emp['snils'].replace('-', '').replace(' ', '')
         try:
@@ -1391,8 +1202,7 @@ class EmployeeSummaryTab(QWidget):
                 best = {}
                 for rec in records:
                     prog_id = rec.get('learnProgramId', '')
-                    if not prog_id:
-                        continue
+                    if not prog_id: continue
                     exam_date = _normalize_api_date(rec.get('Date', ''))
                     if prog_id not in best or (exam_date and exam_date > best[prog_id].get('Date', '')):
                         best[prog_id] = rec
@@ -1404,24 +1214,17 @@ class EmployeeSummaryTab(QWidget):
                         EmployeeProgramsRepo.update_from_api(
                             emp_id, int(prog_id),
                             _normalize_api_date(rec.get('Date', '')), rec.get('ProtocolNumber', ''),
-                            rec.get('baseNo', ''), result_val
-                        )
+                            rec.get('baseNo', ''), result_val)
                         updated += 1
-                    except (ValueError, TypeError):
-                        pass
-                # Fill empty employee fields from API response
+                    except (ValueError, TypeError): pass
                 if records:
                     first_rec = records[0]
                     if not emp.get('last_name') or not emp.get('first_name') or not emp.get('position'):
                         updates = {}
-                        if not emp.get('last_name'):
-                            updates['last_name'] = first_rec.get('LastName', '')
-                        if not emp.get('first_name'):
-                            updates['first_name'] = first_rec.get('FirstName', '')
-                        if not emp.get('middle_name'):
-                            updates['middle_name'] = first_rec.get('MiddleName', '')
-                        if not emp.get('position'):
-                            updates['position'] = first_rec.get('Position', '')
+                        if not emp.get('last_name'): updates['last_name'] = first_rec.get('LastName', '')
+                        if not emp.get('first_name'): updates['first_name'] = first_rec.get('FirstName', '')
+                        if not emp.get('middle_name'): updates['middle_name'] = first_rec.get('MiddleName', '')
+                        if not emp.get('position'): updates['position'] = first_rec.get('Position', '')
                         if updates:
                             updates['snils'] = emp['snils']
                             EmployeesRepo.upsert(updates)
@@ -1433,37 +1236,41 @@ class EmployeeSummaryTab(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Ошибка", f"Ошибка запроса: {e}")
 
+    # ── Reports ──────────────────────────────────────────
+
     def _show_current_snapshot(self):
-        """Формирует отчёт о текущей ситуации (как план, но на сегодня)."""
         today = datetime.now()
         plan_data = []
+        reason_map = {'not_trained': 'Не обучен', 'expired': 'Просрочено', 'trained': 'Обучен'}
+        priority_map = {'not_trained': 'Высокий', 'expired': 'Высокий', 'trained': 'Низкий'}
         for emp in EmployeesRepo.get_all():
             progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
-            emp_status = self._get_employee_status(emp['id'], progs)
-            reason_map = {'not_trained': 'Не обучен', 'expired': 'Просрочено', 'trained': 'Обучен'}
-            priority_map = {'not_trained': 'Высокий', 'expired': 'Высокий', 'trained': 'Низкий'}
-            expiry_map = {
-                'not_trained': (today + relativedelta(days=60)).strftime('%d.%m.%Y'),
-                'expired': (today + relativedelta(days=30)).strftime('%d.%m.%Y'),
-                'trained': '',
-            }
-            plan_data.append({
-                'last_name': emp['last_name'],
-                'first_name': emp['first_name'],
-                'middle_name': emp['middle_name'],
-                'snils': emp['snils'],
-                'position': emp['position'],
-                'program': ', '.join(str(p['program_id']) for p in progs if p.get('need_training') == 1),
-                'last_exam_date': '',
-                'expiry_date': expiry_map.get(emp_status, ''),
-                'reason': reason_map.get(emp_status, ''),
-                'priority': priority_map.get(emp_status, ''),
-            })
+            need_progs = [p for p in progs if p.get('need_training') == 1]
+            if not need_progs:
+                continue
+            for p in need_progs:
+                prog_status = p.get('status', 'not_trained')
+                last_exam = p.get('exam_date', '')
+                expiry = ''
+                if prog_status == 'trained' and last_exam:
+                    try:
+                        exam_dt = datetime.strptime(last_exam.split()[0], '%d.%m.%Y')
+                        expiry = (exam_dt + relativedelta(years=3)).strftime('%d.%m.%Y')
+                    except (ValueError, IndexError):
+                        pass
+                elif prog_status == 'not_trained':
+                    expiry = (today + relativedelta(days=60)).strftime('%d.%m.%Y')
+                elif prog_status == 'expired':
+                    expiry = (today + relativedelta(days=30)).strftime('%d.%m.%Y')
+                plan_data.append({ 'last_name': emp['last_name'], 'first_name': emp['first_name'],
+                    'middle_name': emp['middle_name'], 'snils': emp['snils'], 'position': emp['position'],
+                    'program': str(p['program_id']),
+                    'last_exam_date': last_exam, 'expiry_date': expiry,
+                    'reason': reason_map.get(prog_status, ''),
+                    'priority': priority_map.get(prog_status, ''),})
 
         plan_data.sort(key=lambda x: (
-            {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3),
-            x['last_name']
-        ))
+            {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3), x['last_name']))
 
         if not plan_data:
             QMessageBox.information(self, "Информация", "Нет данных для отображения")
@@ -1477,16 +1284,14 @@ class EmployeeSummaryTab(QWidget):
         year = datetime.now().year
 
         categories = [
-            ('А', [3]),
-            ('Б', [4]),
+            ('А', [3]), ('Б', [4]),
             ('В', list(range(6, 30))),
-            ('ОПП', [1]),
-            ('СИЗ', [2]),
+            ('ОПП', [1]), ('СИЗ', [2]),
         ]
 
         db = DatabaseManager.get_instance()
         all_programs = db.fetchall(
-            "SELECT program_id, exam_date FROM employee_programs WHERE need_training = 1 AND exam_date IS NOT NULL AND exam_date != ''"
+            "SELECT program_id, exam_date FROM employee_programs WHERE need_training = 1"
         )
 
         report_data = {}
@@ -1494,10 +1299,13 @@ class EmployeeSummaryTab(QWidget):
             count_liable = 0
             count_trained = 0
             for row in all_programs:
-                if row['program_id'] not in prog_ids:
+                if row['program_id'] not in prog_ids: continue
+                exam_date = row['exam_date']
+                if not exam_date or not exam_date.strip():
+                    count_liable += 1
                     continue
                 try:
-                    exam_date_str = row['exam_date'].split()[0]
+                    exam_date_str = exam_date.split()[0]
                     exam_year = datetime.strptime(exam_date_str, '%d.%m.%Y').year
                     if exam_year == year:
                         count_trained += 1
@@ -1505,62 +1313,44 @@ class EmployeeSummaryTab(QWidget):
                     elif exam_year == year - 3:
                         count_liable += 1
                 except (ValueError, IndexError):
+                    count_liable += 1
                     continue
             report_data[cat_name] = (count_liable, count_trained)
 
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Отчет по обученным за {year} год")
         dialog.setMinimumSize(700, 350)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dialog.setStyleSheet("QDialog { background-color: white; }")
 
         layout = QVBoxLayout(dialog)
-
         title = QLabel(f"Отчет по обученным за {year} год")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #4169E1;")
+        title.setObjectName("reportTitleLabel")
         layout.addWidget(title)
 
         table = QTableWidget()
         table.setColumnCount(3)
-        table.setHorizontalHeaderLabels([
-            "Программа", "Подлежат обучению в текущем году", "Обучено в текущем году"
-        ])
+        table.setHorizontalHeaderLabels(["Программа", "Подлежат обучению\nв текущем году", "Обучено\nв текущем году"])
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setDefaultSectionSize(200)
         table.verticalHeader().setVisible(False)
 
         for cat_name, (count_liable, count_trained) in report_data.items():
             row = table.rowCount()
             table.insertRow(row)
-            cat_item = QTableWidgetItem(cat_name)
-            cat_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row, 0, cat_item)
-            liable_item = QTableWidgetItem(str(count_liable))
-            liable_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row, 1, liable_item)
-            trained_item = QTableWidgetItem(str(count_trained))
-            trained_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row, 2, trained_item)
+            for c, v in enumerate([cat_name, str(count_liable), str(count_trained)]):
+                item = QTableWidgetItem(v)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(row, c, item)
 
         layout.addWidget(table)
 
-        close_btn = QPushButton("Закрыть")
-        close_btn.setStyleSheet("""
-            QPushButton {
-                color: red; border: 2px solid red; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold; background-color: white;
-            }
-            QPushButton:hover { background-color: #FFE0E0; }
-        """)
-        close_btn.clicked.connect(dialog.close)
-
         btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        btn_layout.addWidget(close_btn)
+        close_btn = QPushButton("Закрыть"); close_btn.setObjectName("dialogDangerBtn")
+        close_btn.clicked.connect(dialog.close)
+        btn_layout.addStretch(); btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
-
         dialog.exec()
 
     def _generate_plan(self, current_year=True):
@@ -1571,43 +1361,22 @@ class EmployeeSummaryTab(QWidget):
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Параметры формирования плана на {plan_year} год")
         dialog.setMinimumSize(400, 250)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dialog.setStyleSheet("QDialog { background-color: white; }")
 
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel(f"Параметры формирования плана на {plan_year} год:"))
 
-        cb_not_trained = QCheckBox("Включать не обученных")
-        cb_not_trained.setChecked(True)
-        cb_not_trained.setStyleSheet("color: inherit;")
+        cb_not_trained = QCheckBox("Включать не обученных"); cb_not_trained.setChecked(True)
         layout.addWidget(cb_not_trained)
-
-        cb_expired = QCheckBox("Включать просроченных")
-        cb_expired.setChecked(True)
-        cb_expired.setStyleSheet("color: inherit;")
+        cb_expired = QCheckBox("Включать просроченных"); cb_expired.setChecked(True)
         layout.addWidget(cb_expired)
-
-        cb_expiring = QCheckBox("Включать истекающих в планируемом году")
-        cb_expiring.setChecked(True)
-        cb_expiring.setStyleSheet("color: inherit;")
+        cb_expiring = QCheckBox("Включать истекающих в планируемом году"); cb_expiring.setChecked(True)
         layout.addWidget(cb_expiring)
-
-        cb_failed = QCheckBox("Включать неуспешно прошедших проверку знаний")
-        cb_failed.setChecked(True)
-        cb_failed.setStyleSheet("color: inherit;")
+        cb_failed = QCheckBox("Включать неуспешно прошедших проверку знаний"); cb_failed.setChecked(True)
         layout.addWidget(cb_failed)
 
         btn_layout = QHBoxLayout()
-        generate_btn = QPushButton("Сформировать")
-        generate_btn.setStyleSheet(self._btn_style())
-        cancel_btn = QPushButton("Отмена")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                color: red; border: 2px solid red; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold; background-color: white;
-            }
-            QPushButton:hover { background-color: #FFE0E0; }
-        """)
+        generate_btn = QPushButton("Сформировать"); generate_btn.setObjectName("dialogPrimaryBtn")
+        cancel_btn = QPushButton("Отмена"); cancel_btn.setObjectName("dialogDangerBtn")
         cancel_btn.clicked.connect(dialog.reject)
 
         plan_data = []
@@ -1617,70 +1386,45 @@ class EmployeeSummaryTab(QWidget):
             employees = EmployeesRepo.get_all()
             for emp in employees:
                 progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
-                emp_status = self._get_employee_status(emp['id'], progs)
-                exam_dates = []
-                all_progs = []
-                for p in progs:
-                    if p.get('need_training') != 1:
-                        continue
-                    all_progs.append(str(p['program_id']))
-                    if p.get('exam_date'):
-                        exam_dates.append(p['exam_date'])
-                prog_ids = ', '.join(all_progs) if all_progs else ''
-                last_exam = max(exam_dates) if exam_dates else ""
+                need_progs = [p for p in progs if p.get('need_training') == 1]
+                if not need_progs:
+                    continue
+                for p in need_progs:
+                    prog_status = p.get('status', 'not_trained')
+                    last_exam = p.get('exam_date', '')
 
-                reason = None
-                priority = None
-                expiry = ""
+                    reason = None; priority = None; expiry = ""
 
-                if emp_status == 'not_trained':
-                    if cb_not_trained.isChecked():
-                        reason = "Не обучен"
-                        priority = "Высокий"
-                        expiry = (today + relativedelta(days=60)).strftime('%d.%m.%Y')
-                elif emp_status == 'expired':
-                    if cb_expired.isChecked():
-                        reason = "Просрочено"
-                        priority = "Высокий"
-                        expiry = (today + relativedelta(days=30)).strftime('%d.%m.%Y')
-                else:
-                    # trained — проверяем истекающих в планируемом году
-                    if cb_expiring.isChecked() and last_exam:
-                        try:
-                            exam_date = datetime.strptime(last_exam.split()[0], '%d.%m.%Y')
-                            expiry_date = exam_date + relativedelta(years=3)
-                            if expiry_date.year == plan_year:
-                                reason = "Истекает срок действия"
-                                priority = "Средний"
-                                expiry = expiry_date.strftime('%d.%m.%Y')
-                        except (ValueError, IndexError):
-                            pass
+                    if prog_status == 'not_trained':
+                        if cb_not_trained.isChecked():
+                            reason = "Не обучен"; priority = "Высокий"
+                            expiry = (today + relativedelta(days=60)).strftime('%d.%m.%Y')
+                    elif prog_status == 'expired':
+                        if cb_expired.isChecked():
+                            reason = "Просрочено"; priority = "Высокий"
+                            expiry = (today + relativedelta(days=30)).strftime('%d.%m.%Y')
+                    else:
+                        if cb_expiring.isChecked() and last_exam:
+                            try:
+                                exam_date = datetime.strptime(last_exam.split()[0], '%d.%m.%Y')
+                                expiry_date = exam_date + relativedelta(years=3)
+                                if expiry_date.year == plan_year:
+                                    reason = "Истекает срок действия"; priority = "Средний"
+                                    expiry = expiry_date.strftime('%d.%m.%Y')
+                            except (ValueError, IndexError): pass
 
-                if reason and priority:
-                    plan_data.append({
-                        'last_name': emp['last_name'],
-                        'first_name': emp['first_name'],
-                        'middle_name': emp['middle_name'],
-                        'snils': emp['snils'],
-                        'position': emp['position'],
-                        'program': prog_ids,
-                        'last_exam_date': last_exam,
-                        'expiry_date': expiry,
-                        'reason': reason,
-                        'priority': priority,
-                    })
+                    if reason and priority:
+                        plan_data.append({ 'last_name': emp['last_name'], 'first_name': emp['first_name'],
+                            'middle_name': emp['middle_name'], 'snils': emp['snils'], 'position': emp['position'],
+                            'program': str(p['program_id']), 'last_exam_date': last_exam, 'expiry_date': expiry,
+                            'reason': reason, 'priority': priority,})
 
             plan_data.sort(key=lambda x: (
-                {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3),
-                x['last_name']
-            ))
-
+                {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3), x['last_name']))
             dialog.accept()
 
         generate_btn.clicked.connect(do_generate)
-        btn_layout.addWidget(generate_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(generate_btn); btn_layout.addStretch(); btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
 
         if dialog.exec() != 1 or not plan_data:

@@ -122,12 +122,14 @@ class ExamJournalRepo:
         if date_from:
             try:
                 df = datetime.strptime(date_from, "%d.%m.%Y")
-                results = [r for r in results if datetime.strptime(r.send_date.split()[0], '%d.%m.%Y') >= df]
+                results = [r for r in results
+                           if r.exam_date and datetime.strptime(r.exam_date.split()[0], '%d.%m.%Y') >= df]
             except: pass
         if date_to:
             try:
                 dt = datetime.strptime(date_to, "%d.%m.%Y")
-                results = [r for r in results if datetime.strptime(r.send_date.split()[0], '%d.%m.%Y') <= dt]
+                results = [r for r in results
+                           if r.exam_date and datetime.strptime(r.exam_date.split()[0], '%d.%m.%Y') <= dt]
             except: pass
         return results
 

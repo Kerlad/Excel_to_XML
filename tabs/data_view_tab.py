@@ -1,7 +1,7 @@
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
+﻿from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
     QLabel, QMessageBox, QFileDialog, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QComboBox, QCheckBox, QScrollArea, QFrame, QDialog, QFormLayout
+    QHeaderView, QAbstractItemView, QMenu, QDialog, QFormLayout, QComboBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
@@ -11,7 +11,7 @@ import logging
 
 from exporters.xml_exporter import export_to_xml
 from db.workers_data_repo import WorkersDataRepo
-from utils.crypto import decrypt_data
+from utils.crypto import decrypt_data, hash_for_search
 
 logger = logging.getLogger(__name__)
 
@@ -19,105 +19,95 @@ FIELD_KEYS = ['last_name', 'first_name', 'middle_name', 'snils', 'position',
               'employer_inn', 'employer_title', 'tc_inn', 'tc_title',
               'result', 'program', 'date', 'protocol']
 
+COLUMN_LABELS = [
+    "Фамилия", "Имя", "Отчество", "СНИЛС", "Должность",
+    "ИНН\nзаказчика", "Наименование\nзаказчика", "ИНН\nУЦ",
+    "Наименование\nУЦ", "Результат", "№ программы", "Дата", "№ протокола"
+]
+
 
 class DataViewTab(QWidget):
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("background-color: transparent;")
+        self._all_records = []
+        self._setup_ui()
+        self._connect_signals()
+        self._load_all_data()
 
+    def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
-        btn_layout = QHBoxLayout()
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(6)
+
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("\U0001F50D Поиск...")
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.setMaximumWidth(300)
+        toolbar.addWidget(self.search_edit)
+
+        toolbar.addStretch()
+
+        self.refresh_btn = QPushButton("Обновить")
+        self.convert_btn = QPushButton("Конвертировать в XML")
         self.clear_btn = QPushButton("Очистить")
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                color: red;
-                border: 2px solid red;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-                background-color: white;
-            }
-            QPushButton:hover {
-                background-color: #FFE0E0;
-            }
-        """)
-        self.clear_btn.clicked.connect(self.clear_all_data)
+        self.export_btn = QPushButton("Экспорт XLSX")
 
-        separator = QLabel("   ")
-
-        self.convert_btn = QPushButton("Конвертировать")
         self.convert_btn.setStyleSheet("""
-            QPushButton {
-                color: green;
-                border: 2px solid #4169E1;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #E0FFE0;
-            }
+            QPushButton { color: white; background-color: #27AE60;
+                border: none; padding: 8px 16px;
+                border-radius: 5px; font-weight: bold}
+            QPushButton:hover { background-color: #219A52}
         """)
-        self.convert_btn.clicked.connect(self.convert_to_xml)
+        self.clear_btn.setStyleSheet("""
+            QPushButton { color: white; background-color: #E74C3C;
+                border: none; padding: 8px 16px;
+                border-radius: 5px; font-weight: bold}
+            QPushButton:hover { background-color: #C0392B}
+        """)
 
-        btn_layout.addWidget(self.clear_btn)
-        btn_layout.addWidget(separator)
-        btn_layout.addWidget(self.convert_btn)
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
+        toolbar.addWidget(self.refresh_btn)
+        toolbar.addWidget(self.convert_btn)
+        toolbar.addWidget(self.clear_btn)
+        toolbar.addWidget(self.export_btn)
+        layout.addLayout(toolbar)
 
         self.table = QTableWidget()
         self.table.setColumnCount(13)
-        self.table.setHorizontalHeaderLabels([
-            "Фамилия", "Имя", "Отчество", "СНИЛС", "Должность",
-            "ИНН\nзаказчика", "Наименование\nзаказчика", "ИНН\nУЦ",
-            "Наименование\nУЦ", "Результат", "№ программы", "Дата", "№ протокола"
-        ])
-
+        self.table.setHorizontalHeaderLabels(COLUMN_LABELS)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.verticalHeader().setDefaultSectionSize(25)
+        self.table.setSortingEnabled(True)
+        self.table.verticalHeader().setDefaultSectionSize(32)
         self.table.verticalHeader().setVisible(False)
-
-        self.table.horizontalHeader().setStyleSheet("""
-            QHeaderView::section {
-                background-color: #4169E1;
-                color: white;
-                padding: 5px;
-                border: 1px solid #3050C0;
-                font-weight: bold;
-            }
-        """)
-
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: white;
-                border: 2px solid #4169E1;
-                border-radius: 5px;
-                gridline-color: #CCCCCC;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-        """)
-
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self.show_context_menu)
+        self.table.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+        self.status_label = QLabel("Записей: 0 | Выбрано: 0")
 
         layout.addWidget(self.table)
+        layout.addWidget(self.status_label)
 
-        self._load_all_data()
+    def _connect_signals(self):
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
+        self.table.itemSelectionChanged.connect(self._update_status)
+        self.table.horizontalHeader().customContextMenuRequested.connect(self._show_header_menu)
+        self.search_edit.textChanged.connect(self._filter_table)
+        self.refresh_btn.clicked.connect(self._load_all_data)
+        self.convert_btn.clicked.connect(self.convert_to_xml)
+        self.clear_btn.clicked.connect(self.clear_all_data)
+        self.export_btn.clicked.connect(self._export_xlsx)
 
     def _load_all_data(self):
         rows = WorkersDataRepo.get_all()
-        records = []
+        self._all_records = []
         for r in rows:
-            records.append({
+            self._all_records.append({
                 'last_name': r['last_name'],
                 'first_name': r['first_name'],
                 'middle_name': r['middle_name'],
@@ -133,28 +123,30 @@ class DataViewTab(QWidget):
                 'protocol': r['protocol'],
                 'id': r['id'],
             })
-        self._display_records(records)
+        self._display_records(self._all_records)
 
     def _display_records(self, records: list):
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
-        for row in records:
-            row_position = self.table.rowCount()
-            self.table.insertRow(row_position)
-            for col, col_key in enumerate(FIELD_KEYS):
-                item = QTableWidgetItem(str(row.get(col_key, '')))
+        for record in records:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            for col, key in enumerate(FIELD_KEYS):
+                item = QTableWidgetItem(str(record.get(key, '')))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row_position, col, item)
-            first = self.table.item(row_position, 0)
-            if first:
-                first.setData(Qt.ItemDataRole.UserRole, row.get('id'))
-
-    def _get_row_data(self, row: int) -> dict:
-        data = {}
-        for col, key in enumerate(FIELD_KEYS):
-            item = self.table.item(row, col)
-            data[key] = item.text() if item else ''
-        data['id'] = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) if self.table.item(row, 0) else None
-        return data
+                self.table.setItem(row, col, item)
+            first_item = self.table.item(row, 0)
+            if first_item:
+                first_item.setData(Qt.ItemDataRole.UserRole, record.get('id'))
+            result_item = self.table.item(row, 9)
+            if result_item:
+                text = result_item.text()
+                if text == "Удовлетворительно":
+                    result_item.setForeground(QColor("#27AE60"))
+                elif text == "Неудовлетворительно":
+                    result_item.setForeground(QColor("#E74C3C"))
+        self.table.setSortingEnabled(True)
+        self._update_status()
 
     def get_existing_keys(self):
         return WorkersDataRepo.get_existing_keys()
@@ -169,7 +161,7 @@ class DataViewTab(QWidget):
         to_add = []
 
         for row in new_data:
-            key = (row.get('snils', ''), str(row.get('program', '')))
+            key = (hash_for_search(row.get('snils', '')), str(row.get('program', '')), row.get('date', '') or '')
             if key in existing_keys:
                 duplicates += 1
                 continue
@@ -187,51 +179,82 @@ class DataViewTab(QWidget):
             f"Пропущено дублей: {duplicates}"
         )
 
-    def show_context_menu(self, position):
-        from PySide6.QtWidgets import QMenu
+    def _filter_table(self, text):
+        text = text.strip().lower()
+        for row in range(self.table.rowCount()):
+            visible = not text
+            if text:
+                for col in range(self.table.columnCount()):
+                    item = self.table.item(row, col)
+                    if item and text in item.text().lower():
+                        visible = True
+                        break
+            self.table.setRowHidden(row, not visible)
+        self._update_status()
+
+    def _update_status(self):
+        total = self.table.rowCount()
+        visible = sum(1 for row in range(total) if not self.table.isRowHidden(row))
+        selected_rows = len(set(
+            index.row() for index in self.table.selectedItems()
+        )) if self.table.selectedItems() else 0
+        self.status_label.setText(f"Записей: {visible} | Выбрано: {selected_rows}")
+
+    def _show_context_menu(self, position):
+        row = self.table.rowAt(position.y())
+        if row < 0:
+            return
+
         menu = QMenu(self)
         menu.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: white;
-                color: inherit;
-                border: 1px solid #CCCCCC;
-                padding: 5px;
-            }
-            QMenu::item {
-                background-color: white;
-                color: inherit;
-                padding: 5px 25px 5px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #E8E8FF;
-                color: inherit;
-            }
-        """)
+
         edit_action = menu.addAction("Редактировать")
         delete_action = menu.addAction("Удалить")
-        action = menu.exec(self.table.mapToGlobal(position))
+        duplicate_action = menu.addAction("Дублировать запись")
 
+        action = menu.exec(self.table.mapToGlobal(position))
         if action == edit_action:
             self.edit_selected_row()
         elif action == delete_action:
-            self.delete_selected_row()
+            self.delete_selected_rows()
+        elif action == duplicate_action:
+            self._duplicate_selected_rows()
+
+    def _show_header_menu(self, position):
+        menu = QMenu(self)
+        for i, label in enumerate(COLUMN_LABELS):
+            clean = label.replace('\n', ' ')
+            action = menu.addAction(clean)
+            action.setCheckable(True)
+            action.setChecked(not self.table.isColumnHidden(i))
+            action.triggered.connect(lambda checked, col=i: self._toggle_column(col))
+        menu.exec(self.table.horizontalHeader().mapToGlobal(position))
+
+    def _toggle_column(self, col):
+        self.table.setColumnHidden(col, not self.table.isColumnHidden(col))
+
+    def _get_row_data(self, row: int) -> dict:
+        data = {}
+        for col, key in enumerate(FIELD_KEYS):
+            item = self.table.item(row, col)
+            data[key] = item.text() if item else ''
+        data['id'] = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) if self.table.item(row, 0) else None
+        return data
 
     def edit_selected_row(self):
-        current_row = self.table.currentRow()
-        if current_row < 0:
+        rows = sorted(set(index.row() for index in self.table.selectedItems()))
+        if not rows:
             return
-
-        row_data = {}
-        for col in range(self.table.columnCount()):
-            item = self.table.item(current_row, col)
-            if item:
-                row_data[col] = item.text()
-
-        dialog = EditDialog(row_data, self)
-        if dialog.exec() == 1:
+        row = rows[0]
+        row_data = self._get_row_data(row)
+        col_data = {}
+        for col, key in enumerate(FIELD_KEYS):
+            col_data[col] = row_data.get(key, '')
+        col_data['id'] = row_data.get('id')
+        dialog = EditDialog(col_data, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.get_data()
-            record_id = self.table.item(current_row, 0).data(Qt.ItemDataRole.UserRole)
+            record_id = col_data.get('id')
             if record_id:
                 record = {}
                 for col, key in enumerate(FIELD_KEYS):
@@ -239,22 +262,32 @@ class DataViewTab(QWidget):
                 WorkersDataRepo.update(record_id, record)
                 self._load_all_data()
 
-    def delete_selected_row(self):
-        current_row = self.table.currentRow()
-        if current_row < 0:
+    def delete_selected_rows(self):
+        rows = sorted(set(index.row() for index in self.table.selectedItems()))
+        if not rows:
             return
-
+        count = len(rows)
+        msg = "Вы уверены, что хотите удалить выбранные записи?" if count > 1 else "Вы уверены, что хотите удалить?"
         reply = QMessageBox.question(
-            self, "Подтверждение",
-            "Вы уверены, что хотите удалить?",
+            self, "Подтверждение", msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-
         if reply == QMessageBox.StandardButton.Yes:
-            record_id = self.table.item(current_row, 0).data(Qt.ItemDataRole.UserRole)
-            if record_id:
-                WorkersDataRepo.delete(record_id)
-            self.table.removeRow(current_row)
+            for row in reversed(rows):
+                record_id = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+                if record_id:
+                    WorkersDataRepo.delete(record_id)
+            self._load_all_data()
+
+    def _duplicate_selected_rows(self):
+        rows = sorted(set(index.row() for index in self.table.selectedItems()))
+        if not rows:
+            return
+        for row in rows:
+            data = self._get_row_data(row)
+            data.pop('id', None)
+            WorkersDataRepo.add(data)
+        self._load_all_data()
 
     def clear_all_data(self):
         reply = QMessageBox.question(
@@ -264,7 +297,9 @@ class DataViewTab(QWidget):
         )
         if reply == QMessageBox.StandardButton.Ok:
             WorkersDataRepo.clear()
+            self._all_records.clear()
             self.table.setRowCount(0)
+            self._update_status()
 
     def convert_to_xml(self):
         if self.table.rowCount() == 0:
@@ -304,6 +339,8 @@ class DataViewTab(QWidget):
         if file_path:
             records = []
             for row in range(self.table.rowCount()):
+                if self.table.isRowHidden(row):
+                    continue
                 record = {}
                 for col, key in enumerate(FIELD_KEYS):
                     item = self.table.item(row, col)
@@ -316,6 +353,64 @@ class DataViewTab(QWidget):
             else:
                 QMessageBox.warning(self, "Ошибка", message)
 
+    def _export_xlsx(self):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+        total_rows = self.table.rowCount()
+        if total_rows == 0:
+            QMessageBox.warning(self, "Предупреждение", "Нет данных для экспорта")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Сохранить XLSX", "", "Excel Files (*.xlsx)"
+        )
+        if not file_path:
+            return
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Данные"
+
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
+        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+
+        for col, label in enumerate(COLUMN_LABELS, 1):
+            cell = ws.cell(row=1, column=col, value=label.replace('\n', ' '))
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+
+        row_num = 2
+        for row in range(total_rows):
+            if self.table.isRowHidden(row):
+                continue
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                value = item.text() if item else ''
+                cell = ws.cell(row=row_num, column=col + 1, value=value)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border = thin_border
+            row_num += 1
+
+        exported = row_num - 2
+        for col in range(1, len(COLUMN_LABELS) + 1):
+            max_len = len(COLUMN_LABELS[col - 1].replace('\n', ' '))
+            for row in range(2, row_num):
+                val = ws.cell(row=row, column=col).value
+                if val:
+                    max_len = max(max_len, len(str(val)))
+            ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = min(max_len + 3, 50)
+
+        wb.save(file_path)
+        QMessageBox.information(self, "Успех", f"Экспортировано записей: {exported}")
+
 
 class EditDialog(QDialog):
     def __init__(self, row_data, parent=None):
@@ -323,38 +418,6 @@ class EditDialog(QDialog):
         self.row_data = row_data
         self.setWindowTitle("Редактирование данных")
         self.setMinimumWidth(500)
-
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("""
-            EditDialog {
-                background-color: white;
-            }
-            EditDialog QLabel {
-                color: inherit;
-                background: transparent;
-            }
-            EditDialog QLineEdit { color: black;
-                background-color: white;
-                border: 1px solid #CCCCCC;
-                padding: 4px;
-            }
-            EditDialog QComboBox { color: black;
-                background-color: white;
-                border: 1px solid #CCCCCC;
-                padding: 4px;
-            }
-            EditDialog QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            EditDialog QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
 
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
@@ -382,7 +445,6 @@ class EditDialog(QDialog):
             else:
                 line_edit = QLineEdit()
                 line_edit.setText(row_data.get(col_idx, ""))
-                line_edit.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
                 form_layout.addRow(label, line_edit)
                 self.fields[col_idx] = line_edit
                 self.field_widgets[col_idx] = {'widget': line_edit, 'label': label}
@@ -391,10 +453,11 @@ class EditDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("Сохранить")
+        save_btn.setObjectName("dialogPrimaryBtn")
         save_btn.clicked.connect(self.validate_and_save)
         cancel_btn = QPushButton("Отмена")
+        cancel_btn.setObjectName("dialogDangerBtn")
         cancel_btn.clicked.connect(self.reject)
-
         btn_layout.addWidget(save_btn)
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
@@ -402,11 +465,11 @@ class EditDialog(QDialog):
     def _set_error(self, col_idx):
         info = self.field_widgets.get(col_idx)
         if info:
-            info['widget'].setStyleSheet("color: inherit; border: 2px solid red; padding: 4px;")
+            info['widget'].setStyleSheet("border: 2px solid #E74C3C;")
 
     def _clear_errors(self):
         for info in self.field_widgets.values():
-            info['widget'].setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
+            info['widget'].setStyleSheet("")
 
     def validate_and_save(self):
         self._clear_errors()

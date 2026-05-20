@@ -36,8 +36,8 @@ class WorkersDataRepo:
     @staticmethod
     def get_existing_keys():
         db = DatabaseManager.get_instance()
-        rows = db.fetchall(f"SELECT snils_hash, program FROM {WorkersDataRepo.TABLE}")
-        return {(r['snils_hash'], str(r['program'])) for r in rows}
+        rows = db.fetchall(f"SELECT snils_hash, program, date FROM {WorkersDataRepo.TABLE}")
+        return {(r['snils_hash'], str(r['program']), r['date'] or '') for r in rows}
 
     @staticmethod
     def add(record: dict) -> int:
@@ -112,12 +112,13 @@ class WorkersDataRepo:
 
     @staticmethod
     def delete(rid: int):
-        DatabaseManager.get_instance().execute(
-            f"DELETE FROM {WorkersDataRepo.TABLE} WHERE id = ?", (rid,))
+        with DatabaseManager.get_instance().transaction() as conn:
+            conn.execute(f"DELETE FROM {WorkersDataRepo.TABLE} WHERE id = ?", (rid,))
 
     @staticmethod
     def clear():
-        DatabaseManager.get_instance().execute(f"DELETE FROM {WorkersDataRepo.TABLE}")
+        with DatabaseManager.get_instance().transaction() as conn:
+            conn.execute(f"DELETE FROM {WorkersDataRepo.TABLE}")
 
     @staticmethod
     def count() -> int:

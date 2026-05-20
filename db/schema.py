@@ -93,4 +93,18 @@ def create_schema():
     db = DatabaseManager.get_instance()
     with db.transaction() as conn:
         conn.executescript(SCHEMA_SQL)
+        try:
+            conn.execute(
+                "DELETE FROM workers_data WHERE id NOT IN "
+                "(SELECT MIN(id) FROM workers_data GROUP BY snils_hash, program, date)"
+            )
+        except Exception:
+            pass
+        try:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_workers_unique "
+                "ON workers_data(snils_hash, program, date)"
+            )
+        except Exception as e:
+            logger.warning("Could not create unique index on workers_data: %s", e)
     logger.info("Schema created/verified")

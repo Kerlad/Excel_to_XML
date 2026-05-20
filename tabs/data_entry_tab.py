@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import logging
 import webbrowser
@@ -8,8 +8,9 @@ from openpyxl import Workbook
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QComboBox, QScrollArea,
-    QFileDialog, QMessageBox, QFrame
+    QFileDialog, QMessageBox, QFrame, QProgressBar, QDialog
 )
+from utils.crypto import hash_for_search
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from importers.xlsx_importer import load_xlsx
@@ -20,452 +21,502 @@ logger = logging.getLogger(__name__)
 
 
 class DataEntryTab(QWidget):
-    # Сигнал для передачи данных на вкладку Просмотр
-    data_loaded = Signal(list, bool)  # (records, is_replace)
+    data_loaded = Signal(list, bool)
 
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("background-color: transparent;")
-        # Callback для получения существующих ключей (СНИЛС, программа)
         self.get_existing_keys_callback = None
 
-        # Хранение ошибок последней загрузки для экспорта
         self._last_error_details = []
         self._last_duplicate_map = {}
 
-        # Пути
         from utils.app_paths import get_app_data_dir, get_resource_dir
         self.resource_dir = get_resource_dir()
         self.data_dir = get_app_data_dir()
         self.schema_dir = os.path.join(self.resource_dir, "schema")
         self.settings_file = os.path.join(self.data_dir, "org_settings.json")
-        
-        # Создание директорий
+
         os.makedirs(self.data_dir, exist_ok=True)
         os.makedirs(self.schema_dir, exist_ok=True)
-        
-        # Основной layout с прокруткой
+
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
-        
-        # Scroll area
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(16)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("background-color: transparent; border: none;")
-        
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
-        scroll_layout.setSpacing(15)
-        
-        # Раздел 1: Данные УЦ и работодателя
+        scroll_layout.setSpacing(16)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+
         scroll_layout.addWidget(self._create_org_group())
-        
-        # Раздел 2: Загрузка данных
         scroll_layout.addWidget(self._create_upload_group())
-        
-        # Раздел 3: Ввод данных работника
         scroll_layout.addWidget(self._create_manual_entry_group())
-        
         scroll_layout.addStretch()
+
         scroll.setWidget(scroll_widget)
         main_layout.addWidget(scroll)
 
-        # Загрузка настроек
         self.load_settings()
-        # Загрузка XSD при старте, если есть
         self.load_xsd_on_startup()
 
+    # ── helpers ─────────────────────────────────────────────
+
+    def _btn_style(self, bg="#4169E1", hover="#3151B1"):
+        return f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+        """
+
+    # ── Group 1: Данные УЦ и работодателя ──────────────────
+
     def _create_org_group(self):
-        """Создание группы 'Данные УЦ и работодателя'"""
-        group = QGroupBox()
-        group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #4169E1;
-                border-radius: 10px;
-                margin-top: 10px;
-                padding: 15px;
-                background-color: transparent;
-            }
-            QGroupBox::title {
-                color: #4169E1;
-                font-weight: bold;
-                font-size: 14px;
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
-        group.setTitle("Данные УЦ и работодателя")
+        group = QGroupBox("Данные УЦ и работодателя")
 
-        # QGridLayout для точного выравнивания:
-        # Строка 0: ИНН УЦ (label) | ИНН УЦ (field) | [75px spacer] | Название УЦ (label) | Название УЦ (field)
-        # Строка 1: ИНН Заказчика (label) | ИНН Заказчика (field) | [75px spacer] | Название Заказчика (label) | Название Заказчика (field)
         grid = QGridLayout(group)
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(12)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(14)
+        grid.setContentsMargins(4, 4, 4, 4)
 
-        # === Строка 0: ИНН УЦ и Название УЦ ===
+        # === row 0: ИНН УЦ  +  Название УЦ ===
+        tc_inn_icon = QLabel("\U0001F511")
+        tc_inn_icon.setToolTip("Идентификационный номер налогоплательщика")
+        grid.addWidget(tc_inn_icon, 0, 0)
+
         self.tc_inn_label = QLabel("ИНН УЦ:")
-        self.tc_inn_label.setStyleSheet("color: inherit; font-weight: bold;")
-        self.tc_inn_label.setFixedWidth(110)
-        grid.addWidget(self.tc_inn_label, 0, 0)
+        self.tc_inn_label.setToolTip("10 или 12 цифр")
+        grid.addWidget(self.tc_inn_label, 0, 1)
 
         self.tc_inn_input = QLineEdit()
-        self.tc_inn_input.setFixedWidth(160)
         self.tc_inn_input.setPlaceholderText("10 или 12 цифр")
-        self.tc_inn_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
-        grid.addWidget(self.tc_inn_input, 0, 1)
+        self.tc_inn_input.setToolTip("ИНН удостоверяющего центра (10 или 12 цифр)")
+        self.tc_inn_input.setFixedWidth(180)
+        grid.addWidget(self.tc_inn_input, 0, 2)
 
-        # Фиксированный отступ 2 см (~75px)
-        grid.setColumnMinimumWidth(2, 75)
+        spacer = QLabel("  ")
+        grid.addWidget(spacer, 0, 3)
 
         self.tc_title_label = QLabel("Название УЦ:")
-        self.tc_title_label.setStyleSheet("color: inherit; font-weight: bold;")
-        self.tc_title_label.setFixedWidth(120)
-        grid.addWidget(self.tc_title_label, 0, 3)
+        self.tc_title_label.setToolTip("Полное наименование")
+        grid.addWidget(self.tc_title_label, 0, 4)
 
         self.tc_title_input = QLineEdit()
-        self.tc_title_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         self.tc_title_input.setPlaceholderText("Полное наименование")
-        grid.addWidget(self.tc_title_input, 0, 4)
+        self.tc_title_input.setToolTip("Полное наименование удостоверяющего центра")
+        grid.addWidget(self.tc_title_input, 0, 5)
 
-        # === Строка 1: ИНН Заказчика и Название Заказчика ===
+        # === row 1: ИНН Заказчика  +  Название Заказчика ===
+        emp_inn_icon = QLabel("\U0001F464")
+        emp_inn_icon.setToolTip("ИНН организации-заказчика")
+        grid.addWidget(emp_inn_icon, 1, 0)
+
         self.employer_inn_label = QLabel("ИНН Заказчика:")
-        self.employer_inn_label.setStyleSheet("color: inherit; font-weight: bold;")
-        self.employer_inn_label.setFixedWidth(110)
-        grid.addWidget(self.employer_inn_label, 1, 0)
+        self.employer_inn_label.setToolTip("10 или 12 цифр")
+        grid.addWidget(self.employer_inn_label, 1, 1)
 
         self.employer_inn_input = QLineEdit()
-        self.employer_inn_input.setFixedWidth(160)
         self.employer_inn_input.setPlaceholderText("10 или 12 цифр")
-        self.employer_inn_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
-        grid.addWidget(self.employer_inn_input, 1, 1)
-
-        # Колонка-разделитель уже создана
+        self.employer_inn_input.setToolTip("ИНН организации-заказчика (10 или 12 цифр)")
+        self.employer_inn_input.setFixedWidth(180)
+        grid.addWidget(self.employer_inn_input, 1, 2)
 
         self.employer_title_label = QLabel("Название Заказчика:")
-        self.employer_title_label.setStyleSheet("color: inherit; font-weight: bold;")
-        self.employer_title_label.setFixedWidth(120)
-        grid.addWidget(self.employer_title_label, 1, 3)
+        self.employer_title_label.setToolTip("Полное наименование")
+        grid.addWidget(self.employer_title_label, 1, 4)
 
         self.employer_title_input = QLineEdit()
-        self.employer_title_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 5px; border-radius: 4px;")
         self.employer_title_input.setPlaceholderText("Полное наименование")
-        grid.addWidget(self.employer_title_input, 1, 4)
+        self.employer_title_input.setToolTip("Полное наименование организации-заказчика")
+        grid.addWidget(self.employer_title_input, 1, 5)
 
-        # Растягивающаяся колонка для полей названий
-        grid.setColumnStretch(4, 1)
+        grid.setColumnStretch(5, 1)
 
-        # Кнопка Сохранить данные
-        btn_layout = QHBoxLayout()
-        self.save_org_btn = QPushButton("Сохранить данные")
-        self.save_org_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 5px;
-                font-weight: bold;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+        # === row 2: кнопка ===
+        self.save_org_btn = QPushButton("\U0001F4BE  Сохранить данные")
+        self.save_org_btn.setStyleSheet(self._btn_style())
+        self.save_org_btn.setToolTip("Сохранить данные УЦ и работодателя в зашифрованном виде")
         self.save_org_btn.clicked.connect(self.save_org_settings)
-        btn_layout.addWidget(self.save_org_btn)
-        btn_layout.addStretch()
-        grid.addLayout(btn_layout, 2, 0, 1, 5)
+
+        btn_wrapper = QHBoxLayout()
+        btn_wrapper.addWidget(self.save_org_btn)
+        btn_wrapper.addStretch()
+        grid.addLayout(btn_wrapper, 2, 0, 1, 6)
 
         return group
+
+    # ── Group 2: Загрузка данных ───────────────────────────
 
     def _create_upload_group(self):
-        """Создание группы 'Загрузка данных'"""
-        group = QGroupBox()
-        group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #4169E1;
-                border-radius: 10px;
-                margin-top: 10px;
-                padding: 15px;
-                background-color: transparent;
-            }
-            QGroupBox::title {
-                color: #4169E1;
-                font-weight: bold;
-                font-size: 14px;
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
-        group.setTitle("Загрузка данных")
-        
+        group = QGroupBox("Загрузка данных")
+
         layout = QVBoxLayout(group)
-        layout.setSpacing(10)
-        
-        # Строка 1: XSD файл
+        layout.setSpacing(12)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        # XSD схема
         xsd_row = QHBoxLayout()
-        self.xsd_label = QLabel("XSD схема:")
-        self.xsd_label.setStyleSheet("color: inherit;")
         self.xsd_file_input = QLineEdit()
-        self.xsd_file_input.setPlaceholderText("Не выбран")
         self.xsd_file_input.setReadOnly(True)
-        self.xsd_file_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        self.upload_xsd_btn = QPushButton("Загрузить XSD")
-        self.upload_xsd_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+        self.xsd_file_input.setPlaceholderText("XSD не загружена")
+        self.xsd_file_input.setToolTip("Путь к загруженной XSD схеме")
+
+        self.upload_xsd_btn = QPushButton("\U0001F4C1  Загрузить XSD")
+        self.upload_xsd_btn.setStyleSheet(self._btn_style())
+        self.upload_xsd_btn.setToolTip("Выбрать и загрузить XSD файл схемы")
         self.upload_xsd_btn.clicked.connect(self.upload_xsd)
-        xsd_separator = QLabel("  ")
-        self.xsd_scheme_btn = QPushButton("Схема XSD")
-        self.xsd_scheme_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+
+        self.xsd_scheme_btn = QPushButton("\U0001F517  Скачать XSD")
+        self.xsd_scheme_btn.setStyleSheet(self._btn_style(bg="#6c757d", hover="#5a6268"))
+        self.xsd_scheme_btn.setToolTip("Открыть сайт для скачивания XSD схемы")
         self.xsd_scheme_btn.clicked.connect(self.open_xsd_scheme)
-        
-        xsd_row.addWidget(self.xsd_label)
-        xsd_row.addWidget(self.xsd_file_input)
+
+        xsd_row.addWidget(self.xsd_file_input, 1)
         xsd_row.addWidget(self.upload_xsd_btn)
-        xsd_row.addWidget(xsd_separator)
         xsd_row.addWidget(self.xsd_scheme_btn)
-        layout.addLayout(xsd_row)
-        
-        # Строка 2: Выбранный файл
+        form.addRow("XSD схема:", xsd_row)
+
+        # Выбранный файл
         file_row = QHBoxLayout()
-        self.file_path_label = QLabel("Выбранный файл:")
-        self.file_path_label.setStyleSheet("color: inherit;")
         self.file_path_input = QLineEdit()
-        self.file_path_input.setPlaceholderText("Файл не выбран")
         self.file_path_input.setReadOnly(True)
-        self.file_path_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        file_row.addWidget(self.file_path_label)
-        file_row.addWidget(self.file_path_input)
-        layout.addLayout(file_row)
-        
-        # Строка 3: Кнопки загрузки
-        btn_row = QHBoxLayout()
-        self.select_file_btn = QPushButton("Выбрать файл")
-        self.select_file_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+        self.file_path_input.setPlaceholderText("Файл не выбран")
+        self.file_path_input.setToolTip("Путь к выбранному файлу для загрузки")
+
+        self.select_file_btn = QPushButton("\U0001F4C2  Выбрать файл")
+        self.select_file_btn.setStyleSheet(self._btn_style())
+        self.select_file_btn.setToolTip("Выбрать XLSX или XML файл")
         self.select_file_btn.clicked.connect(self.select_file)
-        self.upload_file_btn = QPushButton("Загрузить файл")
-        self.upload_file_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+
+        file_row.addWidget(self.file_path_input, 1)
+        file_row.addWidget(self.select_file_btn)
+        form.addRow("Файл данных:", file_row)
+
+        layout.addLayout(form)
+
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setFixedHeight(6)
+        layout.addWidget(self.progress_bar)
+
+        # Action buttons row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
+
+        self.upload_file_btn = QPushButton("\U0001F680  Загрузить файл")
+        self.upload_file_btn.setStyleSheet(self._btn_style())
+        self.upload_file_btn.setToolTip("Загрузить выбранный XLSX/XML файл в систему")
         self.upload_file_btn.clicked.connect(self.upload_file)
-        template_separator = QLabel("  ")
-        self.create_template_btn = QPushButton("Создать шаблон")
-        self.create_template_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+
+        self.create_template_btn = QPushButton("\U0001F4DD  Создать шаблон")
+        self.create_template_btn.setStyleSheet(self._btn_style(bg="#6c757d", hover="#5a6268"))
+        self.create_template_btn.setToolTip("Создать XLSX шаблон для заполнения")
         self.create_template_btn.clicked.connect(self.create_template)
-        
-        btn_row.addWidget(self.select_file_btn)
+
         btn_row.addWidget(self.upload_file_btn)
-        btn_row.addWidget(template_separator)
+        btn_row.addStretch()
         btn_row.addWidget(self.create_template_btn)
         layout.addLayout(btn_row)
-        
+
         return group
+
+    # ── Group 3: Ввод данных работника (кнопка → диалог) ──
 
     def _create_manual_entry_group(self):
-        """Создание группы 'Ввод данных работника'"""
-        group = QGroupBox()
-        group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #4169E1;
-                border-radius: 10px;
-                margin-top: 10px;
-                padding: 15px;
-                background-color: transparent;
-            }
-            QGroupBox::title {
-                color: #4169E1;
-                font-weight: bold;
-                font-size: 14px;
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
-        group.setTitle("Ввод данных работника")
+        group = QGroupBox("Ввод данных работника")
 
         layout = QVBoxLayout(group)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
+        layout.setContentsMargins(4, 4, 4, 4)
 
-        # Два столбца с QFormLayout
-        columns = QHBoxLayout()
-        columns.setSpacing(40)  # 1 см отступ между столбцами
+        desc = QLabel("Добавьте одного работника вручную, если нет файла для массовой загрузки.")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
 
-        # Первый столбец: QFormLayout
-        col1 = QFormLayout()
-        col1.setSpacing(10)
-        col1.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        col1.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        add_btn = QPushButton("\U00002795  Добавить работника вручную")
+        add_btn.setStyleSheet(self._btn_style())
+        add_btn.setToolTip("Открыть форму для ручного ввода данных работника")
+        add_btn.clicked.connect(self._open_manual_dialog)
 
-        self.last_name_input = QLineEdit()
-        self.last_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        col1.addRow("Фамилия:", self.last_name_input)
+        btn_wrapper = QHBoxLayout()
+        btn_wrapper.addWidget(add_btn)
+        btn_wrapper.addStretch()
+        layout.addLayout(btn_wrapper)
 
-        self.first_name_input = QLineEdit()
-        self.first_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        col1.addRow("Имя:", self.first_name_input)
-
-        self.middle_name_input = QLineEdit()
-        self.middle_name_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        col1.addRow("Отчество:", self.middle_name_input)
-
-        self.position_input = QLineEdit()
-        self.position_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        col1.addRow("Должность:", self.position_input)
-
-        self.snils_input = QLineEdit()
-        self.snils_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        self.snils_input.setPlaceholderText("123-456-789 00")
-        self.snils_input.setMaxLength(15)  # 123-456-789 00
-        self.snils_input.textChanged.connect(self._format_snils_input)
-        col1.addRow("СНИЛС:", self.snils_input)
-
-        columns.addLayout(col1)
-
-        # Второй столбец: QFormLayout
-        col2 = QFormLayout()
-        col2.setSpacing(10)
-        col2.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        col2.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        program_row = QHBoxLayout()
-        self.program_input = QLineEdit()
-        self.program_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        self.program_input.setPlaceholderText("Например: 1,2,3")
-        self.help_btn = QPushButton("Справка")
-        self.help_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
-        self.help_btn.clicked.connect(self.show_programs_help)
-        program_row.addWidget(self.program_input)
-        program_row.addWidget(self.help_btn)
-        col2.addRow("Номер программы:", program_row)
-
-        self.protocol_input = QLineEdit()
-        self.protocol_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        col2.addRow("Номер протокола:", self.protocol_input)
-
-        self.result_combo = QComboBox()
-        self.result_combo.addItems(["Удовлетворительно", "Неудовлетворительно"])
-        self.result_combo.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        col2.addRow("Результат:", self.result_combo)
-
-        self.date_input = QLineEdit()
-        self.date_input.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-        self.date_input.setPlaceholderText("ДД.ММ.ГГГГ или ДДММГГГГ")
-        col2.addRow("Дата:", self.date_input)
-
-        columns.addLayout(col2)
-        layout.addLayout(columns)
-        
-        # Кнопки
-        btn_row = QHBoxLayout()
-        self.save_data_btn = QPushButton("Сохранить данные")
-        self.save_data_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
-        self.save_data_btn.clicked.connect(self.save_manual_data)
-        btn_row.addWidget(self.save_data_btn)
-        
-        btn_row.addSpacing(120)  # 3 см отступ
-        
-        self.clear_btn = QPushButton("Очистить")
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                color: red;
-                border: 2px solid red;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-                background-color: white;
-            }
-            QPushButton:hover {
-                background-color: #FFE0E0;
-            }
-        """)
-        self.clear_btn.clicked.connect(self.clear_manual_form)
-        btn_row.addWidget(self.clear_btn)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
-        
         return group
 
+    def _open_manual_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Добавление работника вручную")
+        dialog.setMinimumWidth(640)
+
+        main_layout = QVBoxLayout(dialog)
+        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+
+        # ── left column ──
+        col1 = QFormLayout()
+        col1.setSpacing(12)
+        col1.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+
+        self._last_name_input = QLineEdit()
+        self._last_name_input.setPlaceholderText("Иванов")
+        self._last_name_input.setToolTip("Фамилия работника (только буквы)")
+        col1.addRow("Фамилия:", self._last_name_input)
+
+        self._first_name_input = QLineEdit()
+        self._first_name_input.setPlaceholderText("Иван")
+        self._first_name_input.setToolTip("Имя работника (только буквы)")
+        col1.addRow("Имя:", self._first_name_input)
+
+        self._middle_name_input = QLineEdit()
+        self._middle_name_input.setPlaceholderText("Иванович")
+        self._middle_name_input.setToolTip("Отчество работника (только буквы)")
+        col1.addRow("Отчество:", self._middle_name_input)
+
+        self._position_input = QLineEdit()
+        self._position_input.setPlaceholderText("Главный специалист")
+        self._position_input.setToolTip("Должность работника (только буквы, пробелы, дефис)")
+        col1.addRow("Должность:", self._position_input)
+
+        self._snils_input = QLineEdit()
+        self._snils_input.setPlaceholderText("123-456-789 00")
+        self._snils_input.setMaxLength(15)
+        self._snils_input.setToolTip("СНИЛС в формате XXX-XXX-XXX XX (11 цифр)")
+        self._snils_input.textChanged.connect(self._format_snils_input)
+        col1.addRow("СНИЛС:", self._snils_input)
+
+        # ── right column ──
+        col2 = QFormLayout()
+        col2.setSpacing(12)
+        col2.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+
+        program_row = QHBoxLayout()
+        self._program_input = QLineEdit()
+        self._program_input.setPlaceholderText("Например: 1,2,3")
+        self._program_input.setToolTip("Номера программ обучения через запятую")
+        self._help_btn = QPushButton("Справка")
+        self._help_btn.setToolTip("Открыть список доступных программ обучения")
+        self._help_btn.clicked.connect(self._on_program_help_dialog)
+        program_row.addWidget(self._program_input, 1)
+        program_row.addWidget(self._help_btn)
+        col2.addRow("Программы:", program_row)
+
+        self._protocol_input = QLineEdit()
+        self._protocol_input.setPlaceholderText("ПР-2025-001")
+        self._protocol_input.setToolTip("Номер протокола проверки знаний")
+        col2.addRow("Протокол:", self._protocol_input)
+
+        self._result_combo = QComboBox()
+        self._result_combo.addItems(["Удовлетворительно", "Неудовлетворительно"])
+        self._result_combo.setToolTip("Результат проверки знаний")
+        col2.addRow("Результат:", self._result_combo)
+
+        self._date_input = QLineEdit()
+        self._date_input.setPlaceholderText("ДД.ММ.ГГГГ")
+        self._date_input.setToolTip("Дата проверки знаний в формате ДД.ММ.ГГГГ (или ДДММГГГГ)")
+        col2.addRow("Дата:", self._date_input)
+
+        # ── columns side by side ──
+        columns = QHBoxLayout()
+        columns.setSpacing(32)
+        columns.addLayout(col1)
+        columns.addLayout(col2)
+        main_layout.addLayout(columns)
+
+        # ── buttons ──
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
+
+        self._save_btn = QPushButton("\U0001F4BE  Сохранить")
+        self._save_btn.setStyleSheet(self._btn_style())
+        self._save_btn.setToolTip("Сохранить данные и передать в систему")
+        self._save_btn.clicked.connect(lambda: self._save_manual_from_dialog(dialog))
+        btn_row.addWidget(self._save_btn)
+
+        self._clear_btn = QPushButton("\U0001F9F9  Очистить")
+        self._clear_btn.setStyleSheet(self._btn_style(bg="#6c757d", hover="#5a6268"))
+        self._clear_btn.setToolTip("Очистить все поля формы")
+        self._clear_btn.clicked.connect(self._clear_dialog_form)
+        btn_row.addWidget(self._clear_btn)
+
+        btn_row.addStretch()
+
+        self._cancel_btn = QPushButton("Отмена")
+        self._cancel_btn.setToolTip("Закрыть форму без сохранения")
+        self._cancel_btn.clicked.connect(dialog.reject)
+        btn_row.addWidget(self._cancel_btn)
+
+        main_layout.addLayout(btn_row)
+        dialog.exec()
+
+    def _on_program_help_dialog(self):
+        self.show_programs_help()
+
+    def _set_dialog_field_error(self, widget, is_error):
+        if is_error:
+            widget.setStyleSheet("border: 2px solid #E74C3C;")
+        else:
+            widget.setStyleSheet("")
+
+    def _clear_dialog_errors(self):
+        for w in [self._last_name_input, self._first_name_input, self._middle_name_input,
+                   self._position_input, self._snils_input, self._program_input,
+                   self._protocol_input, self._result_combo, self._date_input]:
+            w.setStyleSheet("")
+
+    def _clear_dialog_form(self):
+        self._last_name_input.clear()
+        self._first_name_input.clear()
+        self._middle_name_input.clear()
+        self._position_input.clear()
+        self._snils_input.clear()
+        self._program_input.clear()
+        self._protocol_input.clear()
+        self._result_combo.setCurrentIndex(0)
+        self._date_input.clear()
+        self._clear_dialog_errors()
+
+    def _save_manual_from_dialog(self, dialog):
+        from datetime import datetime
+
+        self._clear_dialog_errors()
+
+        fields = {
+            'Фамилия': self._last_name_input.text().strip(),
+            'Имя': self._first_name_input.text().strip(),
+            'Отчество': self._middle_name_input.text().strip(),
+            'Должность': self._position_input.text().strip(),
+            'СНИЛС': self._snils_input.text().strip(),
+            'Номер программы': self._program_input.text().strip(),
+            'Номер протокола': self._protocol_input.text().strip(),
+            'Результат': self._result_combo.currentText(),
+            'Дата': self._date_input.text().strip(),
+        }
+
+        field_widgets = {
+            'Фамилия': self._last_name_input,
+            'Имя': self._first_name_input,
+            'Отчество': self._middle_name_input,
+            'Должность': self._position_input,
+            'СНИЛС': self._snils_input,
+            'Номер программы': self._program_input,
+            'Номер протокола': self._protocol_input,
+            'Результат': self._result_combo,
+            'Дата': self._date_input,
+        }
+
+        empty_fields = [k for k, v in fields.items() if not v]
+        if empty_fields:
+            for f in empty_fields:
+                self._set_dialog_field_error(field_widgets[f], True)
+            QMessageBox.warning(self, "Ошибка", "Заполните все строки")
+            return
+
+        for field_name in ['Фамилия', 'Имя', 'Отчество', 'Должность']:
+            value = fields[field_name]
+            if not value.replace(' ', '').replace('-', '').isalpha():
+                self._set_dialog_field_error(field_widgets[field_name], True)
+                QMessageBox.warning(self, "Ошибка", f"{field_name} — только текст")
+                return
+
+        snils = fields['СНИЛС'].replace('-', '').replace(' ', '')
+        if not snils.isdigit() or len(snils) != 11:
+            self._set_dialog_field_error(field_widgets['СНИЛС'], True)
+            QMessageBox.warning(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
+            return
+
+        program_str = fields['Номер программы']
+        valid_programs = {'1', '2', '3', '4', '6', '7', '8', '9', '10', '11', '12',
+                          '13', '14', '15', '16', '17', '18', '19', '20', '21',
+                          '22', '23', '24', '25', '26', '27', '28', '29'}
+        programs = [p.strip() for p in program_str.rstrip(',').split(',') if p.strip()]
+        if not programs:
+            self._set_dialog_field_error(field_widgets['Номер программы'], True)
+            QMessageBox.warning(self, "Ошибка", "Некорректный номер программы")
+            return
+        for prog in programs:
+            if prog not in valid_programs:
+                self._set_dialog_field_error(field_widgets['Номер программы'], True)
+                QMessageBox.warning(self, "Ошибка", "Некорректный номер программы")
+                return
+
+        date_str = fields['Дата'].replace('.', '').replace('-', '')
+        if not date_str.isdigit():
+            self._set_dialog_field_error(field_widgets['Дата'], True)
+            QMessageBox.warning(self, "Ошибка", "Дата некорректна. Введите корректную дату в формате ДД.ММ.ГГГГ или ДДММГГГГ")
+            return
+        try:
+            if len(date_str) == 8:
+                date_obj = datetime.strptime(date_str, "%d%m%Y")
+            else:
+                self._set_dialog_field_error(field_widgets['Дата'], True)
+                QMessageBox.warning(self, "Ошибка", "Дата некорректна. Введите корректную дату в формате ДД.ММ.ГГГГ или ДДММГГГГ")
+                return
+            if date_obj.date() > datetime.now().date():
+                self._set_dialog_field_error(field_widgets['Дата'], True)
+                QMessageBox.warning(self, "Ошибка", "Дата не может быть больше текущей")
+                return
+        except ValueError:
+            self._set_dialog_field_error(field_widgets['Дата'], True)
+            QMessageBox.warning(self, "Ошибка", "Дата некорректна. Введите корректную дату в формате ДД.ММ.ГГГГ или ДДММГГГГ")
+            return
+
+        if self.get_existing_keys_callback:
+            existing_keys = self.get_existing_keys_callback()
+            normalized_date = fields['Дата'].strip()
+            new_keys = [(hash_for_search(snils), str(prog), normalized_date) for prog in programs]
+            duplicates = [k for k in new_keys if k in existing_keys]
+            if duplicates:
+                QMessageBox.warning(
+                    self, "Предупреждение",
+                    f"Выявлены аналогичные данные — {len(duplicates)} строк"
+                )
+                return
+
+        settings_tc_inn = self.tc_inn_input.text().strip()
+        settings_tc_title = self.tc_title_input.text().strip()
+        settings_employer_inn = self.employer_inn_input.text().strip()
+        settings_employer_title = self.employer_title_input.text().strip()
+
+        records = []
+        for prog in programs:
+            records.append({
+                'last_name': fields['Фамилия'],
+                'first_name': fields['Имя'],
+                'middle_name': fields['Отчество'],
+                'snils': snils,
+                'position': fields['Должность'],
+                'employer_inn': settings_employer_inn,
+                'employer_title': settings_employer_title,
+                'tc_inn': settings_tc_inn,
+                'tc_title': settings_tc_title,
+                'result': fields['Результат'],
+                'program': prog,
+                'date': fields['Дата'],
+                'protocol': fields['Номер протокола'],
+            })
+
+        self.data_loaded.emit(records, False)
+
+        QMessageBox.information(dialog, "Успех", "Запись создана и передана в систему")
+        dialog.accept()
+
+    # ── сохранённая (старая) логика ────────────────────────
+
     def load_settings(self):
-        """Загрузка настроек из JSON файла (с расшифровкой)"""
         if os.path.exists(self.settings_file):
             try:
                 with open(self.settings_file, 'r', encoding='utf-8') as f:
@@ -483,37 +534,35 @@ class DataEntryTab(QWidget):
                 QMessageBox.warning(self, "Ошибка", f"Ошибка чтения настроек: {e}")
 
     def load_xsd_on_startup(self):
-        """Загрузка XSD при старте, если есть в папке schema"""
         xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
         if xsd_files:
             xsd_path = os.path.join(self.schema_dir, xsd_files[0])
             self.xsd_file_input.setText(xsd_path)
 
     def save_org_settings(self):
-        """Сохранение настроек УЦ и Заказчика (с шифрованием)"""
         tc_inn = self.tc_inn_input.text().strip()
         employer_inn = self.employer_inn_input.text().strip()
-        
+
         if tc_inn and not (tc_inn.isdigit() and len(tc_inn) in [10, 12]):
-            QMessageBox.warning(self, "Ошибка", "ИНН - только 10 или 12 цифр")
+            QMessageBox.warning(self, "Ошибка", "ИНН — только 10 или 12 цифр")
             return
-        
+
         if employer_inn and not (employer_inn.isdigit() and len(employer_inn) in [10, 12]):
-            QMessageBox.warning(self, "Ошибка", "ИНН - только 10 или 12 цифр")
+            QMessageBox.warning(self, "Ошибка", "ИНН — только 10 или 12 цифр")
             return
-        
+
         if not tc_inn or not self.tc_title_input.text().strip() or \
            not employer_inn or not self.employer_title_input.text().strip():
             QMessageBox.warning(self, "Ошибка", "Заполните данные УЦ/Работодателя")
             return
-        
+
         settings = {
             'tc_inn': tc_inn,
             'tc_title': self.tc_title_input.text().strip(),
             'employer_inn': employer_inn,
-            'employer_title': self.employer_title_input.text().strip()
+            'employer_title': self.employer_title_input.text().strip(),
         }
-        
+
         try:
             encrypted = encrypt_data(settings)
             with open(self.settings_file, 'w', encoding='utf-8') as f:
@@ -523,7 +572,6 @@ class DataEntryTab(QWidget):
             QMessageBox.warning(self, "Ошибка", f"Ошибка сохранения: {e}")
 
     def upload_xsd(self):
-        """Загрузка XSD файла"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Выберите XSD файл", "", "XSD Files (*.xsd)"
         )
@@ -537,12 +585,9 @@ class DataEntryTab(QWidget):
                 QMessageBox.warning(self, "Ошибка", f"Ошибка загрузки XSD: {e}")
 
     def open_xsd_scheme(self):
-        """Открытие ссылки на схему XSD"""
-        import webbrowser
         webbrowser.open("https://akot.rosmintrud.ru/sout/info")
 
     def select_file(self):
-        """Выбор файла для загрузки"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Выберите файл", "", "Excel/XML Files (*.xlsx *.xls *.xml)"
         )
@@ -550,34 +595,33 @@ class DataEntryTab(QWidget):
             self.file_path_input.setText(file_path)
 
     def upload_file(self):
-        """Загрузка выбранного файла"""
         file_path = self.file_path_input.text()
         if not file_path or not os.path.exists(file_path):
             QMessageBox.warning(self, "Ошибка", "Файл не выбран")
             return
 
-        # Проверяем, есть ли уже данные (через callback)
+        self.progress_bar.setVisible(True)
+
         has_existing = False
         existing_keys = set()
         if self.get_existing_keys_callback:
             existing_keys = self.get_existing_keys_callback()
             has_existing = len(existing_keys) > 0
 
-        # Если есть данные — показываем диалог слияния
-        merge_mode = False  # False = добавить, True = заменить
+        merge_mode = False
         if has_existing:
             reply = self._show_merge_dialog()
             if reply == "cancel":
+                self.progress_bar.setVisible(False)
                 return
             elif reply == "replace":
                 merge_mode = True
                 existing_keys = set()
-            # "merge" — merge_mode = False
 
         records = None
-        error_details = []  # [{'row': int, 'type': str, 'field': str, 'message': str}]
+        error_details = []
         error_rows_set = set()
-        duplicate_map = {}  # {(snils, program): [строка1, строка2, ...]}
+        duplicate_map = {}
         xml_xsd_errors = []
         password = None
 
@@ -589,22 +633,21 @@ class DataEntryTab(QWidget):
                 error_msg = result[3] if len(result) > 3 else ""
                 if records is None:
                     err_msg = error_msg if error_msg else (str(error_details[0]['message']) if error_details else "Неизвестная ошибка")
+                    self.progress_bar.setVisible(False)
                     QMessageBox.warning(self, "Ошибка импорта", err_msg)
                     return
             elif len(result) >= 3:
                 records, error_details, error_rows_set = result[0], result[1], result[2]
                 if records is None:
                     err = error_details[0]['message'] if error_details else "Ошибка"
+                    self.progress_bar.setVisible(False)
                     QMessageBox.warning(self, "Ошибка импорта", str(err))
                     return
             else:
-                records = None
-                error_details = []
-                error_rows_set = set()
+                self.progress_bar.setVisible(False)
                 QMessageBox.warning(self, "Ошибка", "Ошибка при загрузке файла")
                 return
         elif file_path.endswith('.xml'):
-            # Находим XSD для валидации
             xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
             xsd_path = os.path.join(self.schema_dir, xsd_files[0]) if xsd_files else None
             records, xml_error_count, xml_error_messages, xml_xsd_errors = load_xml(file_path, xsd_path)
@@ -614,82 +657,61 @@ class DataEntryTab(QWidget):
             if xml_error_messages:
                 logger.error(f"XML import errors: {xml_error_messages}")
 
-            # Если есть XSD-ошибки — показываем
             if xml_xsd_errors:
                 logger.error(f"XSD validation errors: {xml_xsd_errors}")
+                self.progress_bar.setVisible(False)
                 QMessageBox.warning(
                     self, "XSD-валидация",
                     "Файл не соответствует XSD-схеме:\n" + "\n".join(xml_xsd_errors[:20])
                 )
         else:
+            self.progress_bar.setVisible(False)
             QMessageBox.warning(self, "Ошибка", "Неподдерживаемый формат файла")
             return
 
         if records is None:
-            # Критическая ошибка
             msgs = []
             if xml_error_messages:
                 msgs.extend(xml_error_messages[:5])
             if xml_xsd_errors:
                 msgs.append("XSD: " + "\n".join(xml_xsd_errors[:5]))
             msg = "\n".join(msgs) if msgs else "Ошибка импорта"
+            self.progress_bar.setVisible(False)
             QMessageBox.warning(self, "Ошибка импорта", msg)
             return
 
-        # Проверка дубликатов с существующими данными и внутри загруженных
         validated_records = []
-        # Сначала соберём карту существующих данных: (snils, program) -> [номера строк]
         existing_rows_map = {}
         if not merge_mode and self.get_existing_keys_callback:
-            # Для режима "объединить" — найдём номера строк в существующей таблице
-            # Получаем строки из таблицы "Просмотр данных"
-            try:
-                table = None
-                # Ищем таблицу через родительский виджет
-                main_window = self.window()
-                if main_window:
-                    tabs_widget = main_window.findChild(type(self.data_view_tab.table))
-                    # Проще — получим через callback
-                    pass
-            except Exception as e:
-                logger.debug(f"Could not get table: {e}")
-
-            # Альтернативный подход: передаём таблицу через callback
-            # Но пока используем то, что есть — добавим callback get_existing_rows
             if hasattr(self, 'get_existing_rows_callback') and self.get_existing_rows_callback:
                 for row_idx, snils, prog in self.get_existing_rows_callback():
-                    key = (snils, prog)
+                    key = (hash_for_search(snils), str(prog), '')
                     if key not in existing_rows_map:
                         existing_rows_map[key] = []
                     existing_rows_map[key].append(f"система (стр. {row_idx})")
 
         for rec in records:
-            key = (rec.get('snils', ''), rec.get('program', ''))
+            key = (hash_for_search(rec.get('snils', '')), str(rec.get('program', '')), rec.get('date', '') or '')
             source_row = rec.get('source_row', '?')
             if key in existing_keys:
-                # Дубликат с существующими данными
                 if key not in duplicate_map:
                     duplicate_map[key] = []
-                # Добавляем строки из системы (если ещё не добавлены)
                 if key in existing_rows_map:
                     for label in existing_rows_map[key]:
                         if label not in duplicate_map[key]:
                             duplicate_map[key].append(label)
-                # Добавляем текущую строку
                 row_label = f"стр. {source_row}"
                 if row_label not in duplicate_map[key]:
                     duplicate_map[key].append(row_label)
                 continue
 
-            # Проверка дубликата внутри загруженного файла
             is_internal_dup = False
             for vr in validated_records:
-                if (vr.get('snils', ''), vr.get('program', '')) == key:
+                if (hash_for_search(vr.get('snils', '')), str(vr.get('program', '')), vr.get('date', '') or '') == key:
                     is_internal_dup = True
                     break
 
             if is_internal_dup:
-                # Дубликат внутри загруженного файла
                 if key not in duplicate_map:
                     duplicate_map[key] = []
                 row_label = f"стр. {source_row}"
@@ -700,7 +722,6 @@ class DataEntryTab(QWidget):
             existing_keys.add(key)
             validated_records.append(rec)
 
-        # Подстановка настроек УЦ/Заказчика — значения из формы ВСЕГДА заменяют данные из файла
         tc_inn = self.tc_inn_input.text().strip()
         tc_title = self.tc_title_input.text().strip()
         employer_inn = self.employer_inn_input.text().strip()
@@ -715,17 +736,15 @@ class DataEntryTab(QWidget):
                 rec['employer_inn'] = employer_inn
             if employer_title:
                 rec['employer_title'] = employer_title
-            # Удаляем техническое поле source_row
             rec.pop('source_row', None)
 
-        # Передаём данные на вкладку Просмотр
         self.data_loaded.emit(validated_records, merge_mode)
 
-        # Сохраняем ошибки и дубликаты для экспорта
         self._last_error_details = error_details
         self._last_duplicate_map = duplicate_map
 
-        # Уведомление
+        self.progress_bar.setVisible(False)
+
         total_errors = len(error_rows_set) + len(duplicate_map)
         if total_errors > 0:
             self._show_upload_result_dialog(len(validated_records), len(error_rows_set), len(duplicate_map))
@@ -733,59 +752,57 @@ class DataEntryTab(QWidget):
             QMessageBox.information(self, "Успех", f"Успешно загружено: {len(validated_records)} записей")
 
     def _show_merge_dialog(self):
-        """Диалог: что делать с существующими данными."""
-        msg = QMessageBox()
-        msg.setWindowTitle("Загрузка данных")
-        msg.setText("В системе уже есть данные. Что сделать?")
-        msg.setInformativeText("Выберите действие:")
-        merge_btn = msg.addButton("Объединить", QMessageBox.ButtonRole.AcceptRole)
-        replace_btn = msg.addButton("Удалить старые", QMessageBox.ButtonRole.AcceptRole)
-        cancel_btn = msg.addButton("Отменить загрузку", QMessageBox.ButtonRole.RejectRole)
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
 
-        msg.exec()
-        clicked = msg.clickedButton()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Загрузка данных")
+        dialog.setMinimumSize(400, 180)
 
-        if clicked == merge_btn:
-            return "merge"
-        elif clicked == replace_btn:
-            return "replace"
-        else:
-            return "cancel"
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(16)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        layout.addWidget(QLabel("В системе уже есть данные. Что сделать?"))
+        layout.addStretch()
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        merge_btn = QPushButton("Объединить")
+        merge_btn.setObjectName("dialogPrimaryBtn")
+        replace_btn = QPushButton("Удалить старые")
+        replace_btn.setObjectName("toolbarDangerBtn")
+        cancel_btn = QPushButton("Отменить загрузку")
+        cancel_btn.setObjectName("dialogDangerBtn")
+
+        result = "cancel"
+        def set_result(val):
+            nonlocal result
+            result = val
+            dialog.accept()
+
+        merge_btn.clicked.connect(lambda: set_result("merge"))
+        replace_btn.clicked.connect(lambda: set_result("replace"))
+        cancel_btn.clicked.connect(lambda: set_result("cancel"))
+
+        btn_layout.addWidget(merge_btn)
+        btn_layout.addWidget(replace_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        dialog.exec()
+        return result
 
     def _ask_password(self):
-        """Диалог ввода пароля для защищённого Excel-файла."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Ввод пароля")
-        dialog.setMinimumSize(350, 130)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: white;
-            }
-            QLabel {
-                color: inherit;
-                font-size: 13px;
-            }
-            QLineEdit { color: black;
-                border: 1px solid #CCCCCC;
-                padding: 5px;
-                background-color: white;
-            }
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+        dialog.setMinimumSize(400, 160)
 
         layout = QVBoxLayout(dialog)
+        layout.setSpacing(16)
+        layout.setContentsMargins(20, 20, 20, 20)
 
         label = QLabel("Внимание: библиотека openpyxl не поддерживает пароли Excel.\nДля загрузки сохраните файл БЕЗ пароля:\nExcel → Файл → Сохранить как → Инструменты → Параметры → Защита → снять пароль")
         label.setWordWrap(True)
@@ -798,8 +815,10 @@ class DataEntryTab(QWidget):
 
         buttons = QHBoxLayout()
         ok_btn = QPushButton("ОК")
+        ok_btn.setObjectName("dialogPrimaryBtn")
         ok_btn.clicked.connect(dialog.accept)
         cancel_btn = QPushButton("Отмена")
+        cancel_btn.setObjectName("dialogDangerBtn")
         cancel_btn.clicked.connect(dialog.reject)
         buttons.addWidget(ok_btn)
         buttons.addWidget(cancel_btn)
@@ -810,71 +829,43 @@ class DataEntryTab(QWidget):
         return "CANCEL"
 
     def _show_upload_result_dialog(self, success_count, error_rows, duplicate_count):
-        """Диалог результата загрузки с кнопкой 'Показать ошибки'."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Загрузка завершена")
-        dialog.setMinimumSize(450, 200)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: white;
-            }
-            QLabel {
-                color: inherit;
-                font-size: 13px;
-            }
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-            QPushButton#showErrorsBtn {
-                background-color: #FF8C00;
-            }
-            QPushButton#showErrorsBtn:hover {
-                background-color: #E07800;
-            }
-        """)
+        dialog.setMinimumSize(460, 220)
 
         layout = QVBoxLayout(dialog)
-        layout.setSpacing(15)
+        layout.setSpacing(16)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        # Информация
         info_label = QLabel(
             f"<b>Успешно загружено:</b> {success_count} записей<br><br>"
-            f"<b style='color:red;'>Строк с ошибками:</b> {error_rows}<br>"
-            f"<b style='color:orange;'>Дубликатов:</b> {duplicate_count}"
+            f"<b style='color:#E74C3C;'>Строк с ошибками:</b> {error_rows}<br>"
+            f"<b style='color:#F1C40F;'>Дубликатов:</b> {duplicate_count}"
         )
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("padding: 10px;")
         layout.addWidget(info_label)
 
-        # Кнопки
         btn_layout = QHBoxLayout()
-        
-        show_errors_btn = QPushButton("Показать ошибки")
+
+        show_errors_btn = QPushButton("\U000026A0  Показать ошибки")
         show_errors_btn.setObjectName("showErrorsBtn")
+        show_errors_btn.setStyleSheet(self._btn_style(bg="#E67E22", hover="#D35400"))
         show_errors_btn.clicked.connect(lambda: [self._export_error_report(dialog)])
-        
+
         close_btn = QPushButton("Закрыть")
+        close_btn.setObjectName("dialogPrimaryBtn")
         close_btn.clicked.connect(dialog.close)
 
         btn_layout.addWidget(show_errors_btn)
+        btn_layout.addStretch()
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
 
         dialog.exec()
 
     def _export_error_report(self, parent_dialog):
-        """Экспорт отчёта об ошибках в XLSX."""
         from importers.error_report import export_error_report
         from datetime import datetime
 
@@ -895,34 +886,30 @@ class DataEntryTab(QWidget):
             else:
                 QMessageBox.warning(self, "Ошибка", msg)
 
-        # Закрываем родительский диалог
         parent_dialog.close()
 
     def create_template(self):
-        """Создание шаблона XLSX"""
         try:
-            from openpyxl import Workbook
             wb = Workbook()
             ws = wb.active
             ws.title = "Шаблон"
-            
+
             headers = [
                 "Фамилия", "Имя", "Отчество", "СНИЛС", "Должность",
                 "ИНН Заказчика", "Наименование ЮЛ Заказчика", "ИНН УЦ",
                 "Наименование УЦ", "Результат", "№ программы", "Дата", "№ протокола"
             ]
             ws.append(headers)
-            
+
             template_path = os.path.join(self.data_dir, "Шаблон.xlsx")
             wb.save(template_path)
-            
+
             reply = QMessageBox.question(
                 self, "Успех",
                 "Шаблон создан. Открыть расположение файла?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.Yes:
-                import subprocess
                 subprocess.Popen(f'explorer /select,"{template_path}"')
         except ImportError:
             QMessageBox.warning(self, "Ошибка", "Установите openpyxl: pip install openpyxl")
@@ -930,7 +917,6 @@ class DataEntryTab(QWidget):
             QMessageBox.warning(self, "Ошибка", f"Ошибка создания шаблона: {e}")
 
     def show_programs_help(self):
-        """Показать справку по программам обучения"""
         programs = {
             "1": "Оказание первой помощи пострадавшим",
             "2": "Использование (применение) средств индивидуальной защиты",
@@ -950,7 +936,7 @@ class DataEntryTab(QWidget):
             "17": "Безопасные методы и приемы выполнения работ, связанных с эксплуатацией тепловых энергоустановок",
             "18": "Безопасные методы и приемы выполнения работ в электроустановках",
             "19": "Безопасные методы и приемы выполнения работ, связанных с эксплуатацией сосудов, работающих под избыточным давлением",
-            "20": "Безопасные методы и приемы обращения с животными",
+            "20": "Безопасные методы и приемы выполнения работ, связанных с эксплуатацией емкостей (сосудов, работающих под избыточным давлением)",
             "21": "Безопасные методы и приемы при выполнении водолазных работ",
             "22": "Безопасные методы и приемы работ по поиску, идентификации, обезвреживанию и уничтожению взрывоопасных предметов",
             "23": "Безопасные методы и приемы работ в непосредственной близости от полотна или проезжей части эксплуатируемых автомобильных и железных дорог",
@@ -959,7 +945,7 @@ class DataEntryTab(QWidget):
             "26": "Безопасные методы и приемы работ по перемещению тяжеловесных и крупногабаритных грузов",
             "27": "Безопасные методы и приемы работ с радиоактивными веществами и источниками ионизирующих излучений",
             "28": "Безопасные методы и приемы работ с ручным инструментом, в том числе с пиротехническим",
-            "29": "Безопасные методы и приемы работ в театрах"
+            "29": "Безопасные методы и приемы работ в театрах",
         }
 
         blue_programs = {"1", "2", "3", "4", "18", "23"}
@@ -969,53 +955,42 @@ class DataEntryTab(QWidget):
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Программы обучения")
-        dialog.setMinimumSize(650, 700)
+        dialog.setMinimumSize(660, 720)
+
         layout = QVBoxLayout(dialog)
+        layout.setSpacing(12)
 
         list_widget = QListWidget()
-        list_widget.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #CCCCCC;
-                background-color: white;
-            }
-            QListWidget::item {
-                padding: 5px;
-            }
-        """)
+        list_widget.setAlternatingRowColors(True)
 
+        from PySide6.QtGui import QPalette
+        pal = dialog.palette()
+        primary = pal.color(QPalette.ColorRole.Highlight)
         for num, title in programs.items():
             item = QListWidgetItem(f"{num}: {title}")
             item.setData(Qt.ItemDataRole.UserRole, num)
             if num in blue_programs:
-                item.setForeground(QColor("#4169E1"))
+                item.setForeground(primary)
             list_widget.addItem(item)
 
         layout.addWidget(list_widget)
 
-        # Кнопка Закрыть
+        hint = QLabel("Двойной клик по программе — добавить номер в поле")
+        hint.setStyleSheet("font-style: italic; background-color: transparent;")
+        layout.addWidget(hint)
+
         btn_layout = QHBoxLayout()
         close_btn = QPushButton("Закрыть")
-        close_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+        close_btn.setObjectName("dialogPrimaryBtn")
         close_btn.clicked.connect(dialog.close)
         btn_layout.addStretch()
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
 
-        # Двойной клик
         def on_double_click(item):
             program_num = item.data(Qt.ItemDataRole.UserRole)
-            current = self.program_input.text().strip()
+            target = self._program_input if hasattr(self, '_program_input') else self.program_input
+            current = target.text().strip()
             if current.endswith(','):
                 current = current[:-1]
             programs_list = [p.strip() for p in current.split(',') if p.strip()] if current else []
@@ -1024,14 +999,14 @@ class DataEntryTab(QWidget):
                 return
             if program_num not in programs_list:
                 programs_list.append(program_num)
-            self.program_input.setText(','.join(programs_list) + ',')
+            target.setText(','.join(programs_list) + ',')
 
         list_widget.itemDoubleClicked.connect(on_double_click)
         dialog.exec()
 
     def _format_snils_input(self, text):
-        """Автоформатирование СНИЛС при вводе: 123-456-789 00"""
-        self.snils_input.blockSignals(True)
+        target = self._snils_input if hasattr(self, '_snils_input') else self.snils_input
+        target.blockSignals(True)
         try:
             digits = ''.join(c for c in text if c.isdigit())[:11]
             formatted = ''
@@ -1043,169 +1018,8 @@ class DataEntryTab(QWidget):
                 elif i == 9:
                     formatted += ' '
                 formatted += d
-            self.snils_input.setText(formatted)
+            target.setText(formatted)
         finally:
-            self.snils_input.blockSignals(False)
+            target.blockSignals(False)
 
-    def _set_field_error(self, widget, is_error):
-        """Подсветка поля красной рамкой при ошибке валидации."""
-        if is_error:
-            widget.setStyleSheet("color: inherit; border: 2px solid red; padding: 4px;")
-        else:
-            widget.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
 
-    def _clear_field_errors(self):
-        """Сброс подсветки ошибок на всех полях."""
-        for w in [self.last_name_input, self.first_name_input, self.middle_name_input,
-                   self.position_input, self.snils_input, self.program_input,
-                   self.protocol_input, self.result_combo, self.date_input]:
-            w.setStyleSheet("color: inherit; border: 1px solid #CCCCCC; padding: 4px;")
-
-    def save_manual_data(self):
-        """Сохранение данных ручного ввода"""
-        from datetime import datetime
-
-        # Сброс подсветки
-        self._clear_field_errors()
-
-        # Проверка заполненности полей
-        fields = {
-            'Фамилия': self.last_name_input.text().strip(),
-            'Имя': self.first_name_input.text().strip(),
-            'Отчество': self.middle_name_input.text().strip(),
-            'Должность': self.position_input.text().strip(),
-            'СНИЛС': self.snils_input.text().strip(),
-            'Номер программы': self.program_input.text().strip(),
-            'Номер протокола': self.protocol_input.text().strip(),
-            'Результат': self.result_combo.currentText(),
-            'Дата': self.date_input.text().strip()
-        }
-
-        # Карта полей к виджетам для подсветки
-        field_widgets = {
-            'Фамилия': self.last_name_input,
-            'Имя': self.first_name_input,
-            'Отчество': self.middle_name_input,
-            'Должность': self.position_input,
-            'СНИЛС': self.snils_input,
-            'Номер программы': self.program_input,
-            'Номер протокола': self.protocol_input,
-            'Результат': self.result_combo,
-            'Дата': self.date_input
-        }
-
-        empty_fields = [k for k, v in fields.items() if not v]
-        if empty_fields:
-            for f in empty_fields:
-                self._set_field_error(field_widgets[f], True)
-            QMessageBox.warning(self, "Ошибка", "Заполните все строки")
-            return
-
-        # Валидация ФИО и Должность — только текст
-        for field_name in ['Фамилия', 'Имя', 'Отчество', 'Должность']:
-            value = fields[field_name]
-            if not value.replace(' ', '').replace('-', '').isalpha():
-                self._set_field_error(field_widgets[field_name], True)
-                QMessageBox.warning(self, "Ошибка", f"{field_name} — только текст")
-                return
-
-        # Валидация СНИЛС — 11 цифр
-        snils = fields['СНИЛС'].replace('-', '').replace(' ', '')
-        if not snils.isdigit() or len(snils) != 11:
-            self._set_field_error(field_widgets['СНИЛС'], True)
-            QMessageBox.warning(self, "Ошибка", "СНИЛС должен содержать 11 цифр")
-            return
-
-        # Валидация номера программы
-        program_str = fields['Номер программы']
-        valid_programs = {'1', '2', '3', '4', '6', '7', '8', '9', '10', '11', '12',
-                         '13', '14', '15', '16', '17', '18', '19', '20', '21',
-                         '22', '23', '24', '25', '26', '27', '28', '29'}
-        programs = [p.strip() for p in program_str.rstrip(',').split(',') if p.strip()]
-        if not programs:
-            self._set_field_error(field_widgets['Номер программы'], True)
-            QMessageBox.warning(self, "Ошибка", "Некорректный номер программы")
-            return
-        for prog in programs:
-            if prog not in valid_programs:
-                self._set_field_error(field_widgets['Номер программы'], True)
-                QMessageBox.warning(self, "Ошибка", "Некорректный номер программы")
-                return
-
-        # Валидация даты
-        date_str = fields['Дата'].replace('.', '').replace('-', '')
-        if not date_str.isdigit():
-            self._set_field_error(field_widgets['Дата'], True)
-            QMessageBox.warning(self, "Ошибка", "Дата некорректна. Введите корректную дату в формате ЧЧ.ММ.ГГГГ или ЧЧММГГГГ")
-            return
-        try:
-            if len(date_str) == 8:
-                date_obj = datetime.strptime(date_str, "%d%m%Y")
-            else:
-                self._set_field_error(field_widgets['Дата'], True)
-                QMessageBox.warning(self, "Ошибка", "Дата некорректна. Введите корректную дату в формате ЧЧ.ММ.ГГГГ или ЧЧММГГГГ")
-                return
-            # Дата <= текущей
-            if date_obj.date() > datetime.now().date():
-                self._set_field_error(field_widgets['Дата'], True)
-                QMessageBox.warning(self, "Ошибка", "Дата не может быть больше текущей")
-                return
-        except ValueError:
-            self._set_field_error(field_widgets['Дата'], True)
-            QMessageBox.warning(self, "Ошибка", "Дата некорректна. Введите корректную дату в формате ЧЧ.ММ.ГГГГ или ЧЧММГГГГ")
-            return
-
-        QMessageBox.information(self, "Успех", "Запись создана")
-
-        # Проверка дублей перед отправкой
-        if self.get_existing_keys_callback:
-            existing_keys = self.get_existing_keys_callback()
-            new_keys = [(snils, prog) for prog in programs]
-            duplicates = [k for k in new_keys if k in existing_keys]
-            if duplicates:
-                QMessageBox.warning(
-                    self, "Предупреждение",
-                    f"Выявлены аналогичные данные - {len(duplicates)} строк"
-                )
-                return
-
-        # Формируем записи для передачи на вкладку Просмотр
-        settings_tc_inn = self.tc_inn_input.text().strip()
-        settings_tc_title = self.tc_title_input.text().strip()
-        settings_employer_inn = self.employer_inn_input.text().strip()
-        settings_employer_title = self.employer_title_input.text().strip()
-
-        records = []
-        for prog in programs:
-            record = {
-                'last_name': fields['Фамилия'],
-                'first_name': fields['Имя'],
-                'middle_name': fields['Отчество'],
-                'snils': snils,
-                'position': fields['Должность'],
-                'employer_inn': settings_employer_inn,
-                'employer_title': settings_employer_title,
-                'tc_inn': settings_tc_inn,
-                'tc_title': settings_tc_title,
-                'result': fields['Результат'],
-                'program': prog,
-                'date': fields['Дата'],
-                'protocol': fields['Номер протокола']
-            }
-            records.append(record)
-
-        self.data_loaded.emit(records, False)
-        self.clear_manual_form(except_program=True)
-
-    def clear_manual_form(self, except_program=False):
-        """Очистка формы ручного ввода"""
-        self.last_name_input.clear()
-        self.first_name_input.clear()
-        self.middle_name_input.clear()
-        self.position_input.clear()
-        self.snils_input.clear()
-        if not except_program:
-            self.program_input.clear()
-        self.protocol_input.clear()
-        self.result_combo.setCurrentIndex(0)  # Удовлетворительно
-        self.date_input.clear()

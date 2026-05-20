@@ -1,4 +1,4 @@
-"""
+﻿"""
 Диалоговое окно «Программы обучения»
 Таблица: № программы, Название, Номер документа, Часы
 Двойной клик на ячейки «Номер документа» и «Часы» → диалог ввода
@@ -18,15 +18,14 @@ class ProgramsDialog(QDialog):
         self.manager = programs_manager
         self.setWindowTitle("Программы обучения")
         self.setMinimumSize(900, 600)
-        self.setStyleSheet("background-color: rgba(240, 240, 250, 0.95);")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
 
         # Подсказка
         hint = QLabel("Двойной клик по ячейке «Номер документа» или «Часы» для редактирования")
-        hint.setStyleSheet("color: #666; font-size: 12px; padding: 5px;")
+        hint.setObjectName("programsHint")
         layout.addWidget(hint)
 
         # Таблица
@@ -36,35 +35,11 @@ class ProgramsDialog(QDialog):
         # Кнопка сохранения
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("Сохранить")
-        save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4169E1;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-        """)
+        save_btn.setObjectName("dialogPrimaryBtn")
         save_btn.clicked.connect(self._save_and_close)
 
         cancel_btn = QPushButton("Отмена")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                color: red;
-                border: 2px solid red;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-weight: bold;
-                background-color: white;
-            }
-            QPushButton:hover {
-                background-color: #FFE0E0;
-            }
-        """)
+        cancel_btn.setObjectName("dialogDangerBtn")
         cancel_btn.clicked.connect(self.reject)
 
         btn_layout.addWidget(save_btn)
@@ -87,25 +62,6 @@ class ProgramsDialog(QDialog):
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         table.verticalHeader().setDefaultSectionSize(25)
         table.verticalHeader().setVisible(False)
-
-        table.setStyleSheet("""
-            QTableWidget {
-                background-color: white;
-                border: 2px solid #4169E1;
-                border-radius: 5px;
-                gridline-color: #E0E0E0;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QHeaderView::section {
-                background-color: #4169E1;
-                color: white;
-                padding: 5px;
-                border: none;
-                font-weight: bold;
-            }
-        """)
 
         table.setColumnWidth(0, 100)
         table.setColumnWidth(1, 400)
@@ -184,49 +140,9 @@ class ProgramsDialog(QDialog):
 
     def _show_input_dialog(self, title: str, current_value: str, digits_only: bool = False) -> str:
         """Диалог ввода значения."""
-        from PySide6.QtGui import QPalette, QColor
-
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
         dialog.setMinimumWidth(400)
-
-        # Принудительно светлая палитра + QSS для гарантии белого фона
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: rgb(240, 240, 250);
-            }
-            QLineEdit {
-                background-color: rgb(255, 255, 255);
-                color: #1A1A2E;
-                padding: 8px 14px;
-                border-radius: 12px;
-                border: 1px solid rgba(124, 77, 255, 0.15);
-            }
-            QPushButton {
-                background-color: rgba(255, 255, 255, 0.7);
-                color: #1A1A2E;
-                border: 1px solid rgba(124, 77, 255, 0.15);
-                border-radius: 9999px;
-                padding: 8px 20px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(124, 77, 255, 0.15);
-            }
-            QLabel {
-                background-color: transparent;
-                color: #1A1A2E;
-            }
-        """)
-
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 250))
-        palette.setColor(QPalette.ColorRole.WindowText, QColor(26, 26, 46))
-        palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
-        palette.setColor(QPalette.ColorRole.Text, QColor(26, 26, 46))
-        palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 250))
-        palette.setColor(QPalette.ColorRole.ButtonText, QColor(26, 26, 46))
-        dialog.setPalette(palette)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -238,29 +154,9 @@ class ProgramsDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         ok_btn = QPushButton("ОК")
-        ok_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #B39DDB, stop:1 #FF8A65);
-                color: white;
-                border: none;
-                border-radius: 9999px;
-                padding: 8px 20px;
-                font-weight: bold;
-            }
-            QPushButton:hover { opacity: 0.85; }
-        """)
+        ok_btn.setObjectName("dialogPrimaryBtn")
         cancel_btn = QPushButton("Отмена")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                color: #F44336;
-                border: 1.5px solid #F44336;
-                background-color: transparent;
-                border-radius: 9999px;
-                padding: 8px 20px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: rgba(244, 67, 54, 0.1); }
-        """)
+        cancel_btn.setObjectName("dialogDangerBtn")
 
         def on_ok():
             value = input_field.text().strip()

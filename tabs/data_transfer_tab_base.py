@@ -1,4 +1,4 @@
-"""
+﻿"""
 Базовый класс для вкладок передачи данных с различными HTTP-библиотеками.
 """
 import os
@@ -84,19 +84,13 @@ class BaseDataTransferTab(QWidget):
     def _create_api_key_group(self):
         group = QGroupBox("API ключ")
         group.setStyleSheet("""
-            QGroupBox { 
-                color: black; 
-                font-weight: bold; 
+            QGroupBox { font-weight: bold; 
                 padding-top: 10px; 
-                border: 1px solid #CCCCCC; 
                 border-radius: 5px; 
-                margin-top: 10px; 
-            }
-            QGroupBox::title { 
-                subcontrol-origin: margin; 
+                margin-top: 10px}
+            QGroupBox::title { subcontrol-origin: margin; 
                 left: 10px; 
-                padding: 0 5px; 
-            }
+                padding: 0 5px}
         """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
@@ -104,10 +98,10 @@ class BaseDataTransferTab(QWidget):
         inner = QHBoxLayout()
 
         label = QLabel("API ключ (32 символа):")
-        label.setStyleSheet("color: black;")
+        label.setStyleSheet("")
         self.api_key_input = QLineEdit()
         self.api_key_input.setFixedWidth(500)
-        self.api_key_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.api_key_input.setStyleSheet(" padding: 4px;")
         self.api_key_input.setPlaceholderText("Вставьте API ключ из личного кабинета")
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
 
@@ -127,25 +121,19 @@ class BaseDataTransferTab(QWidget):
     def _create_proxy_group(self):
         group = QGroupBox("Настройки прокси")
         group.setStyleSheet("""
-            QGroupBox { 
-                color: black; 
-                font-weight: bold; 
+            QGroupBox { font-weight: bold; 
                 padding-top: 10px; 
-                border: 1px solid #CCCCCC; 
                 border-radius: 5px; 
-                margin-top: 10px; 
-            }
-            QGroupBox::title { 
-                subcontrol-origin: margin; 
+                margin-top: 10px}
+            QGroupBox::title { subcontrol-origin: margin; 
                 left: 10px; 
-                padding: 0 5px; 
-            }
+                padding: 0 5px}
         """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
         radio_inner = QHBoxLayout()
-        rb_style = "color: black;"
+        rb_style = ""
         
         self.proxy_off_rb = QRadioButton("Без прокси")
         self.proxy_off_rb.setStyleSheet(rb_style)
@@ -176,10 +164,10 @@ class BaseDataTransferTab(QWidget):
 
         row1 = QHBoxLayout()
         self.proxy_url_label = QLabel("Адрес прокси:")
-        self.proxy_url_label.setStyleSheet("color: black;")
+        self.proxy_url_label.setStyleSheet("")
         self.proxy_url_input = QLineEdit()
         self.proxy_url_input.setFixedWidth(400)
-        self.proxy_url_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_url_input.setStyleSheet(" padding: 4px;")
         self.proxy_url_input.setPlaceholderText("http://proxy.example.com:3128")
         row1.addWidget(self.proxy_url_label)
         row1.addWidget(self.proxy_url_input)
@@ -187,19 +175,19 @@ class BaseDataTransferTab(QWidget):
 
         row2 = QHBoxLayout()
         self.proxy_user_label = QLabel("Логин:")
-        self.proxy_user_label.setStyleSheet("color: black;")
+        self.proxy_user_label.setStyleSheet("")
         self.proxy_user_input = QLineEdit()
         self.proxy_user_input.setFixedWidth(150)
-        self.proxy_user_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_user_input.setStyleSheet(" padding: 4px;")
         self.proxy_user_input.setPlaceholderText("Если прокси требует авторизацию")
         row2.addWidget(self.proxy_user_label)
         row2.addWidget(self.proxy_user_input)
 
         self.proxy_pass_label = QLabel("Пароль:")
-        self.proxy_pass_label.setStyleSheet("color: black;")
+        self.proxy_pass_label.setStyleSheet("")
         self.proxy_pass_input = QLineEdit()
         self.proxy_pass_input.setFixedWidth(150)
-        self.proxy_pass_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.proxy_pass_input.setStyleSheet(" padding: 4px;")
         self.proxy_pass_input.setPlaceholderText("Если прокси требует авторизацию")
         self.proxy_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
         row2.addWidget(self.proxy_pass_label)
@@ -253,28 +241,22 @@ class BaseDataTransferTab(QWidget):
     def _create_send_xml_group(self):
         group = QGroupBox("Отправка XML")
         group.setStyleSheet("""
-            QGroupBox { 
-                color: black; 
-                font-weight: bold; 
+            QGroupBox { font-weight: bold; 
                 padding-top: 10px; 
-                border: 1px solid #CCCCCC; 
                 border-radius: 5px; 
-                margin-top: 10px; 
-            }
-            QGroupBox::title { 
-                subcontrol-origin: margin; 
+                margin-top: 10px}
+            QGroupBox::title { subcontrol-origin: margin; 
                 left: 10px; 
-                padding: 0 5px; 
-            }
+                padding: 0 5px}
         """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
         row = QHBoxLayout()
         label = QLabel("XML файл:")
-        label.setStyleSheet("color: black;")
+        label.setStyleSheet("")
         self.xml_file_input = QLineEdit()
-        self.xml_file_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.xml_file_input.setStyleSheet(" padding: 4px;")
         self.xml_file_input.setReadOnly(True)
 
         select_btn = QPushButton("Выбрать")
@@ -296,29 +278,23 @@ class BaseDataTransferTab(QWidget):
     def _create_query_setid_group(self):
         group = QGroupBox("Запрос по SetId")
         group.setStyleSheet("""
-            QGroupBox { 
-                color: black; 
-                font-weight: bold; 
+            QGroupBox { font-weight: bold; 
                 padding-top: 10px; 
-                border: 1px solid #CCCCCC; 
                 border-radius: 5px; 
-                margin-top: 10px; 
-            }
-            QGroupBox::title { 
-                subcontrol-origin: margin; 
+                margin-top: 10px}
+            QGroupBox::title { subcontrol-origin: margin; 
                 left: 10px; 
-                padding: 0 5px; 
-            }
+                padding: 0 5px}
         """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
         row = QHBoxLayout()
         label = QLabel("Введите номер набора (SetId):")
-        label.setStyleSheet("color: black;")
+        label.setStyleSheet("")
         self.query_setid_input = QLineEdit()
         self.query_setid_input.setFixedWidth(300)
-        self.query_setid_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.query_setid_input.setStyleSheet(" padding: 4px;")
 
         row.addWidget(label)
         row.addWidget(self.query_setid_input)
@@ -334,29 +310,23 @@ class BaseDataTransferTab(QWidget):
     def _create_query_snils_group(self):
         group = QGroupBox("Запрос по СНИЛС")
         group.setStyleSheet("""
-            QGroupBox { 
-                color: black; 
-                font-weight: bold; 
+            QGroupBox { font-weight: bold; 
                 padding-top: 10px; 
-                border: 1px solid #CCCCCC; 
                 border-radius: 5px; 
-                margin-top: 10px; 
-            }
-            QGroupBox::title { 
-                subcontrol-origin: margin; 
+                margin-top: 10px}
+            QGroupBox::title { subcontrol-origin: margin; 
                 left: 10px; 
-                padding: 0 5px; 
-            }
+                padding: 0 5px}
         """)
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
         row = QHBoxLayout()
         label = QLabel("Введите СНИЛС:")
-        label.setStyleSheet("color: black;")
+        label.setStyleSheet("")
         self.query_snils_input = QLineEdit()
         self.query_snils_input.setFixedWidth(300)
-        self.query_snils_input.setStyleSheet("color: black; border: 1px solid #CCCCCC; padding: 4px;")
+        self.query_snils_input.setStyleSheet(" padding: 4px;")
         self.query_snils_input.setPlaceholderText("123-456-789 00 или 12345678900")
 
         row.addWidget(label)
@@ -372,20 +342,14 @@ class BaseDataTransferTab(QWidget):
 
     def _btn_style(self):
         return """
-            QPushButton {
-                background-color: #4169E1;
+            QPushButton { background-color: #4169E1;
                 color: white;
                 border: none;
                 padding: 8px 16px;
                 border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3151B1;
-            }
-            QPushButton:pressed {
-                background-color: #264090;
-            }
+                font-weight: bold}
+            QPushButton:hover { background-color: #3151B1}
+            QPushButton:pressed { background-color: #264090}
         """
 
     # ============ Логика API-ключа ============
@@ -440,12 +404,10 @@ class BaseDataTransferTab(QWidget):
         mode_id = self.proxy_mode_group.checkedId()
         mode = {0: 'off', 1: 'auto', 2: 'manual'}[mode_id]
 
-        settings = {
-            'mode': mode,
+        settings = { 'mode': mode,
             'url': self.proxy_url_input.text().strip(),
             'username': self.proxy_user_input.text().strip(),
-            'password': self.proxy_pass_input.text().strip()
-        }
+            'password': self.proxy_pass_input.text().strip()}
 
         ok, msg = save_proxy_settings(self.data_dir, settings)
         if ok:
@@ -459,12 +421,10 @@ class BaseDataTransferTab(QWidget):
         mode_id = self.proxy_mode_group.checkedId()
         mode = {0: 'off', 1: 'auto', 2: 'manual'}[mode_id]
 
-        settings = {
-            'mode': mode,
+        settings = { 'mode': mode,
             'url': self.proxy_url_input.text().strip(),
             'username': self.proxy_user_input.text().strip(),
-            'password': self.proxy_pass_input.text().strip()
-        }
+            'password': self.proxy_pass_input.text().strip()}
 
         if mode == 'off':
             QMessageBox.information(self, "Информация", "Режим 'Без прокси' — будет использовано прямое подключение.")
@@ -487,12 +447,10 @@ class BaseDataTransferTab(QWidget):
         mode_id = self.proxy_mode_group.checkedId()
         mode = {0: 'off', 1: 'auto', 2: 'manual'}[mode_id]
 
-        return {
-            'mode': mode,
+        return { 'mode': mode,
             'url': self.proxy_url_input.text().strip(),
             'username': self.proxy_user_input.text().strip(),
-            'password': self.proxy_pass_input.text().strip()
-        }
+            'password': self.proxy_pass_input.text().strip()}
 
     # ============ Отправка XML ============
 
@@ -555,12 +513,6 @@ class BaseDataTransferTab(QWidget):
             msg_box.setWindowTitle("Успех")
             msg_box.setIcon(QMessageBox.Icon.Information)
             msg_box.setText(msg)
-            msg_box.setStyleSheet("""
-                QMessageBox QLabel {
-                    color: black;
-                    font-size: 14px;
-                }
-            """)
             msg_box.exec()
 
             if self._journal_add_callback:
