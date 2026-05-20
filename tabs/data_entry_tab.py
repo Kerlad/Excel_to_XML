@@ -627,7 +627,12 @@ class DataEntryTab(QWidget):
 
         if records is None:
             # Критическая ошибка
-            msg = "\n".join(xml_xsd_errors[:10]) if xml_xsd_errors else "Ошибка импорта"
+            msgs = []
+            if xml_error_messages:
+                msgs.extend(xml_error_messages[:5])
+            if xml_xsd_errors:
+                msgs.append("XSD: " + "\n".join(xml_xsd_errors[:5]))
+            msg = "\n".join(msgs) if msgs else "Ошибка импорта"
             QMessageBox.warning(self, "Ошибка импорта", msg)
             return
 

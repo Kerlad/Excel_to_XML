@@ -554,10 +554,10 @@ class EmployeeSummaryTab(QWidget):
         self.query_btn.clicked.connect(self._query_reestr)
         layout.addWidget(self.query_btn)
 
-        self.refresh_btn = QPushButton("Обновить данные")
-        self.refresh_btn.setStyleSheet(self._btn_style(bg="#ffc107", hover="#e0a800"))
-        self.refresh_btn.clicked.connect(self.refresh_table)
-        layout.addWidget(self.refresh_btn)
+        self.snapshot_btn = QPushButton("Текущая ситуация")
+        self.snapshot_btn.setStyleSheet(self._btn_style(bg="#17a2b8", hover="#138496"))
+        self.snapshot_btn.clicked.connect(self._show_current_snapshot)
+        layout.addWidget(self.snapshot_btn)
 
         layout.addStretch()
         # Кнопка выбора столбцов программ
@@ -630,6 +630,11 @@ class EmployeeSummaryTab(QWidget):
         self.plan_next_btn.setStyleSheet(self._btn_style())
         self.plan_next_btn.clicked.connect(lambda: self._generate_plan(current_year=False))
         layout.addWidget(self.plan_next_btn)
+
+        self.report_trained_btn = QPushButton("Сформировать отчет по обученным")
+        self.report_trained_btn.setStyleSheet(self._btn_style(bg="#17a2b8", hover="#138496"))
+        self.report_trained_btn.clicked.connect(self._generate_trained_report)
+        layout.addWidget(self.report_trained_btn)
 
         layout.addStretch()
         return widget
@@ -839,12 +844,12 @@ class EmployeeSummaryTab(QWidget):
                     'base_no': pd.get('base_no', ''),
                     'status': s,
                 }
-                if s == 'trained':
-                    overall_status = 'trained'
-                elif s == 'expired' and overall_status != 'trained':
-                    overall_status = 'expired'
-                elif s == 'not_trained' and overall_status not in ('trained', 'expired'):
+                if s == 'not_trained':
                     overall_status = 'not_trained'
+                elif s == 'expired' and overall_status != 'not_trained':
+                    overall_status = 'expired'
+                elif s == 'trained' and overall_status is None:
+                    overall_status = 'trained'
 
             if status_filter != "Все":
                 status_map = {"Обучен": "trained", "Не обучен": "not_trained", "Просрочено": "expired"}
@@ -906,14 +911,43 @@ class EmployeeSummaryTab(QWidget):
 
         self.table.setSortingEnabled(True)
 
+    def _get_employee_status(self, emp_id: int, programs) -> str:
+        """Определяет статус сотрудника: not_trained > expired > trained."""
+        has_trained = False
+        has_expired = False
+        for p in programs:
+            if p.get('need_training') != 1:
+                continue
+            s = p.get('status', 'not_trained')
+            if s == 'not_trained':
+                return 'not_trained'
+            if s == 'expired':
+                has_expired = True
+            elif s == 'trained':
+                has_trained = True
+        if has_expired:
+            return 'expired'
+        if has_trained:
+            return 'trained'
+        return 'not_trained'
+
     def _update_stats(self):
         emp_count = EmployeesRepo.count()
         self.stats_cards[0].setText(str(emp_count))
 
-        counts = EmployeeProgramsRepo.get_status_counts()
-        self.stats_cards[1].setText(str(counts.get('trained', 0)))
-        self.stats_cards[2].setText(str(counts.get('not_trained', 0)))
-        self.stats_cards[3].setText(str(counts.get('expired', 0)))
+        trained = not_trained = expired = 0
+        for emp in EmployeesRepo.get_all():
+            progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
+            status = self._get_employee_status(emp['id'], progs)
+            if status == 'trained':
+                trained += 1
+            elif status == 'expired':
+                expired += 1
+            else:
+                not_trained += 1
+        self.stats_cards[1].setText(str(trained))
+        self.stats_cards[2].setText(str(not_trained))
+        self.stats_cards[3].setText(str(expired))
 
         last_sync = ""
         rows = DatabaseManager.get_instance().fetchone(
@@ -1399,6 +1433,136 @@ class EmployeeSummaryTab(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Ошибка", f"Ошибка запроса: {e}")
 
+    def _show_current_snapshot(self):
+        """Формирует отчёт о текущей ситуации (как план, но на сегодня)."""
+        today = datetime.now()
+        plan_data = []
+        for emp in EmployeesRepo.get_all():
+            progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
+            emp_status = self._get_employee_status(emp['id'], progs)
+            reason_map = {'not_trained': 'Не обучен', 'expired': 'Просрочено', 'trained': 'Обучен'}
+            priority_map = {'not_trained': 'Высокий', 'expired': 'Высокий', 'trained': 'Низкий'}
+            expiry_map = {
+                'not_trained': (today + relativedelta(days=60)).strftime('%d.%m.%Y'),
+                'expired': (today + relativedelta(days=30)).strftime('%d.%m.%Y'),
+                'trained': '',
+            }
+            plan_data.append({
+                'last_name': emp['last_name'],
+                'first_name': emp['first_name'],
+                'middle_name': emp['middle_name'],
+                'snils': emp['snils'],
+                'position': emp['position'],
+                'program': ', '.join(str(p['program_id']) for p in progs if p.get('need_training') == 1),
+                'last_exam_date': '',
+                'expiry_date': expiry_map.get(emp_status, ''),
+                'reason': reason_map.get(emp_status, ''),
+                'priority': priority_map.get(emp_status, ''),
+            })
+
+        plan_data.sort(key=lambda x: (
+            {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3),
+            x['last_name']
+        ))
+
+        if not plan_data:
+            QMessageBox.information(self, "Информация", "Нет данных для отображения")
+            return
+
+        title = f"Текущая ситуация на {today.strftime('%d.%m.%Y')}"
+        plan_dlg = PlanDialog(plan_data, title, self)
+        plan_dlg.exec()
+
+    def _generate_trained_report(self):
+        year = datetime.now().year
+
+        categories = [
+            ('А', [3]),
+            ('Б', [4]),
+            ('В', list(range(6, 30))),
+            ('ОПП', [1]),
+            ('СИЗ', [2]),
+        ]
+
+        db = DatabaseManager.get_instance()
+        all_programs = db.fetchall(
+            "SELECT program_id, exam_date FROM employee_programs WHERE need_training = 1 AND exam_date IS NOT NULL AND exam_date != ''"
+        )
+
+        report_data = {}
+        for cat_name, prog_ids in categories:
+            count_liable = 0
+            count_trained = 0
+            for row in all_programs:
+                if row['program_id'] not in prog_ids:
+                    continue
+                try:
+                    exam_date_str = row['exam_date'].split()[0]
+                    exam_year = datetime.strptime(exam_date_str, '%d.%m.%Y').year
+                    if exam_year == year:
+                        count_trained += 1
+                        count_liable += 1
+                    elif exam_year == year - 3:
+                        count_liable += 1
+                except (ValueError, IndexError):
+                    continue
+            report_data[cat_name] = (count_liable, count_trained)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Отчет по обученным за {year} год")
+        dialog.setMinimumSize(700, 350)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setStyleSheet("QDialog { background-color: white; }")
+
+        layout = QVBoxLayout(dialog)
+
+        title = QLabel(f"Отчет по обученным за {year} год")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #4169E1;")
+        layout.addWidget(title)
+
+        table = QTableWidget()
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels([
+            "Программа", "Подлежат обучению в текущем году", "Обучено в текущем году"
+        ])
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.verticalHeader().setVisible(False)
+
+        for cat_name, (count_liable, count_trained) in report_data.items():
+            row = table.rowCount()
+            table.insertRow(row)
+            cat_item = QTableWidgetItem(cat_name)
+            cat_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 0, cat_item)
+            liable_item = QTableWidgetItem(str(count_liable))
+            liable_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 1, liable_item)
+            trained_item = QTableWidgetItem(str(count_trained))
+            trained_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 2, trained_item)
+
+        layout.addWidget(table)
+
+        close_btn = QPushButton("Закрыть")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                color: red; border: 2px solid red; padding: 8px 16px;
+                border-radius: 5px; font-weight: bold; background-color: white;
+            }
+            QPushButton:hover { background-color: #FFE0E0; }
+        """)
+        close_btn.clicked.connect(dialog.close)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        dialog.exec()
+
     def _generate_plan(self, current_year=True):
         year = datetime.now().year if current_year else datetime.now().year + 1
         plan_year = year
@@ -1453,61 +1617,58 @@ class EmployeeSummaryTab(QWidget):
             employees = EmployeesRepo.get_all()
             for emp in employees:
                 progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
+                emp_status = self._get_employee_status(emp['id'], progs)
+                exam_dates = []
+                all_progs = []
                 for p in progs:
                     if p.get('need_training') != 1:
                         continue
-                    prog_id = str(p['program_id'])
-                    exam_date_str = p.get('exam_date', '')
-                    result_val = p.get('result')
-                    status = p.get('status', '')
+                    all_progs.append(str(p['program_id']))
+                    if p.get('exam_date'):
+                        exam_dates.append(p['exam_date'])
+                prog_ids = ', '.join(all_progs) if all_progs else ''
+                last_exam = max(exam_dates) if exam_dates else ""
 
-                    reason = None
-                    priority = None
-                    last_exam = exam_date_str or ""
-                    expiry = ""
+                reason = None
+                priority = None
+                expiry = ""
 
-                    if not exam_date_str or result_val == 0:
-                        if cb_not_trained.isChecked() or cb_failed.isChecked():
-                            if not exam_date_str and cb_not_trained.isChecked():
-                                reason = "Не обучен"
-                                priority = "Высокий"
-                                expiry = (today + relativedelta(days=60)).strftime('%d.%m.%Y')
-                            elif result_val == 0 and cb_failed.isChecked():
-                                reason = "Не сдал проверку знаний"
-                                priority = "Высокий"
-                                expiry = (today + relativedelta(days=30)).strftime('%d.%m.%Y')
-                    else:
+                if emp_status == 'not_trained':
+                    if cb_not_trained.isChecked():
+                        reason = "Не обучен"
+                        priority = "Высокий"
+                        expiry = (today + relativedelta(days=60)).strftime('%d.%m.%Y')
+                elif emp_status == 'expired':
+                    if cb_expired.isChecked():
+                        reason = "Просрочено"
+                        priority = "Высокий"
+                        expiry = (today + relativedelta(days=30)).strftime('%d.%m.%Y')
+                else:
+                    # trained — проверяем истекающих в планируемом году
+                    if cb_expiring.isChecked() and last_exam:
                         try:
-                            exam_date = datetime.strptime(exam_date_str.split()[0], '%d.%m.%Y')
+                            exam_date = datetime.strptime(last_exam.split()[0], '%d.%m.%Y')
                             expiry_date = exam_date + relativedelta(years=3)
-                            expiry_str = expiry_date.strftime('%d.%m.%Y')
-
-                            if expiry_date < today:
-                                if cb_expired.isChecked():
-                                    reason = "Просрочено"
-                                    priority = "Высокий"
-                                    expiry = (today + relativedelta(days=30)).strftime('%d.%m.%Y')
-                            elif expiry_date.year == plan_year:
-                                if cb_expiring.isChecked():
-                                    reason = f"Истекает срок действия"
-                                    priority = "Средний"
-                                    expiry = expiry_str
+                            if expiry_date.year == plan_year:
+                                reason = "Истекает срок действия"
+                                priority = "Средний"
+                                expiry = expiry_date.strftime('%d.%m.%Y')
                         except (ValueError, IndexError):
-                            continue
+                            pass
 
-                    if reason and priority:
-                        plan_data.append({
-                            'last_name': emp['last_name'],
-                            'first_name': emp['first_name'],
-                            'middle_name': emp['middle_name'],
-                            'snils': emp['snils'],
-                            'position': emp['position'],
-                            'program': prog_id,
-                            'last_exam_date': last_exam,
-                            'expiry_date': expiry,
-                            'reason': reason,
-                            'priority': priority,
-                        })
+                if reason and priority:
+                    plan_data.append({
+                        'last_name': emp['last_name'],
+                        'first_name': emp['first_name'],
+                        'middle_name': emp['middle_name'],
+                        'snils': emp['snils'],
+                        'position': emp['position'],
+                        'program': prog_ids,
+                        'last_exam_date': last_exam,
+                        'expiry_date': expiry,
+                        'reason': reason,
+                        'priority': priority,
+                    })
 
             plan_data.sort(key=lambda x: (
                 {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3),

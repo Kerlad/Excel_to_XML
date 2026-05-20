@@ -387,8 +387,14 @@ class MintrudClient:
             if not parse_result.get("success"):
                 return {"success": False, "records": [], "error": parse_result.get("error", "Unknown error")}
 
-            all_records.extend(parse_result.get("records", []))
+            records = parse_result.get("records", [])
+            all_records.extend(records)
+
+            if len(records) < page_size:
+                break
+
             page_no += 1
+            time.sleep(0.5)
 
         return {"success": True, "records": all_records, "error": None}
 
