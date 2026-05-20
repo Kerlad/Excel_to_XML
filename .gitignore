@@ -46,7 +46,7 @@ test_*.xlsx
 generate_test_data.py
 
 # Docs (optional) — moved to docs/
-docs/
+docs/hide_*.md
 Техническое_задание*.pdf
 *.txt
 
