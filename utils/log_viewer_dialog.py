@@ -311,7 +311,7 @@ class LogViewerDialog(QDialog):
     def _clear_logs(self):
         reply = QMessageBox.warning(
             self, "Очистка логов",
-            "Удалить все файлы логов?\n"
+            "Очистить содержимое всех файлов логов?\n"
             "Рекомендуется сначала сохранить архив.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -324,7 +324,8 @@ class LogViewerDialog(QDialog):
             if name == 'audit.log':
                 continue
             try:
-                os.remove(fp)
+                with open(fp, 'w', encoding='utf-8') as f:
+                    f.truncate(0)
             except OSError as e:
                 errors.append(f"{name}: {e}")
 

@@ -213,7 +213,7 @@ def verify_passphrase(passphrase: str) -> bool:
     derived = _derive_key_from_passphrase(passphrase, salt)
     try:
         Fernet(derived).decrypt(wrapped)
-    except (ValueError, TypeError) as e:
+    except (InvalidToken, ValueError, TypeError) as e:
         _CURRENT_PASSPHRASE_KEY = None
         raise CryptoPassphraseRequiredError("Invalid passphrase") from e
     _CURRENT_PASSPHRASE_KEY = derived
@@ -289,7 +289,7 @@ def _fernet() -> Fernet:
         pkey = _CURRENT_PASSPHRASE_KEY
         if pkey:
             try:
-                kf = Path(str(_key_dir()) / "passphrase_wrapped.key")
+                kf = _key_dir() / "passphrase_wrapped.key"
                 raw = kf.read_bytes()
                 salt = raw[:32]
                 wrapped = raw[32:]

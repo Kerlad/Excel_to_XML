@@ -1,13 +1,20 @@
 import os
+import logging
+import tempfile
+import urllib.parse
+from datetime import datetime
+from zipfile import ZipFile
+from pathlib import Path
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget,
-    QMessageBox, QFileDialog, QInputDialog, QLineEdit
+    QMessageBox, QFileDialog, QInputDialog, QLineEdit, QTextEdit,
+    QDialog
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QFont, QDesktopServices
 from PySide6.QtCore import QUrl
 from utils.dialog_base import BaseDialog
-from utils.app_paths import get_resource_dir
+from utils.app_paths import get_resource_dir, get_app_log_dir
 from utils.crypto import (
     check_master_key_security, create_master_key_backup,
     is_passphrase_protected, set_passphrase, remove_passphrase,
@@ -74,6 +81,20 @@ class AboutDialog(BaseDialog):
         desc.setWordWrap(True)
         bl.addWidget(desc)
 
+        passphrase_notice = QLabel(
+            '🔑 <b>Рекомендуется установить парольную фразу</b> '
+            'для защиты мастер-ключа (раздел «Безопасность» ниже). '
+            '<b>Обязательно запишите или запомните её</b> — '
+            'при утере восстановить данные будет невозможно.'
+        )
+        passphrase_notice.setObjectName("aboutPassphraseNotice")
+        passphrase_notice.setWordWrap(True)
+        passphrase_notice.setStyleSheet(
+            "padding: 10px; border: 1px solid #F39C12; border-radius: 6px; "
+            "background-color: rgba(243, 156, 18, 0.08);"
+        )
+        bl.addWidget(passphrase_notice)
+
         info_widget = QWidget()
         info_widget.setObjectName("aboutInfoWidget")
         info_layout = QVBoxLayout(info_widget)
@@ -84,7 +105,7 @@ class AboutDialog(BaseDialog):
         dev_label.setObjectName("aboutInfoLabel")
         info_layout.addWidget(dev_label)
 
-        studio_label = QLabel("<b>При участии:</b> QWEN Studio, OpenCode (free AI)")
+        studio_label = QLabel("<b>При участии:</b> OpenCode")
         studio_label.setObjectName("aboutInfoLabel")
         info_layout.addWidget(studio_label)
 
@@ -104,6 +125,17 @@ class AboutDialog(BaseDialog):
 
         bl.addWidget(info_widget)
 
+        report_btn = QPushButton("Сообщить об ошибке")
+        report_btn.setMinimumHeight(36)
+        report_btn.setStyleSheet(
+            "QPushButton { background-color: #E74C3C; color: white; border: none; "
+            "padding: 8px 20px; border-radius: 5px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #C0392B; }"
+            "QPushButton:pressed { background-color: #A93226; }"
+        )
+        report_btn.clicked.connect(self._report_error)
+        bl.addWidget(report_btn)
+
         security_widget = QWidget()
         security_widget.setObjectName("aboutInfoWidget")
         security_layout = QVBoxLayout(security_widget)
@@ -111,7 +143,6 @@ class AboutDialog(BaseDialog):
         security_layout.setContentsMargins(12, 10, 12, 10)
 
         self._security_status_label = QLabel()
-        self._update_security_status()
         self._security_status_label.setObjectName("aboutInfoLabel")
         self._security_status_label.setWordWrap(True)
         security_layout.addWidget(self._security_status_label)
@@ -137,6 +168,8 @@ class AboutDialog(BaseDialog):
         passphrase_btn_row.addWidget(self._remove_passphrase_btn)
 
         security_layout.addLayout(passphrase_btn_row)
+
+        self._update_security_status()
 
         bl.addWidget(security_widget)
         bl.addStretch()
@@ -164,6 +197,134 @@ class AboutDialog(BaseDialog):
         self._security_status_label.setText(html)
         self._set_passphrase_btn.setVisible(not pp)
         self._remove_passphrase_btn.setVisible(pp)
+
+    def _report_error(self):
+        log_dir = get_app_log_dir()
+        log_path = Path(log_dir)
+        if not log_path.exists() or not any(log_path.iterdir()):
+            QMessageBox.information(
+                self, "Логи не найдены",
+                "Директория логов пуста или не существует.\n\n"
+                "Вы можете отправить сообщение об ошибке вручную "
+                "на denis.krv@yandex.ru"
+            )
+            return
+
+        desktop = os.path.join(os.environ['USERPROFILE'], 'Desktop')
+        zip_name = f"error_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        zip_path = os.path.join(desktop, zip_name)
+        try:
+            with ZipFile(zip_path, 'w') as zf:
+                for f in log_path.iterdir():
+                    if f.is_file():
+                        zf.write(str(f), arcname=f.name)
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Failed to create log ZIP: {e}")
+            QMessageBox.warning(
+                self, "Ошибка",
+                f"Не удалось создать архив логов:\n{e}"
+            )
+            return
+
+        body_dialog = QDialog(self)
+        body_dialog.setWindowTitle("Описание ошибки")
+        body_dialog.setFixedSize(500, 350)
+        body_dialog.setModal(True)
+        layout = QVBoxLayout(body_dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        hint = QLabel(
+            "Опишите, что произошло. К письму будет приложен архив с логами."
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        text_edit = QTextEdit()
+        text_edit.setPlaceholderText(
+            "Опишите проблему: что делали, что ожидали, что произошло на самом деле..."
+        )
+        text_edit.setMinimumHeight(180)
+        layout.addWidget(text_edit)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Отмена")
+        cancel_btn.setMinimumHeight(36)
+        cancel_btn.clicked.connect(body_dialog.reject)
+        btn_row.addWidget(cancel_btn)
+        send_btn = QPushButton("Отправить")
+        send_btn.setMinimumHeight(36)
+        send_btn.setStyleSheet(
+            "QPushButton { background-color: #27AE60; color: white; border: none; "
+            "padding: 8px 20px; border-radius: 5px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #219A52; }"
+        )
+        send_btn.clicked.connect(body_dialog.accept)
+        btn_row.addWidget(send_btn)
+        layout.addLayout(btn_row)
+
+        if body_dialog.exec() != QDialog.DialogCode.Accepted:
+            try:
+                os.remove(zip_path)
+            except OSError:
+                pass
+            return
+
+        user_text = text_edit.toPlainText().strip()
+
+        sent = False
+        try:
+            import win32com.client
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            mail = outlook.CreateItem(0)
+            mail.To = "denis.krv@yandex.ru"
+            mail.Subject = f"Excel-XML v{VERSION}: сообщение об ошибке"
+            body_parts = []
+            if user_text:
+                body_parts.append(user_text)
+            body_parts.append("")
+            body_parts.append("---")
+            body_parts.append(f"Версия: {VERSION}")
+            body_parts.append(f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+            mail.Body = "\n".join(body_parts)
+            mail.Attachments.Add(zip_path)
+            mail.Display()
+            sent = True
+            logging.getLogger(__name__).info("Outlook error report created")
+        except ImportError:
+            logging.getLogger(__name__).debug("win32com not available for error report")
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Outlook COM failed: {e}")
+
+        if not sent:
+            subject = f"Excel-XML v{VERSION}: сообщение об ошибке"
+            body = ""
+            if user_text:
+                body += user_text + "\n\n"
+            body += "---\n"
+            body += f"Архив логов: {zip_path}\n"
+            body += f"Версия: {VERSION}\n"
+            body += f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            mailto_url = (
+                f"mailto:denis.krv@yandex.ru"
+                f"?subject={urllib.parse.quote(subject, safe='')}"
+                f"&body={urllib.parse.quote(body, safe='')}"
+            )
+            QDesktopServices.openUrl(QUrl(mailto_url))
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Архив логов")
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(
+                f"Архив логов сохранён:\n{zip_path}\n\n"
+                "Пожалуйста, прикрепите его к открывшемуся письму вручную."
+            )
+            open_btn = msg.addButton("Открыть папку", QMessageBox.ActionRole)
+            msg.addButton("Закрыть", QMessageBox.RejectRole)
+            msg.exec()
+            if msg.clickedButton() == open_btn:
+                folder = os.path.dirname(zip_path)
+                QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
     def _set_passphrase(self):
         pp, ok = QInputDialog.getText(

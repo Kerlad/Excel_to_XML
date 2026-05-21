@@ -3,9 +3,9 @@ import os
 import logging
 import traceback
 from datetime import datetime
-from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QFileDialog, QProgressBar, QToolBar
+from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenu, QMessageBox, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QProgressBar
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon, QFont, QAction
+from PySide6.QtGui import QIcon
 from tabs.data_entry_tab import DataEntryTab
 from tabs.data_view_tab import DataViewTab
 from tabs.data_transfer_tab import DataTransferTab
@@ -44,7 +44,6 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
         self._create_menu_bar()
-        self._create_toolbar()
         self._create_status_bar()
 
         data_dir = get_app_data_dir()
@@ -274,62 +273,19 @@ class MainWindow(QMainWindow):
         self._theme_action.triggered.connect(self._toggle_theme)
         proxy_action = settings_menu.addAction("Настройки прокси")
         proxy_action.triggered.connect(self._open_proxy_settings)
-        settings_menu.addSeparator()
-        about_action = settings_menu.addAction("О программе")
-        about_action.triggered.connect(self.show_about)
 
         # Меню "Справка"
         help_menu = menubar.addMenu("Справка")
         help_action = help_menu.addAction("Справка по работе с программой")
         help_action.triggered.connect(self.show_help)
+        help_menu.addSeparator()
+        about_action = help_menu.addAction("О программе")
+        about_action.triggered.connect(self.show_about)
 
         # Меню "Инструменты"
         tools_menu = menubar.addMenu("Инструменты")
         logs_action = tools_menu.addAction("Просмотр логов")
         logs_action.triggered.connect(self.show_log_viewer)
-
-    def _create_toolbar(self):
-        """Создание верхней панели инструментов."""
-        toolbar = QToolBar("Панель инструментов")
-        toolbar.setMovable(False)
-        toolbar.setFloatable(False)
-        toolbar.setIconSize(self.style().standardIcon(
-            self.style().StandardPixmap.SP_FileDialogInfoView
-        ).actualSize(self.fontMetrics().boundingRect("W").size() * 3))
-
-        style = self.style()
-
-        about_btn = toolbar.addAction(
-            style.standardIcon(style.StandardPixmap.SP_FileDialogInfoView),
-            "О программе"
-        )
-        about_btn.setToolTip("Информация о приложении")
-        about_btn.triggered.connect(self.show_about)
-
-        settings_btn = toolbar.addAction(
-            style.standardIcon(style.StandardPixmap.SP_ComputerIcon),
-            "Настройки"
-        )
-        settings_btn.setToolTip("Настройки прокси и подключения")
-        settings_btn.triggered.connect(self._open_proxy_settings)
-
-        help_btn = toolbar.addAction(
-            style.standardIcon(style.StandardPixmap.SP_MessageBoxQuestion),
-            "Помощь"
-        )
-        help_btn.setToolTip("Справка по работе с программой")
-        help_btn.triggered.connect(self.show_help)
-
-        toolbar.addSeparator()
-
-        logs_btn = toolbar.addAction(
-            style.standardIcon(style.StandardPixmap.SP_FileDialogContentsView),
-            "Логи"
-        )
-        logs_btn.setToolTip("Просмотр и анализ логов приложения")
-        logs_btn.triggered.connect(self.show_log_viewer)
-
-        self.addToolBar(toolbar)
 
     def _toggle_theme(self):
         """Переключение темы."""
@@ -360,14 +316,15 @@ def global_exception_handler(exc_type, exc_value, exc_tb):
     logger.critical("Unhandled exception",
                     exc_info=(exc_type, exc_value, exc_tb))
     try:
-        from PySide6.QtWidgets import QMessageBox
-        msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-        error_box = QMessageBox()
-        error_box.setIcon(QMessageBox.Icon.Critical)
-        error_box.setWindowTitle("Критическая ошибка")
-        error_box.setText("Произошла неожиданная ошибка. Приложение будет закрыто.")
-        error_box.setDetailedText(msg)
-        error_box.exec()
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        if QApplication.instance() is not None:
+            msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+            error_box = QMessageBox()
+            error_box.setIcon(QMessageBox.Icon.Critical)
+            error_box.setWindowTitle("Критическая ошибка")
+            error_box.setText("Произошла неожиданная ошибка. Приложение будет закрыто.")
+            error_box.setDetailedText(msg)
+            error_box.exec()
     except Exception as e:
         # Crash handler itself failed — log and fall through to sys.__excepthook__
         logger.critical("Crash dialog failed: %s", e, exc_info=True)
@@ -375,6 +332,18 @@ def global_exception_handler(exc_type, exc_value, exc_tb):
 
 
 sys.excepthook = global_exception_handler
+
+
+def _show_first_about(window, flag_path):
+    try:
+        from utils.about_dialog import AboutDialog
+        dialog = AboutDialog(window)
+        dialog.exec()
+        # Создаём флаг только после закрытия диалога
+        with open(flag_path, 'w', encoding='utf-8') as f:
+            f.write('shown')
+    except Exception as e:
+        logging.getLogger(__name__).debug("First-launch About dialog failed: %s", e)
 
 
 if __name__ == "__main__":
@@ -397,6 +366,10 @@ if __name__ == "__main__":
     create_schema()
     logging.getLogger(__name__).info(f"БД: {db_path}")
     db.create_backup()
+
+    # Флаг первого запуска (показываем About один раз)
+    _first_launch_flag = os.path.join(data_dir, ".about_shown")
+    _is_first_launch = not os.path.exists(_first_launch_flag)
 
     # Security audit on startup
     def security_audit():
@@ -449,12 +422,25 @@ if __name__ == "__main__":
     app.setStyle("Fusion")
     app.setStyleSheet(get_global_stylesheet(theme))
 
+    # Проверка парольной фразы при запуске
+    from utils.crypto import is_passphrase_protected
+    if is_passphrase_protected():
+        from utils.passphrase_dialog import PassphraseDialog
+        passphrase_dialog = PassphraseDialog()
+        if passphrase_dialog.exec() != QDialog.DialogCode.Accepted:
+            sys.exit(0)
+
     window = MainWindow(app=app)
     window.show()
 
     # Mica backdrop (после show() для получения HWND)
     apply_mica(window)
     logging.getLogger(__name__).info(f"Окно отображено, тема: {theme}, Mica применён")
+
+    # Показываем About при первом запуске
+    if _is_first_launch:
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(500, lambda: _show_first_about(window, _first_launch_flag))
 
     if _profile_flag:
         import cProfile

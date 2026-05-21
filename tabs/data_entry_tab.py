@@ -14,7 +14,7 @@ from utils.crypto import hash_for_search
 from PySide6.QtCore import Qt, Signal, QUrl, QThread
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from importers.xml_importer import load_xml
-from utils.crypto import encrypt_data, decrypt_data
+from utils.crypto import encrypt_data, decrypt_data, CryptoPassphraseRequiredError
 from utils.constants import VALID_PROGRAMS_SET
 from utils.workers import ExcelImportWorker
 
@@ -579,6 +579,8 @@ class DataEntryTab(QWidget):
                 self.tc_title_input.setText(settings.get('tc_title', ''))
                 self.employer_inn_input.setText(settings.get('employer_inn', ''))
                 self.employer_title_input.setText(settings.get('employer_title', ''))
+            except CryptoPassphraseRequiredError:
+                logger.info("Settings not loaded - passphrase required")
             except Exception as e:
                 logger.exception("Error loading org settings")
                 QMessageBox.warning(self, "Ошибка", f"Ошибка чтения настроек: {e}")

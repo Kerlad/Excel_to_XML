@@ -98,11 +98,14 @@ def load_api_key(data_dir: str) -> Optional[str]:
     if not os.path.exists(key_file):
         return None
     try:
-        from utils.crypto import decrypt_value
+        from utils.crypto import decrypt_value, CryptoPassphraseRequiredError
         with open(key_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
         encrypted = data.get('key', '')
         return decrypt_value(encrypted)
+    except CryptoPassphraseRequiredError:
+        logger.info("API key not loaded - passphrase required")
+        return None
     except (OSError, json.JSONDecodeError, ValueError) as e:
         logger.error(f"Failed to load API key: {e}")
         return None

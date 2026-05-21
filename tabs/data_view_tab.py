@@ -13,7 +13,7 @@ import logging
 
 from exporters.xml_exporter import export_to_xml
 from db.workers_data_repo import WorkersDataRepo
-from utils.crypto import decrypt_data, hash_for_search
+from utils.crypto import decrypt_data, hash_for_search, CryptoPassphraseRequiredError
 from utils.table_models import DataViewTableModel, MultiColumnFilterProxyModel, FIELD_KEYS, COLUMN_LABELS
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,11 @@ class DataViewTab(QWidget):
         self.table.doubleClicked.connect(self._on_item_double_click)
 
     def _load_all_data(self):
-        rows = WorkersDataRepo.get_all()
+        try:
+            rows = WorkersDataRepo.get_all()
+        except CryptoPassphraseRequiredError:
+            logger.info("Data not loaded - passphrase required")
+            return
         records = []
         for r in rows:
             records.append({
