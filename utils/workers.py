@@ -1,20 +1,27 @@
 """
-PERFORMANCE: Worker-классы для длительных операций в фоновых QThread.
+Worker-классы для длительных операций в фоновых QThread.
+Safe exception handling - no PII in error messages.
 """
 import os
 import logging
-import traceback
 from typing import List, Dict, Any, Optional, Callable
 from PySide6.QtCore import QThread, Signal, QObject
 
 logger = logging.getLogger(__name__)
 
 
+def _safe_error_msg(msg: str, exc: BaseException) -> str:
+    """Create a safe error message without PII."""
+    from utils.logger import filter_sensitive_text
+    exc_type = type(exc).__name__
+    safe_str = filter_sensitive_text(str(exc)[:200])
+    return f"{msg}: [{exc_type}] {safe_str}"
+
+
 class ExcelImportWorker(QObject):
-    """Фоновый импорт Excel-файла с поддержкой прогресса и отмены."""
-    progress = Signal(int, int)      # current, total (total=0 если неизвестно)
-    status_message = Signal(str)     # текстовый статус
-    finished = Signal(list, int, list, str)  # records, error_count, errors, error_msg
+    progress = Signal(int, int)
+    status_message = Signal(str)
+    finished = Signal(list, int, list, str)
     error = Signal(str)
 
     def __init__(self, file_path: str, password: str = ""):
@@ -52,6 +59,8 @@ class ExcelImportWorker(QObject):
 
             if self._cancelled:
                 self.status_message.emit("Импорт отменён")
+                from utils.audit import log_audit
+                log_audit("IMPORT_CANCELLED", "XLSX import cancelled")
                 return
 
             error_count = len(error_details)
@@ -60,11 +69,10 @@ class ExcelImportWorker(QObject):
 
         except Exception as e:
             logger.exception("Excel import failed")
-            self.error.emit(f"Ошибка импорта: {e}\n{traceback.format_exc()}")
+            self.error.emit(_safe_error_msg("Ошибка импорта", e))
 
 
 class XmlGenerationWorker(QObject):
-    """Фоновое построение XML для экспорта."""
     progress = Signal(int, int)
     finished = Signal(bytes)
     error = Signal(str)
@@ -96,14 +104,13 @@ class XmlGenerationWorker(QObject):
             self.finished.emit(full_xml)
         except Exception as e:
             logger.exception("XML generation failed")
-            self.error.emit(f"Ошибка генерации XML: {e}")
+            self.error.emit(_safe_error_msg("Ошибка генерации XML", e))
 
 
 class ApiBulkQueryWorker(QObject):
-    """Фоновый массовый запрос по СНИЛС к API Минтруда."""
     progress = Signal(int, int)
-    employee_done = Signal(int, dict)  # employee_id, result
-    finished = Signal(int, int)  # success_count, error_count
+    employee_done = Signal(int, dict)
+    finished = Signal(int, int)
     error = Signal(str)
 
     def __init__(self, employees: List[dict], api_key: str, proxy_settings: Optional[dict] = None):
@@ -174,9 +181,8 @@ class ApiBulkQueryWorker(QObject):
 
 
 class PlanGenerationWorker(QObject):
-    """Фоновое формирование плана обучения."""
     progress = Signal(int, int)
-    finished = Signal(list, str)  # plan_data, plan_title
+    finished = Signal(list, str)
     error = Signal(str)
 
     def __init__(self, employees: list, year: int, include_not_trained: bool,
@@ -239,4 +245,4 @@ class PlanGenerationWorker(QObject):
             self.finished.emit(plan_data, f"План обучения на {self.year} год")
         except Exception as e:
             logger.exception("Plan generation failed")
-            self.error.emit(f"Ошибка формирования плана: {e}\n{traceback.format_exc()}")
+            self.error.emit(_safe_error_msg("Ошибка формирования плана", e))

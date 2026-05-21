@@ -1,10 +1,14 @@
+"""
+Centralized error display utilities.
+Safe exception handling - no PII in user-facing dialogs.
+"""
 import logging
-import traceback
 from typing import Optional
 
 from PySide6.QtWidgets import QWidget, QMessageBox, QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QApplication
 from PySide6.QtCore import Qt
 
+from utils.logger import filter_sensitive_text
 
 logger = logging.getLogger(__name__)
 
@@ -16,31 +20,55 @@ def show_error_dialog(
     details: Optional[str] = None,
     critical: bool = False,
 ) -> None:
-    """Централизованное отображение ошибок пользователю."""
     icon = QMessageBox.Icon.Critical if critical else QMessageBox.Icon.Warning
     box = QMessageBox(parent)
     box.setIcon(icon)
     box.setWindowTitle(title)
-    box.setText(message)
-    box.setTextFormat(Qt.TextFormat.RichText if '<' in message else Qt.TextFormat.AutoText)
+    sanitized_msg = filter_sensitive_text(message)
+    box.setText(sanitized_msg)
+    box.setTextFormat(Qt.TextFormat.RichText if '<' in sanitized_msg else Qt.TextFormat.AutoText)
 
     if details:
-        box.setDetailedText(details)
+        sanitized_details = filter_sensitive_text(details)
+        box.setDetailedText(sanitized_details)
 
     box.setStandardButtons(QMessageBox.StandardButton.Ok)
     box.exec()
 
 
 def show_exception_dialog(parent: Optional[QWidget], title: str, message: str, exc: BaseException) -> None:
-    """Показывает диалог с исключением и деталями traceback."""
-    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    logger.error(f"{message}: {exc}\n{tb}")
-    show_error_dialog(parent, title, message, details=tb, critical=True)
+    """Show exception dialog with sanitized traceback (no PII)."""
+    safe_msg = filter_sensitive_text(str(exc)[:200])
+    logger.error("%s: %s", message, safe_msg)
+    show_error_dialog(
+        parent, title,
+        filter_sensitive_text(message),
+        details=f"Тип ошибки: {type(exc).__name__}\nОписание: {safe_msg}",
+        critical=True
+    )
+
+
+def safe_message_box(
+    parent: Optional[QWidget],
+    icon: QMessageBox.Icon,
+    title: str,
+    text: str,
+    detailed_text: Optional[str] = None,
+) -> None:
+    """QMessageBox wrapper that automatically sanitizes all text via filter_sensitive_text()."""
+    safe_text = filter_sensitive_text(text)
+    safe_details = filter_sensitive_text(detailed_text) if detailed_text else None
+    box = QMessageBox(parent)
+    box.setIcon(icon)
+    box.setWindowTitle(title)
+    box.setText(safe_text)
+    if safe_details:
+        box.setDetailedText(safe_details)
+    box.setStandardButtons(QMessageBox.StandardButton.Ok)
+    box.exec()
 
 
 class DetailsDialog(QDialog):
-    """Диалог с подробным текстом (для логов, отчётов)."""
-
     def __init__(self, parent: Optional[QWidget], title: str, text: str, min_width: int = 700, min_height: int = 500):
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -50,7 +78,7 @@ class DetailsDialog(QDialog):
         layout = QVBoxLayout(self)
         text_edit = QTextEdit()
         text_edit.setReadOnly(True)
-        text_edit.setPlainText(text)
+        text_edit.setPlainText(filter_sensitive_text(text))
         text_edit.setStyleSheet("font-family: Consolas, monospace; font-size: 12px;")
         layout.addWidget(text_edit)
 
@@ -60,7 +88,7 @@ class DetailsDialog(QDialog):
 
         copy_btn = QPushButton("Копировать")
         def _copy():
-            QApplication.clipboard().setText(text)
+            QApplication.clipboard().setText(filter_sensitive_text(text))
             close_btn.setText("Скопировано ✓")
         copy_btn.clicked.connect(_copy)
 

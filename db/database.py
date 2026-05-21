@@ -186,12 +186,21 @@ class DatabaseManager:
         backup_path = os.path.join(backup_dir, f"{base}.backup.1.zip")
 
         try:
-            from utils.crypto import _get_or_create_master_key
-            mk = _get_or_create_master_key()
-            zip_password = hashlib.sha256(mk).hexdigest()[:16]
+            from utils.crypto import get_key_fingerprint
+            zip_password = get_key_fingerprint()
         except (OSError, ValueError) as e:
             logger.warning("Cannot derive backup password from master key: %s", e)
-            zip_password = datetime.now().strftime('%Y%m%d')
+            from utils.crypto import _get_or_create_master_key
+            try:
+                mk = _get_or_create_master_key()
+                zip_password = hashlib.sha256(mk).hexdigest()[:16]
+            except Exception:
+                import secrets
+                zip_password = secrets.token_hex(16)
+                logger.warning(
+                    "Cannot derive backup password from master key. "
+                    "Using random password. This backup cannot be restored without the original master key."
+                )
 
         try:
             import zipfile

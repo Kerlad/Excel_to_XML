@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QAbstractItemView, QFrame, QCheckBox,
     QListWidget, QListWidgetItem, QMenu, QDialog
 )
+from utils.error_utils import safe_message_box
 from utils.dialog_base import BaseDialog
 from utils.field_validators import ValidatedLineEdit
 from utils.constants import VALID_PROGRAMS, VALID_PROGRAMS_SET, DEFAULT_PROGRAMS, PROGRAM_TITLES
@@ -1169,13 +1170,13 @@ class EmployeeSummaryTab(QWidget):
 
             if imported == 0:
                 msg = "Не найдено сотрудников для импорта."
-                QMessageBox.information(self, "Результат", msg)
+                safe_message_box(self, QMessageBox.Icon.Information, "Результат", msg)
             else:
-                QMessageBox.information(self, "Успех", f"Импортировано: {imported} сотрудников")
+                safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Импортировано: {imported} сотрудников")
             self.refresh_table()
         except Exception as e:
             logger.exception("Ошибка импорта XLSX")
-            QMessageBox.warning(self, "Ошибка", f"Ошибка импорта: {e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка импорта: {e}")
 
     def _export_xlsx(self, filtered=True):
         file_path, _ = QFileDialog.getSaveFileName(
@@ -1224,10 +1225,10 @@ class EmployeeSummaryTab(QWidget):
                 ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 50)
 
             wb.save(file_path)
-            QMessageBox.information(self, "Успех", f"Файл сохранён:\n{file_path}")
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Файл сохранён:\n{file_path}")
         except Exception as e:
             logger.exception("Export error")
-            QMessageBox.warning(self, "Ошибка", f"Ошибка экспорта: {e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка экспорта: {e}")
 
     # ── API ──────────────────────────────────────────────
 
@@ -1255,9 +1256,9 @@ class EmployeeSummaryTab(QWidget):
         self.query_btn.setEnabled(True)
         self.query_btn.setText("Запросить из реестра")
         if errors > 0:
-            QMessageBox.warning(self, "Результат", f"Обновлено: {updated}\nОшибок: {errors}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Результат", f"Обновлено: {updated}\nОшибок: {errors}")
         else:
-            QMessageBox.information(self, "Успех", f"Обновлено: {updated} сотрудников")
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Обновлено: {updated} сотрудников")
         self.refresh_table()
 
     def _query_single(self, emp_id):
@@ -1304,13 +1305,13 @@ class EmployeeSummaryTab(QWidget):
                             updates['snils'] = emp['snils']
                             EmployeesRepo.upsert(updates)
                 EmployeesRepo.update_sync(emp_id, datetime.now().strftime('%d.%m.%Y %H:%M:%S'))
-                QMessageBox.information(self, "Успех", f"Обновлено программ: {updated}")
+                safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Обновлено программ: {updated}")
                 self.refresh_table()
             else:
-                QMessageBox.warning(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", result.get("error", "Неизвестная ошибка"))
         except Exception as e:
             logger.exception("Registry query error")
-            QMessageBox.warning(self, "Ошибка", f"Ошибка запроса: {e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка запроса: {e}")
 
     # ── Reports ──────────────────────────────────────────
 

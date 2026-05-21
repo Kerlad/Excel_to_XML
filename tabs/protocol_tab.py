@@ -11,6 +11,7 @@ from PySide6.QtGui import QFont
 from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from tabs.programs_dialog import ProgramsDialog
+from utils.error_utils import safe_message_box
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +348,7 @@ class ProtocolTab(QWidget):
         if ok:
             QMessageBox.information(self, "Успех", "Программы обучения сохранены")
         else:
-            QMessageBox.warning(self, "Ошибка", msg)
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
     # ============ Протокол комбо / автозаполнение даты ============
 
@@ -441,7 +442,7 @@ class ProtocolTab(QWidget):
         if ok:
             QMessageBox.information(self, "Успех", "Данные комиссии сохранены")
         else:
-            QMessageBox.warning(self, "Ошибка", msg)
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
     def _load_commission_data(self):
         data = self.commission.load()
@@ -603,9 +604,9 @@ class ProtocolTab(QWidget):
             )
 
             if success:
-                QMessageBox.information(self, "Успех", msg)
+                safe_message_box(self, QMessageBox.Icon.Information, "Успех", msg)
             else:
-                QMessageBox.warning(self, "Ошибка генерации", msg)
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка генерации", msg)
         else:
             save_dir = QFileDialog.getExistingDirectory(
                 self, "Выберите папку для сохранения протоколов",
@@ -651,7 +652,7 @@ class ProtocolTab(QWidget):
                 if success:
                     saved_count += 1
 
-            QMessageBox.information(self, "Успех", f"Сохранено протоколов: {saved_count}\nПапка: {save_dir}")
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Сохранено протоколов: {saved_count}\nПапка: {save_dir}")
 
     def _get_worker_records_by_protocol(self, protocol_number: str) -> list:
         if not hasattr(self, 'journal_manager') or self.journal_manager is None:

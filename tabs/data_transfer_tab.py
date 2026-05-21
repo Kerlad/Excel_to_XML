@@ -15,6 +15,7 @@ from api.mintrud_api import (
     get_by_set_id, get_by_snils, export_records_to_xlsx,
     validate_api_key_remote
 )
+from utils.error_utils import safe_message_box
 from utils.proxy_manager import (
     load_proxy_settings, save_proxy_settings, detect_windows_proxy
 )
@@ -28,17 +29,19 @@ logger = logging.getLogger(__name__)
 class _ConnectionWorker(QObject):
     finished = Signal(bool, str)
 
-    def __init__(self, url, timeout, tls_verify):
+    def __init__(self, api_key, proxy_settings, timeout):
         super().__init__()
-        self.url = url
+        self.api_key = api_key
+        self.proxy_settings = proxy_settings
         self.timeout = timeout
-        self.tls_verify = tls_verify
 
     def run(self):
-        status, msg = test_external_access(
-            url=self.url, timeout=self.timeout, tls_verify=self.tls_verify
-        )
-        self.finished.emit(status == NetworkStatus.SUCCESS, msg)
+        from api.mintrud_api import validate_api_key_remote
+        try:
+            valid, msg = validate_api_key_remote(self.api_key, self.proxy_settings)
+            self.finished.emit(valid, msg)
+        except Exception as e:
+            self.finished.emit(False, str(e))
 
 
 class _ProxyTestWorker(QObject):
@@ -482,7 +485,7 @@ class DataTransferTab(QWidget):
     def save_api_key(self):
         api_key = self.api_key_input.text().strip()
         if len(api_key) != 32:
-            QMessageBox.warning(self, "Ошибка", f"Длина ключа: {len(api_key)} (требуется 32 символа)")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Длина ключа: {len(api_key)} (требуется 32 символа)")
             return
         ok, msg = save_api_key(api_key, self.data_dir)
         if ok:
@@ -493,16 +496,16 @@ class DataTransferTab(QWidget):
                 valid, vmsg = validate_api_key_remote(api_key, proxy_settings)
                 if valid:
                     self._set_connection_status(True, f"Ключ действителен")
-                    QMessageBox.information(self, "Успех", f"API ключ сохранён и проверен: {vmsg}")
+                    safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"API ключ сохранён и проверен: {vmsg}")
                 else:
                     self._set_connection_status(False, vmsg)
-                    QMessageBox.warning(self, "Предупреждение", f"Ключ сохранён, но проверка не пройдена: {vmsg}")
+                    safe_message_box(self, QMessageBox.Icon.Warning, "Предупреждение", f"Ключ сохранён, но проверка не пройдена: {vmsg}")
             except Exception as e:
                 logger.exception("Remote key validation failed")
                 self._set_connection_status(True, "Ключ сохранён (проверка не выполнена)")
                 QMessageBox.information(self, "Успех", "API ключ сохранён (удалённая проверка недоступна)")
         else:
-            QMessageBox.warning(self, "Ошибка", msg)
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
     def _set_connection_status(self, ok: bool, text: str):
         if ok:
@@ -528,13 +531,14 @@ class DataTransferTab(QWidget):
         self.conn_status_dot.setStyleSheet(
             "background-color: #F1C40F; border-radius: 6px;"
         )
-        self.conn_status_text.setText("Проверка подключения...")
+        self.conn_status_text.setText("Проверка ключа...")
 
+        proxy_settings = self._get_proxy_settings()
         self._conn_thread = QThread()
         self._conn_worker = _ConnectionWorker(
-            url="https://edu.rosmintrud.ru",
+            api_key=api_key,
+            proxy_settings=proxy_settings,
             timeout=15,
-            tls_verify=self.tls_checkbox.isChecked(),
         )
         self._conn_worker.moveToThread(self._conn_thread)
         self._conn_thread.started.connect(self._conn_worker.run)
@@ -546,9 +550,9 @@ class DataTransferTab(QWidget):
 
     def _on_connection_result(self, ok, msg):
         if ok:
-            self._set_connection_status(True, "Подключено к серверу")
+            self._set_connection_status(True, "Ключ действителен, сервер доступен")
         else:
-            self._set_connection_status(False, f"Ошибка: {msg}")
+            self._set_connection_status(False, msg)
         self.check_conn_btn.setEnabled(True)
         self.check_conn_btn.setText("Проверить подключение")
 
@@ -595,9 +599,9 @@ class DataTransferTab(QWidget):
         ok, msg = save_proxy_settings(self.data_dir, settings)
         if ok:
             mode_text = {'off': 'Без прокси', 'auto': 'Авто (системный)', 'manual': 'Ручной'}
-            QMessageBox.information(self, "Успех", f"Режим: {mode_text.get(mode, mode)}\n{msg}")
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Режим: {mode_text.get(mode, mode)}\n{msg}")
         else:
-            QMessageBox.warning(self, "Ошибка", msg)
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
     def test_proxy(self):
         self.proxy_test_btn.setEnabled(False)
@@ -618,9 +622,9 @@ class DataTransferTab(QWidget):
 
     def _on_proxy_test_result(self, result_text, is_success):
         if is_success:
-            QMessageBox.information(self, "Успех", result_text)
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех", result_text)
         else:
-            QMessageBox.warning(self, "Проблема с доступом", result_text)
+            safe_message_box(self, QMessageBox.Icon.Warning, "Проблема с доступом", result_text)
         self.proxy_test_btn.setEnabled(True)
         self.proxy_test_btn.setText("Тест подключения")
 
@@ -657,33 +661,42 @@ class DataTransferTab(QWidget):
             return
 
         try:
-            tree = etree.parse(file_path)
+            parser = etree.XMLParser(
+                resolve_entities=False,
+                no_network=True,
+                dtd_validation=False,
+                huge_tree=False,
+            )
+            tree = etree.parse(file_path, parser)
             root = tree.getroot()
-            logger.info(f"XML loaded: root={root.tag}, children={len(root)}")
+            logger.info("XML loaded: root=%s, children=%d", root.tag, len(root))
         except etree.XMLSyntaxError as e:
-            QMessageBox.warning(self, "Ошибка", f"Невалидный XML:\n{e}")
-            return
-        except etree.XMLSyntaxError as e:
-            QMessageBox.warning(self, "Ошибка", f"Невалидный XML:\n{e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Невалидный XML:\n{e}")
             return
         except (OSError, ValueError) as e:
-            logger.exception("Error reading XML file")
-            QMessageBox.warning(self, "Ошибка", f"Ошибка чтения файла:\n{e}")
+            logger.error("Error reading XML file: %s", e)
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка чтения файла:\n{e}")
             return
 
         xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
         if xsd_files:
             xsd_path = os.path.join(self.schema_dir, xsd_files[0])
             try:
-                schema_doc = etree.parse(xsd_path)
+                xsd_parser = etree.XMLParser(
+                    resolve_entities=False,
+                    no_network=True,
+                    dtd_validation=False,
+                    huge_tree=False,
+                )
+                schema_doc = etree.parse(xsd_path, xsd_parser)
                 schema = etree.XMLSchema(schema_doc)
                 schema.assertValid(tree)
             except etree.DocumentInvalid as e:
-                QMessageBox.warning(self, "Ошибка валидации", f"Файл не соответствует схеме XSD:\n{e}")
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка валидации", f"Файл не соответствует схеме XSD:\n{e}")
                 return
             except (etree.XMLSyntaxError, OSError, ValueError) as e:
-                logger.exception("XSD validation error")
-                QMessageBox.warning(self, "Ошибка", f"Ошибка валидации по XSD:\n{e}")
+                logger.error("XSD validation error: %s", e)
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка валидации по XSD:\n{e}")
                 return
 
         self.xml_file_input.setText(file_path)
@@ -739,7 +752,7 @@ class DataTransferTab(QWidget):
                 msg.exec()
         except Exception as e:
             logger.exception("Ошибка отправки XML")
-            QMessageBox.critical(self, "Ошибка", f"Ошибка отправки XML:\n{e}")
+            safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка", f"Ошибка отправки XML:\n{e}")
         finally:
             self.send_progress.setVisible(False)
             self.send_xml_btn.setEnabled(True)
@@ -811,7 +824,7 @@ class DataTransferTab(QWidget):
                 msg.exec()
         except Exception as e:
             logger.exception("Ошибка отправки подписанного XML")
-            QMessageBox.critical(self, "Ошибка", f"Ошибка отправки подписанного XML:\n{e}")
+            safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка", f"Ошибка отправки подписанного XML:\n{e}")
         finally:
             self.send_progress.setVisible(False)
             self.send_xml_signed_btn.setEnabled(True)
@@ -838,11 +851,11 @@ class DataTransferTab(QWidget):
             result = get_by_set_id(api_key, set_id, proxy_settings=proxy_settings)
         except Exception as e:
             logger.exception("Ошибка запроса по SetId")
-            QMessageBox.critical(self, "Ошибка", f"Ошибка запроса по SetId:\n{e}")
+            safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка", f"Ошибка запроса по SetId:\n{e}")
             return
 
         if not result["success"]:
-            QMessageBox.critical(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
+            safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка", result.get("error", "Неизвестная ошибка"))
             return
 
         records = result.get("records", [])
@@ -868,9 +881,9 @@ class DataTransferTab(QWidget):
         if file_path:
             ok, msg = export_records_to_xlsx(records, file_path)
             if ok:
-                QMessageBox.information(self, "Успех", f"Сохранено {len(records)} записей\n{msg}")
+                safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Сохранено {len(records)} записей\n{msg}")
             else:
-                QMessageBox.warning(self, "Ошибка", msg)
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
     def query_by_snils(self):
         api_key = self.api_key_input.text().strip()
@@ -896,11 +909,11 @@ class DataTransferTab(QWidget):
             result = get_by_snils(api_key, snils, proxy_settings=proxy_settings)
         except Exception as e:
             logger.exception("Ошибка запроса по СНИЛС")
-            QMessageBox.critical(self, "Ошибка", f"Ошибка запроса по СНИЛС:\n{e}")
+            safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка", f"Ошибка запроса по СНИЛС:\n{e}")
             return
 
         if not result["success"]:
-            QMessageBox.critical(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
+            safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка", result.get("error", "Неизвестная ошибка"))
             return
 
         records = result.get("records", [])
@@ -909,8 +922,13 @@ class DataTransferTab(QWidget):
             return
 
         first = records[0]
-        name = f"{first.get('LastName', '')} {first.get('FirstName', '')} {first.get('MiddleName', '')}".strip()
-        QMessageBox.information(self, "Найдено", f"Записей: {len(records)}\n{name}")
+        name_parts = [
+            first.get('LastName', '')[:1] + '***' if first.get('LastName', '') else '',
+            first.get('FirstName', '')[:1] + '***' if first.get('FirstName', '') else '',
+            first.get('MiddleName', '')[:1] + '***' if first.get('MiddleName', '') else '',
+        ]
+        masked_name = ' '.join(p for p in name_parts if p)
+        safe_message_box(self, QMessageBox.Icon.Information, "Найдено", f"Записей: {len(records)}\n{masked_name}")
 
         snils_file = snils.replace('-', '').replace(' ', '')
         file_path, _ = QFileDialog.getSaveFileName(
@@ -919,9 +937,9 @@ class DataTransferTab(QWidget):
         if file_path:
             ok, msg = export_records_to_xlsx(records, file_path)
             if ok:
-                QMessageBox.information(self, "Успех", f"Сохранено {len(records)} записей\n{msg}")
+                safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Сохранено {len(records)} записей\n{msg}")
             else:
-                QMessageBox.warning(self, "Ошибка", msg)
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
     # ============================================================
     # XML Parsing for Journal

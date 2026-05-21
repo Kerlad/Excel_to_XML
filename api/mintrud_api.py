@@ -47,7 +47,7 @@ def _save_error_response(response_bytes: bytes, status_code: int = 0):
         text = filter_sensitive_text(text)
         with open(path, "w", encoding="utf-8-sig") as f:
             f.write(text)
-        logger.info(f"Error response saved to {path}")
+        logger.info("Error response saved")
     except OSError as e:
         logger.warning(f"Failed to save error response: {e}")
 
@@ -149,6 +149,8 @@ def validate_api_key_remote(api_key: str, proxy_settings: dict = None) -> tuple[
                     if url_str:
                         proxies = {'http': url_str, 'https': url_str}
                 verify = proxy_settings.get('tls_verify', True)
+            if not verify:
+                log_audit("TLS_WARNING", "TLS verification disabled in remote key validation")
             resp = req.post(url, files=files, proxies=proxies, verify=verify, timeout=15)
             if resp.status_code == 200:
                 from defusedxml.ElementTree import fromstring as _fromstring
@@ -294,7 +296,13 @@ class MintrudClient:
         """Get SSL verification setting. Default is True (secure)."""
         verify = self.proxy_settings.get("tls_verify", True)
         if not verify:
-            logger.warning("TLS verification is DISABLED - connection is insecure")
+            logger.warning(
+                "SECURITY: TLS verification is DISABLED - connection is insecure. "
+                "PDn data is at risk of interception."
+            )
+            from utils.audit import log_audit
+            log_audit("TLS_WARNING", "TLS verification disabled by user")
+            # TODO: Organizational measure - require explicit written authorization to disable TLS
         return bool(verify)
     
     # ============ API Methods ============
@@ -322,8 +330,8 @@ class MintrudClient:
         proxies = self._get_proxies()
         verify = self._get_verify()
         
-        logger.info(f"Sending XML to {API_URL}")
-        logger.info(f"Initial backend: {self.backend_name}")
+        logger.info("Sending XML to API server")
+        logger.info("Initial backend: %s", self.backend_name)
         
         # Try backends with SSL fallback
         backends_to_try = self._get_backend_fallback_list()
@@ -331,7 +339,7 @@ class MintrudClient:
         
         for backend_instance, backend_name in backends_to_try:
             try:
-                logger.info(f"Trying backend: {backend_name}")
+                logger.info("Trying backend: %s", backend_name)
                 success, status_code, response_bytes, error_msg = backend_instance.send(
                     url=API_URL,
                     files=files,
@@ -348,7 +356,7 @@ class MintrudClient:
                     return result
                 
                 last_error = error_msg
-                logger.warning(f"Backend {backend_name} failed: {mask_sensitive(error_msg)}")
+                logger.warning("Backend %s failed: %s", backend_name, mask_sensitive(error_msg))
                 if response_bytes:
                     _save_error_response(response_bytes, status_code)
 
@@ -359,7 +367,7 @@ class MintrudClient:
                 
             except requests.RequestException as e:
                 last_error = str(e)
-                logger.warning(f"Backend {backend_name} request exception: {mask_sensitive(str(e))}")
+                logger.warning("Backend %s request exception: %s", backend_name, mask_sensitive(str(e)))
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
             except RuntimeError as e:
@@ -396,15 +404,15 @@ class MintrudClient:
         proxies = self._get_proxies()
         verify = self._get_verify()
         
-        logger.info(f"Sending signed XML to {API_URL}")
-        logger.info(f"Initial backend: {self.backend_name}")
+        logger.info("Sending signed XML to API server")
+        logger.info("Initial backend: %s", self.backend_name)
         
         backends_to_try = self._get_backend_fallback_list()
         last_error = ""
         
         for backend_instance, backend_name in backends_to_try:
             try:
-                logger.info(f"Trying backend: {backend_name}")
+                logger.info("Trying backend: %s", backend_name)
                 success, status_code, response_bytes, error_msg = backend_instance.send(
                     url=API_URL,
                     files=files,
@@ -421,7 +429,7 @@ class MintrudClient:
                     return result
                 
                 last_error = error_msg
-                logger.warning(f"Backend {backend_name} failed: {mask_sensitive(error_msg)}")
+                logger.warning("Backend %s failed: %s", backend_name, mask_sensitive(error_msg))
                 if response_bytes:
                     _save_error_response(response_bytes, status_code)
 
@@ -432,7 +440,7 @@ class MintrudClient:
                 
             except requests.RequestException as e:
                 last_error = str(e)
-                logger.warning(f"Backend {backend_name} request exception: {mask_sensitive(str(e))}")
+                logger.warning("Backend %s request exception: %s", backend_name, mask_sensitive(str(e)))
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
             except RuntimeError as e:
@@ -470,7 +478,7 @@ class MintrudClient:
                     return {"success": True, "status_code": status_code, "response_bytes": response_bytes}
                 
                 last_error = error_msg
-                logger.warning(f"Backend {backend_name} failed: {mask_sensitive(error_msg)}")
+                logger.warning("Backend %s failed: %s", backend_name, mask_sensitive(error_msg))
                 if response_bytes:
                     _save_error_response(response_bytes, status_code)
 
@@ -481,7 +489,7 @@ class MintrudClient:
 
             except requests.RequestException as e:
                 last_error = str(e)
-                logger.warning(f"Backend {backend_name} request exception: {mask_sensitive(str(e))}")
+                logger.warning("Backend %s request exception: %s", backend_name, mask_sensitive(str(e)))
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
             except RuntimeError as e:
@@ -525,12 +533,12 @@ class MintrudClient:
     <SetId>{escape(set_id)}</SetId>
 </EducatedPersonFilter>'''
             
-            logger.info(f"Querying SetId {mask_sensitive(set_id)}, page {page_no}")
-            
+            logger.info("Querying SetId page %d", page_no)
+
             try_result = self._try_backends(api_key, xml_content, GET_URL)
-            
+
             if not try_result.get("success"):
-                logger.error(f"Query failed: {mask_sensitive(try_result.get('error', ''))}")
+                logger.error("Query failed: %s", try_result.get("error", "Unknown error")[:200])
                 return {"success": False, "records": [], "error": try_result.get("error", "Unknown error")}
             
             response_bytes = try_result["response_bytes"]
@@ -583,12 +591,12 @@ class MintrudClient:
     <Snils>{escape(snils_formatted)}</Snils>
 </EducatedPersonFilter>'''
 
-            logger.info(f"Querying by SNILS, page {page_no}")
+            logger.info("Querying by SNILS, page %d", page_no)
 
             try_result = self._try_backends(api_key, xml_content, GET_URL)
 
             if not try_result.get("success"):
-                logger.error(f"Query failed: {mask_sensitive(try_result.get('error', ''))}")
+                logger.error("Query failed: %s", str(try_result.get("error", "Unknown error"))[:200])
                 return {"success": False, "records": [], "error": try_result.get("error", "Unknown error")}
 
             response_bytes = try_result["response_bytes"]

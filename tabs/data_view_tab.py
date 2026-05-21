@@ -15,6 +15,7 @@ from exporters.xml_exporter import export_to_xml
 from db.workers_data_repo import WorkersDataRepo
 from utils.crypto import decrypt_data, hash_for_search, CryptoPassphraseRequiredError
 from utils.table_models import DataViewTableModel, MultiColumnFilterProxyModel, FIELD_KEYS, COLUMN_LABELS
+from utils.error_utils import safe_message_box
 
 logger = logging.getLogger(__name__)
 
@@ -319,9 +320,9 @@ class DataViewTab(QWidget):
 
             success, message = export_to_xml(records, file_path, org_settings)
             if success:
-                QMessageBox.information(self, "Успех", message)
+                safe_message_box(self, QMessageBox.Icon.Information, "Успех", message)
             else:
-                QMessageBox.warning(self, "Ошибка", message)
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", message)
 
     def _export_xlsx(self):
         from openpyxl import Workbook

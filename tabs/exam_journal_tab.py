@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, QDate, QCoreApplication
 from PySide6.QtGui import QColor, QFont, QBrush, QIcon
 from db.exam_journal_repo import JournalRecord
 from utils.table_models import ExamJournalTableModel, JOURNAL_FIELD_NAMES
+from utils.error_utils import safe_message_box
 
 logger = logging.getLogger(__name__)
 
@@ -368,10 +369,10 @@ class ExamJournalTab(QWidget):
                 mx = max((len(str(c.value or "")) for c in col), default=0)
                 ws.column_dimensions[col[0].column_letter].width = min(mx + 2, 50)
             wb.save(fp)
-            QMessageBox.information(self, "Успех", f"Журнал сохранён:\n{fp}")
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Журнал сохранён:\n{fp}")
         except Exception as e:
             logger.exception("Journal export error")
-            QMessageBox.warning(self, "Ошибка", f"Ошибка экспорта: {e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка экспорта: {e}")
 
     # ── Import from Excel ─────────────────────────────────────
 

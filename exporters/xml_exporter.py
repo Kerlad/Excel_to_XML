@@ -152,22 +152,47 @@ def build_xml(records, org_settings=None):
         learn_title = SubElement(test, "LearnProgramTitle")
         learn_title.text = PROGRAM_TITLES.get(program_id, '')
 
-    # Форматирование XML с отступами
+    # Форматирование XML с отступами (via defusedxml-safe parsing)
     rough_string = ET.tostring(root, encoding='utf-8', xml_declaration=False)
+    xml_declaration = b'<?xml version="1.0" encoding="UTF-8"?>'
 
     try:
-        from xml.dom.minidom import parseString as _minidom_parse
-        dom = _minidom_parse(rough_string)
-        pretty_xml = dom.toprettyxml(indent="  ", encoding='UTF-8')
-        pretty_str = pretty_xml.decode('utf-8')
-        lines = pretty_str.split('\n')
-        if lines[0].startswith('<?xml'):
-            lines[0] = '<?xml version="1.0" encoding="UTF-8"?>'
-        return '\n'.join(lines).encode('utf-8')
+        from defusedxml.ElementTree import fromstring as _safe_fromstring
+        safe_root = _safe_fromstring(rough_string)
+        pretty_str = _safe_format_xml(safe_root)
+        return xml_declaration + b'\n' + pretty_str.encode('utf-8')
     except (ValueError, OSError) as e:
-        logger.error(f"Ошибка форматирования XML: {e}")
-        xml_declaration = b'<?xml version="1.0" encoding="UTF-8"?>\n'
-        return xml_declaration + rough_string
+        logger.error("Ошибка форматирования XML: %s", e)
+        return xml_declaration + b'\n' + rough_string
+
+
+def _escape_xml(s: str) -> str:
+    """Escape XML special characters."""
+    s = s.replace('&', '&amp;')
+    s = s.replace('<', '&lt;')
+    s = s.replace('>', '&gt;')
+    s = s.replace('"', '&quot;')
+    s = s.replace("'", '&apos;')
+    return s
+
+
+def _safe_format_xml(elem, level=0, indent="  ") -> str:
+    """Format XML element tree with proper indentation (no external parsers)."""
+    text = indent * level + "<" + elem.tag
+    if elem.attrib:
+        for k, v in elem.attrib.items():
+            text += f' {k}="{_escape_xml(str(v))}"'
+    if elem.text and elem.text.strip():
+        text += ">" + _escape_xml(elem.text.strip())
+        text += f"</{elem.tag}>"
+    elif len(elem) > 0:
+        text += ">\n"
+        for child in elem:
+            text += _safe_format_xml(child, level + 1, indent) + "\n"
+        text += indent * level + f"</{elem.tag}>"
+    else:
+        text += " />"
+    return text
 
 
 def export_to_xml(records, file_path, org_settings=None):

@@ -1,7 +1,10 @@
+"""
+Main application entry point.
+Security audit and safe initialization for ISPDn.
+"""
 import sys
 import os
 import logging
-import traceback
 from datetime import datetime
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenu, QMessageBox, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QProgressBar
 from PySide6.QtCore import Qt, QTimer
@@ -16,17 +19,20 @@ from tabs.employee_summary_tab import EmployeeSummaryTab
 from journal.journal_manager import JournalManager
 from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
-from utils.logger import setup_logging
-from utils.audit import setup_audit_log
+from utils.logger import setup_logging, filter_sensitive_text
+from utils.audit import setup_audit_log, log_audit
 from utils.tahoe_style import get_global_stylesheet, create_palette, apply_mica, load_theme, save_theme
 from utils.app_paths import get_app_data_dir, get_app_log_dir, get_resource_dir
 from utils.about_dialog import AboutDialog, VERSION
 from utils.help_dialog import HelpDialog
 from utils.log_viewer_dialog import LogViewerDialog
-from utils.crypto import check_master_key_security
+from utils.crypto import check_master_key_security, check_environment
+from utils.auto_lock import AutoLockManager
 from db import DatabaseManager, create_schema
 from db.employees_repo import EmployeesRepo
 from api.mintrud_api import load_api_key
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -38,7 +44,6 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 700)
         self.resize(1200, 800)
 
-        # Иконка приложения
         icon_path = os.path.join(get_resource_dir(), "resources", "ico.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
@@ -48,7 +53,6 @@ class MainWindow(QMainWindow):
 
         data_dir = get_app_data_dir()
 
-        # Создание вкладок
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
 
@@ -56,38 +60,31 @@ class MainWindow(QMainWindow):
         self.data_view_tab = DataViewTab()
         self.data_transfer_tab = DataTransferTab()
 
-        # Журнал проверки знаний
         self.journal_manager = JournalManager(data_dir)
         self.exam_journal_tab = ExamJournalTab(self.journal_manager, data_dir)
 
-        # Менеджеры для протокола
         self.commission_manager = CommissionManager(data_dir)
         self.programs_manager = ProgramsManager(data_dir)
         self.protocol_tab = ProtocolTab(self.commission_manager, self.programs_manager, data_dir, self.journal_manager)
         self.protocol_tab.set_data_source(self.data_view_tab)
 
-        # Вкладка "Протокол одиночного работника"
         self.single_worker_tab = SingleWorkerProtocolTab(self.programs_manager, data_dir)
 
-        # Вкладка "Сводка по сотрудникам"
         self.employee_summary_tab = EmployeeSummaryTab()
+
+        self.auto_lock = AutoLockManager(self)
 
         self._setup_tabs()
 
-        # Подключение сигнала передачи данных
         self.data_entry_tab.data_loaded.connect(self.data_view_tab.add_data)
-        # Подключение callback для проверки дублей
         self.data_entry_tab.get_existing_keys_callback = self.data_view_tab.get_existing_keys
 
-        # Подключение журнала к вкладке передачи данных
         self.data_transfer_tab.set_journal_callback(self.exam_journal_tab.add_records_to_journal, self.exam_journal_tab.update_base_no)
 
-        # Обновление статус-бара при смене вкладки
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         self.setCentralWidget(self.tabs)
 
-        # Таймер обновления статус-бара (каждые 10 сек)
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(10000)
         self._status_timer.timeout.connect(self._update_status_bar)
@@ -95,8 +92,10 @@ class MainWindow(QMainWindow):
 
         self._update_status_bar()
 
+        if self.app:
+            self.app.installEventFilter(self.auto_lock)
+
     def _setup_tabs(self):
-        """Настройка вкладок с иконками."""
         style = self.app.style() if self.app else QApplication.style()
         sp = style.StandardPixmap
         def _nl(t):
@@ -116,7 +115,6 @@ class MainWindow(QMainWindow):
             self.tabs.addTab(tab, style.standardIcon(pixmap), title)
 
     def _create_status_bar(self):
-        """Создание строки состояния."""
         sb = self.statusBar()
         self._sb_employees = QLabel("Сотрудников: --")
         self._sb_sync = QLabel("Синхр.: --")
@@ -148,7 +146,6 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(self._sb_progress)
 
     def _update_status_bar(self):
-        """Обновление данных в строке состояния."""
         try:
             emp_count = EmployeesRepo.count()
             self._sb_employees.setText(f"Сотрудников: {emp_count}")
@@ -202,7 +199,6 @@ class MainWindow(QMainWindow):
             self._sb_progress.setFormat("")
 
     def _on_tab_changed(self, index):
-        """Обработчик смены вкладки."""
         self._update_status_bar()
         if index < 0 or index >= self.tabs.count():
             return
@@ -217,35 +213,26 @@ class MainWindow(QMainWindow):
                 logger.debug("Tab refresh_data failed: %s", e)
 
     def _create_template(self):
-        """Создать шаблон XLSX через вкладку Внесение данных."""
         self.tabs.setCurrentIndex(0)
 
     def _export_all(self):
-        """Экспорт всех данных через вкладку Просмотр данных."""
         self.tabs.setCurrentIndex(1)
 
     def _open_proxy_settings(self):
-        """Переход к настройкам прокси."""
         for i in range(self.tabs.count()):
             if "Передача данных" in self.tabs.tabText(i):
                 self.tabs.setCurrentIndex(i)
                 break
 
     def _apply_theme(self, theme: str):
-        """Применение темы (light/dark) ко всему приложению."""
         self.current_theme = theme
         save_theme(get_app_data_dir(), theme)
-
         if self.app:
             self.app.setPalette(create_palette(theme))
             self.app.setStyleSheet(get_global_stylesheet(theme))
-
-            # Обновляем стили всех виджетов
             self._refresh_styles()
 
     def _refresh_styles(self):
-        """Обновление стилей всех виджетов при смене темы."""
-        # unpolish/polish для MainWindow и всех дочерних
         for w in self.findChildren(QWidget):
             w.style().unpolish(w)
             w.style().polish(w)
@@ -253,10 +240,7 @@ class MainWindow(QMainWindow):
         self.style().polish(self)
 
     def _create_menu_bar(self):
-        """Создание главного меню."""
         menubar = self.menuBar()
-
-        # Меню "Файл"
         file_menu = menubar.addMenu("Файл")
         template_action = file_menu.addAction("Создать шаблон XLSX")
         template_action.triggered.connect(self._create_template)
@@ -267,14 +251,18 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
 
-        # Меню "Настройки"
         settings_menu = menubar.addMenu("Настройки")
         self._theme_action = settings_menu.addAction("Светлая тема" if self.current_theme == "dark" else "Тёмная тема")
         self._theme_action.triggered.connect(self._toggle_theme)
+        settings_menu.addSeparator()
+        lock_action = settings_menu.addAction("Заблокировать сессию")
+        lock_action.triggered.connect(self._manual_lock)
+        timeout_action = settings_menu.addAction("Таймаут блокировки...")
+        timeout_action.triggered.connect(self._configure_lock_timeout)
+        settings_menu.addSeparator()
         proxy_action = settings_menu.addAction("Настройки прокси")
         proxy_action.triggered.connect(self._open_proxy_settings)
 
-        # Меню "Справка"
         help_menu = menubar.addMenu("Справка")
         help_action = help_menu.addAction("Справка по работе с программой")
         help_action.triggered.connect(self.show_help)
@@ -282,15 +270,12 @@ class MainWindow(QMainWindow):
         about_action = help_menu.addAction("О программе")
         about_action.triggered.connect(self.show_about)
 
-        # Меню "Инструменты"
         tools_menu = menubar.addMenu("Инструменты")
         logs_action = tools_menu.addAction("Просмотр логов")
         logs_action.triggered.connect(self.show_log_viewer)
 
     def _toggle_theme(self):
-        """Переключение темы."""
         new_theme = "light" if self.current_theme == "dark" else "dark"
-        # Обновляем текст пункта меню ДО смены темы (меню может быть удалено при refresh)
         try:
             theme_action = self._theme_action
             theme_action.setText("Светлая тема" if new_theme == "dark" else "Тёмная тема")
@@ -305,29 +290,51 @@ class MainWindow(QMainWindow):
     def show_about(self):
         dialog = AboutDialog(self)
         dialog.exec()
+        self.auto_lock.refresh()
 
     def show_log_viewer(self):
         dialog = LogViewerDialog(self)
         dialog.exec()
 
+    def _manual_lock(self):
+        self.auto_lock.force_lock()
+
+    def _configure_lock_timeout(self):
+        from PySide6.QtWidgets import QInputDialog
+        current = self.auto_lock.timeout_minutes
+        value, ok = QInputDialog.getInt(
+            self, "Таймаут блокировки",
+            "Минуты бездействия до блокировки сессии (1-120):",
+            value=current, minValue=1, maxValue=120, step=1
+        )
+        if ok:
+            self.auto_lock.timeout_minutes = value
+            logger.info("Auto-lock timeout set to %d min", value)
+
 
 def global_exception_handler(exc_type, exc_value, exc_tb):
-    logger = logging.getLogger(__name__)
-    logger.critical("Unhandled exception",
-                    exc_info=(exc_type, exc_value, exc_tb))
+    """Safe global exception handler - no PII in crash dialog."""
+    _logger = logging.getLogger(__name__)
+    _logger.critical("Unhandled exception", exc_info=(exc_type, exc_value, exc_tb))
+    log_audit("CRASH", f"Type: {exc_type.__name__}")
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
         if QApplication.instance() is not None:
-            msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
             error_box = QMessageBox()
             error_box.setIcon(QMessageBox.Icon.Critical)
             error_box.setWindowTitle("Критическая ошибка")
-            error_box.setText("Произошла неожиданная ошибка. Приложение будет закрыто.")
-            error_box.setDetailedText(msg)
+            error_box.setText(
+                "Произошла неожиданная ошибка. Приложение будет закрыто.\n\n"
+                "Подробности записаны в лог-файл."
+            )
+            error_box.setDetailedText(
+                f"Тип: {exc_type.__name__}\n"
+                f"Описание: {filter_sensitive_text(str(exc_value)[:200])}\n"
+                f"Подробности см. в error.log"
+            )
             error_box.exec()
     except Exception as e:
-        # Crash handler itself failed — log and fall through to sys.__excepthook__
-        logger.critical("Crash dialog failed: %s", e, exc_info=True)
+        _logger.critical("Crash dialog failed: %s", e)
     sys.__excepthook__(exc_type, exc_value, exc_tb)
 
 
@@ -339,7 +346,6 @@ def _show_first_about(window, flag_path):
         from utils.about_dialog import AboutDialog
         dialog = AboutDialog(window)
         dialog.exec()
-        # Создаём флаг только после закрытия диалога
         with open(flag_path, 'w', encoding='utf-8') as f:
             f.write('shown')
     except Exception as e:
@@ -347,48 +353,52 @@ def _show_first_about(window, flag_path):
 
 
 if __name__ == "__main__":
-    # PERFORMANCE: поддержка --profile для cProfile
     _profile_flag = '--profile' in sys.argv
     if _profile_flag:
         sys.argv.remove('--profile')
 
-    # Настройка логирования
     log_dir = get_app_log_dir()
     setup_logging(log_dir)
     setup_audit_log(log_dir)
-    logging.getLogger(__name__).info("=== Приложение запущено ===")
+    logger.info("=== Application started ===")
 
-    # Инициализация БД
     data_dir = get_app_data_dir()
     db_path = os.path.join(data_dir, "app_data.db")
     db = DatabaseManager.get_instance(db_path)
     db.initialize()
     create_schema()
-    logging.getLogger(__name__).info(f"БД: {db_path}")
+    logger.info("Database initialized")
     db.create_backup()
+    log_audit("STARTUP", "Application started")
 
-    # Флаг первого запуска (показываем About один раз)
     _first_launch_flag = os.path.join(data_dir, ".about_shown")
     _is_first_launch = not os.path.exists(_first_launch_flag)
 
-    # Security audit on startup
     def security_audit():
         audit_logger = logging.getLogger(__name__)
+
+        env_ok, env_msg = check_environment()
+        if not env_ok:
+            audit_logger.warning("Security audit - environment: FAIL - %s", env_msg)
+        else:
+            audit_logger.info("Security audit - environment: OK")
+
         mode, msg = check_master_key_security()
-        audit_logger.info(f"Security audit - master.key: [{mode}] {msg}")
+        audit_logger.info("Security audit - master.key: [%s] %s", mode, msg)
         if mode in ('raw',):
             audit_logger.warning(
                 "SECURITY: DPAPI unavailable - master.key stored as plaintext! "
                 "Consider setting a passphrase via 'About' dialog."
             )
+            log_audit("SECURITY_WARNING", "Master key is plaintext")
         elif mode == 'raw_passphrase':
             audit_logger.info("Security audit - master.key: plaintext but passphrase protected (PBKDF2)")
         elif mode == 'none':
             audit_logger.error("SECURITY: Master key not found!")
+            log_audit("SECURITY_WARNING", "Master key not found")
         elif mode in ('dpapi', 'dpapi_passphrase'):
-            audit_logger.info(f"Security audit - master.key protection: OK ({mode})")
+            audit_logger.info("Security audit - master.key protection: OK (%s)", mode)
 
-        # Check API key existence
         from api.mintrud_api import load_api_key
         api_key = load_api_key(data_dir)
         if api_key:
@@ -396,33 +406,28 @@ if __name__ == "__main__":
         else:
             audit_logger.info("Security audit - API key: not set")
 
-        # Check database encryption integrity
         try:
             from db.employees_repo import EmployeesRepo
             sample = EmployeesRepo.get_all(limit=1)
             if sample:
                 audit_logger.info("Security audit - DB encryption: OK (field-level Fernet)")
         except Exception as e:
-            audit_logger.warning(f"Security audit - DB encryption check: {e}")
+            audit_logger.warning("Security audit - DB encryption check: %s", e)
 
     security_audit()
 
-    # Загрузка темы
     theme = load_theme(data_dir)
 
     app = QApplication(sys.argv)
 
-    # Иконка приложения (для панели задач Windows)
     icon_path = os.path.join(get_resource_dir(), "resources", "ico.ico")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
     app.setPalette(create_palette(theme))
-
     app.setStyle("Fusion")
     app.setStyleSheet(get_global_stylesheet(theme))
 
-    # Проверка парольной фразы при запуске
     from utils.crypto import is_passphrase_protected
     if is_passphrase_protected():
         from utils.passphrase_dialog import PassphraseDialog
@@ -433,11 +438,9 @@ if __name__ == "__main__":
     window = MainWindow(app=app)
     window.show()
 
-    # Mica backdrop (после show() для получения HWND)
     apply_mica(window)
-    logging.getLogger(__name__).info(f"Окно отображено, тема: {theme}, Mica применён")
+    logger.info("Window displayed, theme: %s", theme)
 
-    # Показываем About при первом запуске
     if _is_first_launch:
         from PySide6.QtCore import QTimer
         QTimer.singleShot(500, lambda: _show_first_about(window, _first_launch_flag))
@@ -447,6 +450,6 @@ if __name__ == "__main__":
         profiler = cProfile.Profile()
         profiler.runcall(app.exec)
         profiler.dump_stats(os.path.join(log_dir, "profile.prof"))
-        logging.getLogger(__name__).info(f"Profile saved to {os.path.join(log_dir, 'profile.prof')}")
+        logger.info("Profile saved")
     else:
         sys.exit(app.exec())

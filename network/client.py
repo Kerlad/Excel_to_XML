@@ -45,9 +45,9 @@ def test_external_access(
 
 
 def get_network_diagnostics() -> dict:
+    """Get network diagnostics without PII (no username, no machine name)."""
     return {
         "negotiate_available": False,
         "detected_proxy": None,
         "auth_method": "None",
-        "windows_user": os.environ.get('USERNAME', ''),
     }

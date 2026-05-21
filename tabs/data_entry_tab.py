@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QFrame, QProgressBar, QDialog
 )
 from utils.crypto import hash_for_search
+from utils.error_utils import safe_message_box
 from PySide6.QtCore import Qt, Signal, QUrl, QThread
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from importers.xml_importer import load_xml
@@ -583,7 +584,7 @@ class DataEntryTab(QWidget):
                 logger.info("Settings not loaded - passphrase required")
             except Exception as e:
                 logger.exception("Error loading org settings")
-                QMessageBox.warning(self, "Ошибка", f"Ошибка чтения настроек: {e}")
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка чтения настроек: {e}")
 
     def load_xsd_on_startup(self):
         xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
@@ -622,7 +623,7 @@ class DataEntryTab(QWidget):
             QMessageBox.information(self, "Успех", "Данные сохранены (зашифрованы)")
         except Exception as e:
             logger.exception("Error saving org settings")
-            QMessageBox.warning(self, "Ошибка", f"Ошибка сохранения: {e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка сохранения: {e}")
 
     def upload_xsd(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -636,7 +637,7 @@ class DataEntryTab(QWidget):
                 QMessageBox.information(self, "Успех", "XSD файл успешно загружен")
             except (OSError, shutil.Error) as e:
                 logger.exception("Error uploading XSD")
-                QMessageBox.warning(self, "Ошибка", f"Ошибка загрузки XSD: {e}")
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка загрузки XSD: {e}")
 
     def open_xsd_scheme(self):
         webbrowser.open("https://akot.rosmintrud.ru/sout/info")
@@ -697,8 +698,8 @@ class DataEntryTab(QWidget):
 
             if xml_xsd_errors:
                 logger.error(f"XSD validation errors: {xml_xsd_errors}")
-                QMessageBox.warning(
-                    self, "XSD-валидация",
+                safe_message_box(
+                    self, QMessageBox.Icon.Warning, "XSD-валидация",
                     "Файл не соответствует XSD-схеме:\n" + "\n".join(xml_xsd_errors[:20])
                 )
                 self.progress_bar.setVisible(False)
@@ -708,7 +709,7 @@ class DataEntryTab(QWidget):
             if records is None:
                 msgs = xml_error_messages[:5] if xml_error_messages else ["Ошибка импорта"]
                 msg = "\n".join(msgs)
-                QMessageBox.warning(self, "Ошибка импорта", msg)
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка импорта", msg)
                 self.progress_bar.setVisible(False)
                 self._import_status_label.setVisible(False)
                 return
@@ -717,7 +718,7 @@ class DataEntryTab(QWidget):
 
         except Exception as e:
             logger.exception("XML import failed")
-            QMessageBox.warning(self, "Ошибка", f"Ошибка импорта XML: {e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка импорта XML: {e}")
         finally:
             self.progress_bar.setVisible(False)
             self._import_status_label.setVisible(False)
@@ -784,7 +785,7 @@ class DataEntryTab(QWidget):
 
         if records is None:
             err_msg = error_msg if error_msg else (str(error_details[0]['message']) if error_details else "Неизвестная ошибка")
-            QMessageBox.warning(self, "Ошибка импорта", err_msg)
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка импорта", err_msg)
             return
 
         error_rows_set = {e['row'] for e in error_details}
@@ -794,7 +795,7 @@ class DataEntryTab(QWidget):
     def _on_import_error(self, error_message):
         """Ошибка в фоновом импорте."""
         self._cleanup_import()
-        QMessageBox.critical(self, "Ошибка импорта", error_message)
+        safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка импорта", error_message)
 
     def _cleanup_import(self):
         """Сброс UI и очистка после импорта (успех/отмена/ошибка)."""
@@ -1013,9 +1014,9 @@ class DataEntryTab(QWidget):
 
             ok, msg = export_error_report(error_details, duplicate_map, file_path)
             if ok:
-                QMessageBox.information(self, "Успех", msg)
+                safe_message_box(self, QMessageBox.Icon.Information, "Успех", msg)
             else:
-                QMessageBox.warning(self, "Ошибка", msg)
+                safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
         parent_dialog.close()
 
@@ -1046,7 +1047,7 @@ class DataEntryTab(QWidget):
             QMessageBox.warning(self, "Ошибка", "Установите openpyxl: pip install openpyxl")
         except Exception as e:
             logger.exception("Error creating template")
-            QMessageBox.warning(self, "Ошибка", f"Ошибка создания шаблона: {e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка создания шаблона: {e}")
 
     def show_programs_help(self):
         programs = {

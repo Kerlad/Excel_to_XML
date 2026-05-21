@@ -9,6 +9,19 @@
 - Tests: `py -m pytest tests -v`
 - Build EXE: Remove `dist\ExcelXML-Mintrud`, then `py -m PyInstaller ExcelXML-Mintrud.spec`
 - EXE output: `dist\ExcelXML-Mintrud\`
+- Production mode: `set EXCEL_XML_PROD=1` before running (blocks plaintext keys)
+
+## SECURITY: Critical Rules
+1. **ALL XML from external sources** MUST use `defusedxml.ElementTree` (not stdlib `xml.etree`)
+2. **ALL XML from external sources** MUST go through `utils.xml_safe.safe_parse_xml()` or `safe_fromstring_xml()`
+3. **NO f-string logging** with user data — use `%s` formatting with `filter_sensitive_text()`
+4. **NO raw exceptions** in UI — use `utils.error_utils.show_exception_dialog()`
+5. **NO plaintext master key** in production mode — raises `CryptoProductionModeError`
+6. **NO hardcoded secrets** — backup password MUST derive from master key via PBKDF2
+7. **TLS verify=True** by default — disabling MUST log audit event `TLS_WARNING`
+8. **ALL SQL queries** MUST use parameterized queries (no string concatenation)
+9. **ALL sensitive logging** MUST pass through `SensitiveDataFilter`
+10. **Thread-local connections** MUST be closed at end of background thread via `DatabaseManager.close_thread_connection()`
 
 ## Key Architecture
 - `importers/` — XLSX/XML file loading (employees import; `.xls` removed, use `.xlsx` only)
@@ -18,7 +31,7 @@
 - `api/` — Mintrud API client (mintrud_api.py, payload_builder.py, response_parser.py, backends/)
 - `db/` — SQLite via DatabaseManager, EmployeesRepo, EmployeeProgramsRepo
 - `tabs/` — UI tabs: employee_summary_tab, data_entry_tab, data_transfer_tab, exam_journal_tab
-- `utils/` — crypto, proxy_manager, logger, audit, app_paths, log_viewer_dialog
+- `utils/` — crypto, proxy_manager, logger, audit, app_paths, log_viewer_dialog, secure_temp
 
 ## Database Architecture (`db/database.py`)
 
@@ -38,9 +51,9 @@
 | `executemany(sql, seq)` | Batch execute via `get_conn()` |
 | `fetchone(sql, params)` | Returns `dict` or `None` |
 | `fetchall(sql, params)` | Returns `list[dict]` |
-| **`close_thread_connection()`** | **NEW** — closes current thread's connection, removes from `_thread_connections` dict. Call in background threads at end of `run()`. |
+| **`close_thread_connection()`** | Closes current thread's connection, removes from `_thread_connections` dict. Call in background threads at end of `run()`. |
 | **`close()`** | Instance method — delegates to `close_thread_connection()` |
-| **`close_all()`** | **NEW** — classmethod, closes ALL tracked connections, clears dict + thread-local. Idempotent. |
+| **`close_all()`** | Classmethod, closes ALL tracked connections, clears dict + thread-local. Idempotent. |
 
 ### Rules for Background Threads
 - **Always** call `DatabaseManager.close_thread_connection()` at the end of `QThread.run()` if the thread used the database
@@ -52,6 +65,109 @@
 - Lock retries: 3 attempts, 100ms delay between retries
 - Logging: connection open/close at DEBUG, rollback at ERROR, lock timeout at WARNING
 - `except BaseException` changed to `except Exception` — no longer catches `KeyboardInterrupt`/`SystemExit`
+
+### Backup Security
+- Backup password derived from master key via `get_key_fingerprint()` or PBKDF2
+- NEVER use hardcoded or date-based passwords
+- Backup rotation: max 5 copies
+
+## Crypto Architecture (`utils/crypto.py`)
+
+### Key Hierarchy
+```
+Windows DPAPI (user + machine + entropy)
+    └── Master Key (32 bytes, Fernet AES-128-CBC)
+         ├── [Optional] Passphrase (PBKDF2-HMAC-SHA256, 600K iterations)
+         │    └── Passphrase-wrapped key
+         ├── API key (Fernet-encrypted)
+         ├── Proxy credentials (Fernet-encrypted)
+         └── Field-level encryption (ФИО, СНИЛС)
+```
+
+### Production Mode
+- Set `EXCEL_XML_PROD=1` to enable strict mode
+- Blocks: plaintext master keys, missing DPAPI, insecure fallbacks
+- Raises `CryptoProductionModeError` on violation
+
+### Key Metadata
+- Stored in `master.key.json` with HMAC-SHA256 integrity tag
+- Version tracking, creation/rotation timestamps, key fingerprint
+- `verify_metadata_integrity()` checks HMAC before use
+- Corrupted keys archived to `corrupted_keys/` directory
+
+### Security Rules
+- `encrypt_value()` / `decrypt_value()` — field-level Fernet
+- `hash_for_search()` — SHA-256 of normalized value (for DB indexing)
+- Cache: only ciphertext (never plaintext), max 2000 items
+- Backup: PBKDF2-derived password from master key (NO hardcoded constants)
+
+## Logging Security (`utils/logger.py`)
+
+### SensitiveDataFilter (23+ patterns)
+- SNILS, passports, phones, emails, API keys, tokens, JWT
+- Full Russian names (ФИО), initials
+- Passwords, proxies, cookies, session IDs
+- JSON sensitive key values (recursive)
+- XML/SOAP payload tagging
+
+### Production Logging
+- Main handler: INFO level (NOT DEBUG)
+- Error handler: ERROR level
+- Third-party libs: urllib3, requests, openpyxl → WARNING
+- Safe exception formatting via `safe_format_exception()`
+- `filter_sensitive_text()` for all log messages
+
+### Prohibited in Logs
+- Raw PDn (SNILS, names)
+- Endpoint URLs
+- File paths containing sensitive data
+- Full traceback in user-facing dialogs
+- Raw HTTP request/response bodies
+
+## Audit System (`utils/audit.py`)
+
+### 32 Security Events
+`SEND_XML`, `SEND_XML_SIGNED`, `QUERY_SETID`, `QUERY_SNILS`,
+`IMPORT_XLSX`, `IMPORT_XML`, `EXPORT_XML`, `EXPORT_XLSX`,
+`LOGIN`, `BACKUP`, `KEY_ACCESS`, `KEY_ROTATION`,
+`KEY_BACKUP`, `KEY_RESTORE`, `PASSPHRASE_SET`, `PASSPHRASE_REMOVED`,
+`TLS_WARNING`, `TLS_ERROR`, `XML_VALIDATION_ERROR`, `XML_SECURITY_ERROR`,
+`EXPORT_PLAN`, `EXPORT_SNAPSHOT`, `EXPORT_TRAINED_REPORT`,
+`IMPORT_CANCELLED`, `SECURITY_WARNING`, `STARTUP`, `SHUTDOWN`,
+`CRASH`, `ERROR_RESPONSE_SAVED`, `PROXY_CHANGE`, `BACKEND_CHANGE`,
+`AUDIT_INTEGRITY_CHECK`
+
+### HMAC Protection
+Each audit entry includes HMAC-SHA256 tag: `[hmac_tag] EVENT | detail`
+
+## XML Security (`utils/xml_safe.py`)
+
+### Required for ALL external XML
+- `safe_parse_xml(file_path)` — file-based parsing with defusedxml
+- `safe_fromstring_xml(data)` — string-based parsing with defusedxml
+- `LimitedXMLParser` — limits: 50000 elements, depth 20, size 100MB
+
+### Require check for lxml usage
+When using `lxml.etree` for XSD validation, ALWAYS use:
+```python
+parser = etree.XMLParser(
+    resolve_entities=False,
+    no_network=True,
+    dtd_validation=False,
+    huge_tree=False,
+)
+```
+
+### Prohibited
+- `xml.dom.minidom.parseString()` for external XML
+- `lxml.etree.parse()` without secure parser settings
+- `xml.etree.ElementTree` without defusedxml wrapper
+
+## Temp File Security (`utils/secure_temp.py`)
+- Per-process isolated temp directory: `%TEMP%/excel_xml_secure_<UUID>`
+- ACL-restricted to current user
+- Secure deletion: 3-pass overwrite before delete
+- Auto-cleanup on process exit via `atexit`
 
 ## Requirements (Implemented)
 
@@ -106,6 +222,7 @@
 ### FR-008: Error Response Saving
 - Full server error responses saved to `log/error_response.txt` (UTF-8 BOM)
 - Implemented in `mintrud_api.py:_save_error_response()`
+- Filtered through `filter_sensitive_text()` before saving
 
 ## Key Files
 - `tabs/employee_summary_tab.py` — main tab for registry sync, plan, stats
@@ -115,17 +232,29 @@
 - `tabs/programs_dialog.py` — training programs editor dialog
 - `api/mintrud_api.py` — MintrudClient class
 - `api/backends/` — transport backends (Requests, WinINET)
-- `utils/crypto.py` — Fernet + DPAPI encryption
-- `utils/audit.py` — audit logging
-- `utils/logger.py` — SensitiveDataFilter
+- `utils/crypto.py` — Fernet + DPAPI encryption + production mode enforcement
+- `utils/audit.py` — 32 security events with HMAC integrity
+- `utils/logger.py` — SensitiveDataFilter (23+ patterns, recursive)
+- `utils/xml_safe.py` — defusedxml wrapper with element/depth limits
+- `utils/secure_temp.py` — isolated temp directory, secure deletion
+- `utils/error_utils.py` — safe exception display (no PII)
 - `utils/training_rules.py` — training period rules (program A vs B period, easily removable)
-- `network/client.py` — network diagnostics
+- `network/client.py` — network diagnostics (no USERNAME)
 - `db/employee_programs_repo.py` — program data per employee
 - `db/employees_repo.py` — employee CRUD
 
 ## Documentation
-- `README.md` — main project overview
-- `docs/SECURITY.md` — security architecture (encryption, DPAPI, logging)
+- `README.md` — main project overview (comprehensive: architecture, PDn protection, compliance, threat model)
+- `docs/SECURITY.md` — cryptography spec, supported versions, vulnerability reporting, secure deployment
+- `docs/HARDENING.md` — Windows hardening guide (BitLocker, antivirus, firewall, restricted users, audit)
+- `docs/OPSEC_GUIDE.md` — operational security guide (Mermaid diagrams, key rotation, incident response)
 - `docs/API_MINTTRUD.md` — Mintrud API reference
-- `docs/Техническое_задание_2.md` — full technical specification (TZ)
+- `docs/Техническое_задание.md` — full TS with section 9 (ИБ, model угроз, требования к окружению/хранению/доступу)
+- `reports/hardening_report.md` — v3.0.0 security audit report (18 vulnerabilities fixed)
+- `reports/compliance_audit.md` — 152-ФЗ / ПП 1119 compliance audit (юридико-технический аудит)
+- `reports/threat_model.md` — STRIDE threat model (8 components, 48 threat/mitigation pairs)
+- `reports/data_flow.md` — 11 data flows, data matrix, storage table, deletion scheme
+- `reports/risk_register.md` — 24 risks with probability/consequence scoring
+- `reports/security_checklist.md` — 7 checklists (deploy, daily, weekly, monthly, incident, disposal, personnel)
+- `reports/dpia.md` — Data Protection Impact Assessment (ОВЗД по 152-ФЗ)
 - `CHANGELOG.md` — version history

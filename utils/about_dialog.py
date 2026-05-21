@@ -21,6 +21,7 @@ from utils.crypto import (
     verify_passphrase, get_key_fingerprint, CryptoPassphraseRequiredError,
     CryptoError
 )
+from utils.error_utils import safe_message_box
 
 
 VERSION = "1.3.0"
@@ -363,7 +364,7 @@ class AboutDialog(BaseDialog):
             QMessageBox.information(self, "Успех", "Парольная фраза установлена")
             self._update_security_status()
         except CryptoError as e:
-            QMessageBox.warning(self, "Ошибка", f"Не удалось установить парольную фразу:\n{e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Не удалось установить парольную фразу:\n{e}")
 
     def _remove_passphrase(self):
         pp, ok = QInputDialog.getText(
@@ -381,7 +382,7 @@ class AboutDialog(BaseDialog):
         except CryptoPassphraseRequiredError:
             QMessageBox.warning(self, "Ошибка", "Неверная парольная фраза")
         except CryptoError as e:
-            QMessageBox.warning(self, "Ошибка", f"Не удалось снять парольную фразу:\n{e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Не удалось снять парольную фразу:\n{e}")
 
     def _create_key_backup(self):
         backup_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для бэкапа master.key")
@@ -389,6 +390,6 @@ class AboutDialog(BaseDialog):
             return
         ok, result = create_master_key_backup(backup_dir)
         if ok:
-            QMessageBox.information(self, "Успех", f"Бэкап создан:\n{result}")
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Бэкап создан:\n{result}")
         else:
-            QMessageBox.warning(self, "Ошибка", f"Не удалось создать бэкап:\n{result}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Не удалось создать бэкап:\n{result}")

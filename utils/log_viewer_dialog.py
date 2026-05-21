@@ -23,6 +23,7 @@ from PySide6.QtGui import (
 
 from utils.logger import tail_log, get_log_files
 from utils.app_paths import get_app_log_dir
+from utils.error_utils import safe_message_box
 
 logger = logging.getLogger(__name__)
 
@@ -359,9 +360,9 @@ class LogViewerDialog(QDialog):
                 for name, fp in sorted(files.items()):
                     if os.path.isfile(fp):
                         zf.write(fp, name)
-            QMessageBox.information(self, "Архив сохранён", f"Логи упакованы:\n{file_path}")
+            safe_message_box(self, QMessageBox.Icon.Information, "Архив сохранён", f"Логи упакованы:\n{file_path}")
         except (OSError, zipfile.BadZipFile) as e:
-            QMessageBox.warning(self, "Ошибка", f"Не удалось сохранить архив:\n{e}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Не удалось сохранить архив:\n{e}")
 
     def _copy_all(self):
         text = self._text_edit.toPlainText()

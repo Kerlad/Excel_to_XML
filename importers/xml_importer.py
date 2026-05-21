@@ -42,22 +42,36 @@ def load_xml(file_path, xsd_path=None):
     if xsd_path and os.path.exists(xsd_path):
         try:
             from lxml import etree
-            parser = etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)
+            parser = etree.XMLParser(
+                resolve_entities=False,
+                no_network=True,
+                dtd_validation=False,
+                huge_tree=False,
+            )
             schema_doc = etree.parse(xsd_path, parser)
             schema = etree.XMLSchema(schema_doc)
             xml_doc = etree.parse(file_path, parser)
             schema.assertValid(xml_doc)
+            from utils.audit import log_audit
+            log_audit("XML_VALIDATION_ERROR", "XSD validation passed")
         except ImportError:
             xsd_errors = ["lxml не установлен. XSD-валидация недоступна: pip install lxml"]
         except etree.XMLSyntaxError as e:
+            from utils.audit import log_audit
+            log_audit("XML_VALIDATION_ERROR", f"XSD/XML syntax error: {e}")
             xsd_errors = [f"Ошибка синтаксиса XSD/XML: {e}"]
         except etree.DocumentInvalid:
+            from utils.audit import log_audit
+            log_audit("XML_VALIDATION_ERROR", "XSD validation failed")
             xsd_errors = [str(err.message.strip()) for err in schema.error_log]
         except (etree.XMLSyntaxError, etree.DocumentInvalid, ValueError) as e:
+            from utils.audit import log_audit
+            log_audit("XML_VALIDATION_ERROR", f"XSD error: {e}")
             xsd_errors = [f"Ошибка XSD-валидации: {e}"]
         except Exception as e:
-            # Любая другая неожиданная ошибка — логируем полный traceback
-            logger.exception("Unexpected XSD validation error")
+            logger.exception("XSD validation unexpected error")
+            from utils.audit import log_audit
+            log_audit("XML_VALIDATION_ERROR", f"Unexpected: {e}")
             xsd_errors = [f"Внутренняя ошибка: {e}"]
 
     # Определяем формат XML
