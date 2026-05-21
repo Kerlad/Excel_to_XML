@@ -3,7 +3,7 @@ import os
 import logging
 import traceback
 from datetime import datetime
-from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QFileDialog, QProgressBar
+from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenuBar, QMenu, QMessageBox, QTextEdit, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QFileDialog, QProgressBar, QToolBar
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QFont, QAction
 from tabs.data_entry_tab import DataEntryTab
@@ -22,6 +22,7 @@ from utils.tahoe_style import get_global_stylesheet, create_palette, apply_mica,
 from utils.app_paths import get_app_data_dir, get_app_log_dir, get_resource_dir
 from utils.about_dialog import AboutDialog, VERSION
 from utils.help_dialog import HelpDialog
+from utils.log_viewer_dialog import LogViewerDialog
 from utils.crypto import check_master_key_security
 from db import DatabaseManager, create_schema
 from db.employees_repo import EmployeesRepo
@@ -43,6 +44,7 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
         self._create_menu_bar()
+        self._create_toolbar()
         self._create_status_bar()
 
         data_dir = get_app_data_dir()
@@ -151,13 +153,15 @@ class MainWindow(QMainWindow):
         try:
             emp_count = EmployeesRepo.count()
             self._sb_employees.setText(f"Сотрудников: {emp_count}")
-        except Exception:
+        except Exception as e:
+            logger.debug("Status bar: employees count unavailable: %s", e)
             self._sb_employees.setText("Сотрудников: --")
         try:
             from db.exam_journal_repo import ExamJournalRepo
             j_count = ExamJournalRepo.count()
             self._sb_journal.setText(f"Журнал: {j_count}")
-        except Exception:
+        except Exception as e:
+            logger.debug("Status bar: journal count unavailable: %s", e)
             self._sb_journal.setText("Журнал: --")
         try:
             key = load_api_key(get_app_data_dir())
@@ -167,7 +171,8 @@ class MainWindow(QMainWindow):
             else:
                 self._sb_api.setText("API ключ: не задан")
                 self._sb_api_indicator.setStyleSheet("background-color: #E74C3C; border-radius: 5px;")
-        except Exception:
+        except Exception as e:
+            logger.debug("Status bar: API key unavailable: %s", e)
             self._sb_api.setText("API ключ: ?")
             self._sb_api_indicator.setStyleSheet("background-color: #888; border-radius: 5px;")
         try:
@@ -175,7 +180,8 @@ class MainWindow(QMainWindow):
             rows = db.fetchone("SELECT MAX(last_sync) as ls FROM employees WHERE last_sync IS NOT NULL")
             last_sync = rows['ls'] if rows and rows['ls'] else "нет"
             self._sb_sync.setText(f"Синхр.: {last_sync}")
-        except Exception:
+        except Exception as e:
+            logger.debug("Status bar: sync date unavailable: %s", e)
             self._sb_sync.setText("Синхр.: --")
 
     def show_progress(self, visible: bool = True, value: int = -1, text: str = ""):
@@ -204,10 +210,12 @@ class MainWindow(QMainWindow):
         w = self.tabs.widget(index)
         if hasattr(w, 'refresh_table'):
             try: w.refresh_table()
-            except Exception: pass
+            except Exception as e:
+                logger.debug("Tab refresh_table failed: %s", e)
         elif hasattr(w, 'refresh_data'):
             try: w.refresh_data()
-            except Exception: pass
+            except Exception as e:
+                logger.debug("Tab refresh_data failed: %s", e)
 
     def _create_template(self):
         """Создать шаблон XLSX через вкладку Внесение данных."""
@@ -275,6 +283,54 @@ class MainWindow(QMainWindow):
         help_action = help_menu.addAction("Справка по работе с программой")
         help_action.triggered.connect(self.show_help)
 
+        # Меню "Инструменты"
+        tools_menu = menubar.addMenu("Инструменты")
+        logs_action = tools_menu.addAction("Просмотр логов")
+        logs_action.triggered.connect(self.show_log_viewer)
+
+    def _create_toolbar(self):
+        """Создание верхней панели инструментов."""
+        toolbar = QToolBar("Панель инструментов")
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setIconSize(self.style().standardIcon(
+            self.style().StandardPixmap.SP_FileDialogInfoView
+        ).actualSize(self.fontMetrics().boundingRect("W").size() * 3))
+
+        style = self.style()
+
+        about_btn = toolbar.addAction(
+            style.standardIcon(style.StandardPixmap.SP_FileDialogInfoView),
+            "О программе"
+        )
+        about_btn.setToolTip("Информация о приложении")
+        about_btn.triggered.connect(self.show_about)
+
+        settings_btn = toolbar.addAction(
+            style.standardIcon(style.StandardPixmap.SP_ComputerIcon),
+            "Настройки"
+        )
+        settings_btn.setToolTip("Настройки прокси и подключения")
+        settings_btn.triggered.connect(self._open_proxy_settings)
+
+        help_btn = toolbar.addAction(
+            style.standardIcon(style.StandardPixmap.SP_MessageBoxQuestion),
+            "Помощь"
+        )
+        help_btn.setToolTip("Справка по работе с программой")
+        help_btn.triggered.connect(self.show_help)
+
+        toolbar.addSeparator()
+
+        logs_btn = toolbar.addAction(
+            style.standardIcon(style.StandardPixmap.SP_FileDialogContentsView),
+            "Логи"
+        )
+        logs_btn.setToolTip("Просмотр и анализ логов приложения")
+        logs_btn.triggered.connect(self.show_log_viewer)
+
+        self.addToolBar(toolbar)
+
     def _toggle_theme(self):
         """Переключение темы."""
         new_theme = "light" if self.current_theme == "dark" else "dark"
@@ -294,6 +350,10 @@ class MainWindow(QMainWindow):
         dialog = AboutDialog(self)
         dialog.exec()
 
+    def show_log_viewer(self):
+        dialog = LogViewerDialog(self)
+        dialog.exec()
+
 
 def global_exception_handler(exc_type, exc_value, exc_tb):
     logger = logging.getLogger(__name__)
@@ -308,8 +368,9 @@ def global_exception_handler(exc_type, exc_value, exc_tb):
         error_box.setText("Произошла неожиданная ошибка. Приложение будет закрыто.")
         error_box.setDetailedText(msg)
         error_box.exec()
-    except Exception:
-        pass
+    except Exception as e:
+        # Crash handler itself failed — log and fall through to sys.__excepthook__
+        logger.critical("Crash dialog failed: %s", e, exc_info=True)
     sys.__excepthook__(exc_type, exc_value, exc_tb)
 
 
@@ -372,9 +433,6 @@ if __name__ == "__main__":
             audit_logger.warning(f"Security audit - DB encryption check: {e}")
 
     security_audit()
-
-    import atexit
-    atexit.register(db.close_all)
 
     # Загрузка темы
     theme = load_theme(data_dir)

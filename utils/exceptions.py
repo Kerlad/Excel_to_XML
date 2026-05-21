@@ -24,3 +24,10 @@ class ImportLimitExceededError(ValueError):
     def __init__(self, message: str):
         logger.warning(f"ImportLimitExceededError: {message}")
         super().__init__(message)
+
+
+class ImportCancelledError(Exception):
+    """Raised when the user cancels an import operation."""
+    def __init__(self, message: str = "Import cancelled by user"):
+        logger.info(f"ImportCancelledError: {message}")
+        super().__init__(message)

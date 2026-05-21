@@ -1287,7 +1287,8 @@ def apply_mica(window) -> bool:
 
         return False
 
-    except Exception:
+    except (AttributeError, ValueError, OSError, ctypes.ArgumentError):
+        logger.debug("Mica not supported on this system")
         return False
 
 
@@ -1313,8 +1314,8 @@ def load_theme(base_dir: str) -> str:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             return data.get('theme', 'light')
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            logger.debug("Failed to load theme: %s", e)
     return 'light'
 
 
@@ -1324,8 +1325,8 @@ def save_theme(base_dir: str, theme: str):
     try:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump({'theme': theme}, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    except OSError as e:
+        logger.debug("Failed to save theme: %s", e)
 
 
 # ============ GLASS CARD & PILL BUTTON ============

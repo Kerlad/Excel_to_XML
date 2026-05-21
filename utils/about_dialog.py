@@ -96,8 +96,8 @@ class AboutDialog(BaseDialog):
         info_layout.addWidget(repo_link)
 
         email_link = ClickableLabel(
-            "<b>Электронная почта:</b> denis-krv@yandex.ru",
-            "mailto:denis-krv@yandex.ru"
+            "<b>Электронная почта:</b> denis.krv@yandex.ru",
+            "mailto:denis.krv@yandex.ru"
         )
         email_link.setObjectName("aboutInfoLink")
         info_layout.addWidget(email_link)

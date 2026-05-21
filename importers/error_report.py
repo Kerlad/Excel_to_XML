@@ -96,5 +96,5 @@ def export_error_report(error_details, duplicate_map, file_path):
         wb.save(file_path)
         return True, f"Отчёт сохранён: {file_path}"
 
-    except Exception as e:
+    except OSError as e:
         return False, f"Ошибка сохранения отчёта: {e}"

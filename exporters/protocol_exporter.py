@@ -528,7 +528,7 @@ class ProtocolExporter:
                 from protocol.programs_manager import ProgramsManager
                 programs_manager = ProgramsManager(data_dir)
             except Exception as e:
-                logger.warning(f"Не удалось загрузить ProgramsManager: {e}")
+                logger.warning("Не удалось загрузить ProgramsManager: %s", e, exc_info=True)
 
             # Преобразуем записи журнала в формат, ожидаемый generate_from_commission
             worker_records = []

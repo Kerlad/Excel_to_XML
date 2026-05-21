@@ -63,8 +63,8 @@ class ProgramsManager:
                     if prog_id in merged:
                         merged[prog_id].update(prog_data)
                 return merged
-            except Exception as e:
-                logger.error(f"Ошибка загрузки данных программ: {e}")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.error("Ошибка загрузки данных программ: %s", e, exc_info=True)
         return BASE_PROGRAMS.copy()
 
     def save(self) -> tuple[bool, str]:
@@ -73,8 +73,8 @@ class ProgramsManager:
             with open(self.programs_file, 'w', encoding='utf-8') as f:
                 json.dump(self.programs, f, ensure_ascii=False, indent=2)
             return True, "Данные программ сохранены"
-        except Exception as e:
-            logger.error(f"Ошибка сохранения данных программ: {e}")
+        except OSError as e:
+            logger.error("Ошибка сохранения данных программ: %s", e, exc_info=True)
             return False, f"Ошибка сохранения: {e}"
 
     def get_program(self, program_id: str) -> dict:

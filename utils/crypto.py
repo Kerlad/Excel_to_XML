@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Any, Dict
 from datetime import datetime
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 
@@ -20,7 +20,6 @@ _FERNET_INSTANCE: Optional[Fernet] = None
 _KEY_LOCK = threading.Lock()
 
 _ENCRYPT_CACHE: Dict[str, str] = {}
-_DECRYPT_CACHE: Dict[str, str] = {}
 _MAX_CACHE_ITEMS: int = 2000
 
 _KEY_VERSION: int = 2
@@ -62,7 +61,7 @@ def _dpapi_encrypt(data: bytes) -> bytes:
         return result
     except ImportError:
         raise CryptoUnavailableError("win32crypt not installed")
-    except Exception as e:
+    except (ValueError, OSError, RuntimeError) as e:
         raise CryptoError(f"CryptProtectData failed: {e}")
 
 
@@ -254,24 +253,21 @@ def _load_existing_key(kf: Path, kd: Path) -> bytes:
     except (CryptoUnavailableError, CryptoError):
         pass
     if len(raw_bytes) == 32:
-        logger.warning("Loading master key in plaintext (DPAPI unavailable)")
+        logger.critical(
+            "SECURITY: Loading master key from legacy plaintext file! "
+            "DPAPI protection was unavailable when key was created."
+        )
         return raw_bytes
     raise CryptoKeyCorruptedError("Master key file is corrupted or invalid format")
 
 
 def _create_new_key(kf: Path, kd: Path) -> bytes:
     raw = os.urandom(32)
-    dpapi_ok = _write_key_file(kf, raw)
+    _write_key_file(kf, raw)
     meta = _load_key_metadata()
     meta["version"] = _KEY_VERSION
     _save_key_metadata(meta)
-    if dpapi_ok:
-        logger.info('Master key created with DPAPI protection')
-    else:
-        logger.warning(
-            'DPAPI unavailable — master key saved as plaintext. '
-            'Set a passphrase for additional protection.'
-        )
+    logger.info('Master key created with DPAPI protection')
     return raw
 
 
@@ -323,18 +319,13 @@ def encrypt_value(plain: str) -> str:
 def decrypt_value(enc: str) -> str:
     if not enc:
         return ''
-    if enc in _DECRYPT_CACHE:
-        return _DECRYPT_CACHE[enc]
     _unlock_with_passphrase_if_needed()
     try:
         f = _fernet()
-        result = f.decrypt(enc.encode('utf-8')).decode('utf-8')
-        if len(_DECRYPT_CACHE) < _MAX_CACHE_ITEMS:
-            _DECRYPT_CACHE[enc] = result
-        return result
+        return f.decrypt(enc.encode('utf-8')).decode('utf-8')
     except CryptoError:
         raise
-    except Exception as e:
+    except (InvalidToken, ValueError, TypeError) as e:
         logger.error(f'Decrypt value failed: {e}')
         return ''
 
@@ -353,40 +344,27 @@ def encrypt_data(data: Any) -> str:
 def decrypt_data(enc: str) -> Any:
     if not enc:
         return {}
-    if enc in _DECRYPT_CACHE:
-        return _DECRYPT_CACHE[enc]
     _unlock_with_passphrase_if_needed()
     try:
         f = _fernet()
-        result = json.loads(f.decrypt(enc.encode('utf-8')).decode('utf-8'))
-        if len(_DECRYPT_CACHE) < _MAX_CACHE_ITEMS:
-            _DECRYPT_CACHE[enc] = result
-        return result
+        return json.loads(f.decrypt(enc.encode('utf-8')).decode('utf-8'))
     except CryptoError:
         raise
-    except Exception as e:
+    except (InvalidToken, ValueError, TypeError, json.JSONDecodeError) as e:
         logger.error(f'Decrypt data failed: {e}')
         return {}
 
 
 def clear_caches() -> None:
-    global _FERNET_INSTANCE, _ENCRYPT_CACHE, _DECRYPT_CACHE
+    global _FERNET_INSTANCE, _ENCRYPT_CACHE
     _FERNET_INSTANCE = None
     _ENCRYPT_CACHE.clear()
-    _DECRYPT_CACHE.clear()
 
 
-def _write_key_file(kf: Path, key_bytes: bytes) -> bool:
-    try:
-        prot = _dpapi_encrypt(key_bytes)
-        kf.write_bytes(prot)
-        _restrict_file_access(kf)
-        return True
-    except CryptoUnavailableError:
-        kf.write_bytes(key_bytes)
-        _restrict_file_access(kf)
-        logger.warning("DPAPI unavailable—writing key as plaintext")
-        return False
+def _write_key_file(kf: Path, key_bytes: bytes) -> None:
+    prot = _dpapi_encrypt(key_bytes)
+    kf.write_bytes(prot)
+    _restrict_file_access(kf)
 
 
 def rotate_master_key(
@@ -411,6 +389,7 @@ def rotate_master_key(
         try:
             reencrypt_func(old_fernet, _fernet())
         except Exception as e:
+            logger.exception("Key rotation re-encryption failed")
             _MASTER_KEY = old_key
             _write_key_file(kf, old_key)
             _FERNET_INSTANCE = None
@@ -421,6 +400,7 @@ def rotate_master_key(
         try:
             set_passphrase(new_passphrase)
         except Exception as e:
+            logger.exception("Key rotated but passphrase update failed")
             logger.warning(f"Key rotated but passphrase update failed: {e}")
 
     meta = _load_key_metadata()

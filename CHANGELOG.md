@@ -1,5 +1,43 @@
 # Changelog
 
+## v2.2.0 "Logging & Observability"
+
+### Logging System Overhaul
+- **Improved log format**: `timestamp | thread | level | module | message` — thread name and module path for easier debugging
+- **Increased rotation**: `backup_count` 3→5 (5 rotating files × 5MB = 25MB max history)
+- **`tail_log()` utility**: Efficiently reads last N lines from file using `seek()` (never loads entire file)
+- **`get_log_files()` utility**: Lists all log files including rotated backups sorted by recency
+
+### Log Viewer (LogViewerDialog)
+- **New file**: `utils/log_viewer_dialog.py` — full-featured in-app log viewer
+- **Tail-based loading**: Reads from end of file using seek, supports files of any size
+- **Auto-refresh**: QTimer-based, every 2 seconds, reads only new bytes since last position
+- **Level filter**: Combo box for DEBUG/INFO/WARNING/ERROR/CRITICAL
+- **Text search**: Real-time case-insensitive filtering
+- **Log highlighting**: QSyntaxHighlighter with color-coded levels (DEBUG=gray, WARNING=orange, ERROR=red, CRITICAL=bold red bg)
+- **Smart auto-scroll**: Tracks scrollbar position — disables auto-scroll when user scrolls up
+- **Actions**: Clear logs (with confirmation), Open log folder, Save ZIP archive, Copy all
+- **Status bar**: Shows "shown / buffer total" with active filters
+
+### Toolbar & Menu
+- **QToolBar**: New toolbar with buttons: О программе, Настройки, Помощь, Логи
+- **Menu**: New "Инструменты → Просмотр логов" menu item
+- Non-movable, non-floatable toolbar placed between menu bar and tab widget
+
+## v2.1.0 "Stable XLSX Import"
+
+### XLSX Import Stability
+- **Threaded import**: XLSX loading moved to `QThread` — UI stays responsive even on large files
+- **Real progress reporting**: `ExcelImportWorker` emits `progress(current, total)` and `status_message` signals; progress bar shows actual row count
+- **Cancel button**: "✕ Отменить импорт" with graceful cancellation — thread stops cleanly, UI resets
+- **Streaming**: Always uses `openpyxl read_only=True` — workbook never fully loaded into memory
+- **Explicit resource cleanup**: Workbook closed via `try/finally`, no stale file handles
+- **Limits enforced**: File size (`MAX_XLSX_FILE_SIZE_MB=10`) checked before open; row count (`MAX_XLSX_ROWS=100000`) checked during streaming
+- **Logging**: Full INFO/WARNING/ERROR logging for every import stage
+- **Custom exception**: `ImportCancelledError` for clean cancellation handling
+- **Integration**: `data_entry_tab.py` uses `ExcelImportWorker` via `QThread`, not direct `load_xlsx()` call
+- **Backward compatible**: `load_xlsx()` API extended with optional `progress_callback` and `cancel_check` parameters
+
 ## v2.0.0 "Performance & Virtualization"
 
 ### Performance Improvements

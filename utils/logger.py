@@ -3,6 +3,9 @@ import logging
 import re
 from logging.handlers import RotatingFileHandler
 
+_LOG_FORMAT = '%(asctime)s | %(threadName)-12s | %(levelname)-8s | %(name)-25s | %(message)s'
+_LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+
 
 class SensitiveDataFilter(logging.Filter):
     SENSITIVE_PATTERNS = [
@@ -50,12 +53,12 @@ def filter_sensitive_text(text: str) -> str:
     return text
 
 
-def setup_logging(log_dir: str, max_bytes: int = 5 * 1024 * 1024, backup_count: int = 3):
+def setup_logging(log_dir: str, max_bytes: int = 5 * 1024 * 1024, backup_count: int = 5):
     os.makedirs(log_dir, exist_ok=True)
 
     formatter = logging.Formatter(
-        '%(asctime)s | %(name)s | %(levelname)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        _LOG_FORMAT,
+        datefmt=_LOG_DATE_FORMAT
     )
 
     main_handler = RotatingFileHandler(
@@ -82,3 +85,68 @@ def setup_logging(log_dir: str, max_bytes: int = 5 * 1024 * 1024, backup_count: 
         root.removeHandler(h)
     root.addHandler(main_handler)
     root.addHandler(error_handler)
+
+
+def tail_log(file_path: str, n_lines: int = 1000) -> list[str]:
+    """
+    Efficiently read the last N lines from a log file.
+    Reads from the end of the file using seek, never loads the whole file.
+    Returns a list of lines (without trailing newline).
+    """
+    if not os.path.exists(file_path):
+        return [f"[Файл не найден: {file_path}]"]
+
+    lines: list[str] = []
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            f.seek(0, os.SEEK_END)
+            file_size = f.tell()
+
+            if file_size == 0:
+                return []
+
+            block_size = 4096
+            pos = file_size
+            while len(lines) < n_lines and pos > 0:
+                read_size = min(block_size, pos)
+                pos -= read_size
+                f.seek(pos, os.SEEK_SET)
+                chunk = f.read(read_size)
+
+                lines_chunk = chunk.split('\n')
+                lines = lines_chunk + lines
+
+                if pos == 0:
+                    break
+
+            # trim to n_lines, skip first if it's a partial line
+            if len(lines) > n_lines:
+                lines = lines[-n_lines:]
+            elif lines and lines[0] == '' and pos > 0:
+                lines = lines[1:]
+
+            lines = [l.rstrip('\r') for l in lines]
+            return lines
+    except OSError as e:
+        return [f"[Ошибка чтения лога: {e}]"]
+
+
+def get_log_files(log_dir: str) -> dict[str, str]:
+    """
+    Return dict mapping log type -> full path for all log files in the directory.
+    Includes rotated backups (app.log.1, app.log.2, etc.) sorted by recency.
+    """
+    result = {}
+    if not os.path.isdir(log_dir):
+        return result
+    try:
+        for fn in sorted(os.listdir(log_dir), reverse=True):
+            fp = os.path.join(log_dir, fn)
+            if not os.path.isfile(fp):
+                continue
+            name, ext = os.path.splitext(fn)
+            if ext == '.log' or (name.endswith('.log') and ext.startswith('.')):
+                result[fn] = fp
+    except OSError:
+        pass
+    return result

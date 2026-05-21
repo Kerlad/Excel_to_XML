@@ -11,12 +11,12 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QFrame, QProgressBar, QDialog
 )
 from utils.crypto import hash_for_search
-from PySide6.QtCore import Qt, Signal, QUrl
+from PySide6.QtCore import Qt, Signal, QUrl, QThread
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
-from importers.xlsx_importer import load_xlsx
 from importers.xml_importer import load_xml
 from utils.crypto import encrypt_data, decrypt_data
 from utils.constants import VALID_PROGRAMS_SET
+from utils.workers import ExcelImportWorker
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,11 @@ class DataEntryTab(QWidget):
 
         self._last_error_details = []
         self._last_duplicate_map = []
+        self._import_thread = None
+        self._import_worker = None
+        self._import_merge_mode = False
+        self._import_existing_keys = set()
+        self._is_xlsx_importing = False
 
         from utils.app_paths import get_app_data_dir, get_resource_dir
         self.resource_dir = get_resource_dir()
@@ -233,12 +238,30 @@ class DataEntryTab(QWidget):
 
         layout.addLayout(form)
 
-        # Progress bar
+        # Progress area
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(False)
         self.progress_bar.setFixedHeight(6)
         layout.addWidget(self.progress_bar)
+
+        self._import_status_label = QLabel()
+        self._import_status_label.setVisible(False)
+        self._import_status_label.setStyleSheet("color: #555; font-size: 12px;")
+        layout.addWidget(self._import_status_label)
+
+        self._cancel_import_btn = QPushButton("✕ Отменить импорт")
+        self._cancel_import_btn.setVisible(False)
+        self._cancel_import_btn.setStyleSheet(self._btn_style(bg="#E74C3C", hover="#C0392B"))
+        self._cancel_import_btn.setToolTip("Отменить текущий импорт")
+        self._cancel_import_btn.clicked.connect(self._cancel_import)
+
+        cancel_row = QHBoxLayout()
+        cancel_row.addWidget(self._cancel_import_btn)
+        cancel_row.addStretch()
+        cancel_layout = QVBoxLayout()
+        cancel_layout.addLayout(cancel_row)
+        layout.addLayout(cancel_layout)
 
         # Action buttons row
         btn_row = QHBoxLayout()
@@ -557,6 +580,7 @@ class DataEntryTab(QWidget):
                 self.employer_inn_input.setText(settings.get('employer_inn', ''))
                 self.employer_title_input.setText(settings.get('employer_title', ''))
             except Exception as e:
+                logger.exception("Error loading org settings")
                 QMessageBox.warning(self, "Ошибка", f"Ошибка чтения настроек: {e}")
 
     def load_xsd_on_startup(self):
@@ -595,6 +619,7 @@ class DataEntryTab(QWidget):
                 json.dump({"data": encrypted}, f, ensure_ascii=False, indent=4)
             QMessageBox.information(self, "Успех", "Данные сохранены (зашифрованы)")
         except Exception as e:
+            logger.exception("Error saving org settings")
             QMessageBox.warning(self, "Ошибка", f"Ошибка сохранения: {e}")
 
     def upload_xsd(self):
@@ -607,7 +632,8 @@ class DataEntryTab(QWidget):
                 shutil.copy(file_path, dest_path)
                 self.xsd_file_input.setText(dest_path)
                 QMessageBox.information(self, "Успех", "XSD файл успешно загружен")
-            except Exception as e:
+            except (OSError, shutil.Error) as e:
+                logger.exception("Error uploading XSD")
                 QMessageBox.warning(self, "Ошибка", f"Ошибка загрузки XSD: {e}")
 
     def open_xsd_scheme(self):
@@ -626,8 +652,6 @@ class DataEntryTab(QWidget):
             QMessageBox.warning(self, "Ошибка", "Файл не выбран")
             return
 
-        self.progress_bar.setVisible(True)
-
         has_existing = False
         existing_keys = set()
         if self.get_existing_keys_callback:
@@ -636,6 +660,7 @@ class DataEntryTab(QWidget):
 
         merge_mode = False
         if has_existing:
+            self.progress_bar.setVisible(True)
             reply = self._show_merge_dialog()
             if reply == "cancel":
                 self.progress_bar.setVisible(False)
@@ -644,37 +669,21 @@ class DataEntryTab(QWidget):
                 merge_mode = True
                 existing_keys = set()
 
-        records = None
-        error_details = []
-        error_rows_set = set()
-        duplicate_map = {}
-        xml_error_messages = []
-        xml_xsd_errors = []
-        password = None
-
         if file_path.endswith('.xlsx'):
-            result = load_xlsx(file_path)
-
-            if len(result) >= 4:
-                records, error_details, error_rows_set = result[0], result[1], result[2]
-                error_msg = result[3] if len(result) > 3 else ""
-                if records is None:
-                    err_msg = error_msg if error_msg else (str(error_details[0]['message']) if error_details else "Неизвестная ошибка")
-                    self.progress_bar.setVisible(False)
-                    QMessageBox.warning(self, "Ошибка импорта", err_msg)
-                    return
-            elif len(result) >= 3:
-                records, error_details, error_rows_set = result[0], result[1], result[2]
-                if records is None:
-                    err = error_details[0]['message'] if error_details else "Ошибка"
-                    self.progress_bar.setVisible(False)
-                    QMessageBox.warning(self, "Ошибка импорта", str(err))
-                    return
-            else:
-                self.progress_bar.setVisible(False)
-                QMessageBox.warning(self, "Ошибка", "Ошибка при загрузке файла")
-                return
+            self._start_xlsx_import(file_path, merge_mode, existing_keys)
         elif file_path.endswith('.xml'):
+            self._run_xml_import(file_path, merge_mode, existing_keys)
+        else:
+            QMessageBox.warning(self, "Ошибка", "Неподдерживаемый формат файла")
+
+    def _run_xml_import(self, file_path, merge_mode, existing_keys):
+        """Синхронный импорт XML (быстрый, не требует фонового потока)."""
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(True)
+        self._import_status_label.setText("Загрузка XML...")
+        self._import_status_label.setVisible(True)
+
+        try:
             xsd_files = [f for f in os.listdir(self.schema_dir) if f.endswith('.xsd')]
             xsd_path = os.path.join(self.schema_dir, xsd_files[0]) if xsd_files else None
             records, xml_error_count, xml_error_messages, xml_xsd_errors = load_xml(file_path, xsd_path)
@@ -686,28 +695,122 @@ class DataEntryTab(QWidget):
 
             if xml_xsd_errors:
                 logger.error(f"XSD validation errors: {xml_xsd_errors}")
-                self.progress_bar.setVisible(False)
                 QMessageBox.warning(
                     self, "XSD-валидация",
                     "Файл не соответствует XSD-схеме:\n" + "\n".join(xml_xsd_errors[:20])
                 )
-        else:
+                self.progress_bar.setVisible(False)
+                self._import_status_label.setVisible(False)
+                return
+
+            if records is None:
+                msgs = xml_error_messages[:5] if xml_error_messages else ["Ошибка импорта"]
+                msg = "\n".join(msgs)
+                QMessageBox.warning(self, "Ошибка импорта", msg)
+                self.progress_bar.setVisible(False)
+                self._import_status_label.setVisible(False)
+                return
+
+            self._finalize_import(records, merge_mode, existing_keys, [], set())
+
+        except Exception as e:
+            logger.exception("XML import failed")
+            QMessageBox.warning(self, "Ошибка", f"Ошибка импорта XML: {e}")
+        finally:
             self.progress_bar.setVisible(False)
-            QMessageBox.warning(self, "Ошибка", "Неподдерживаемый формат файла")
+            self._import_status_label.setVisible(False)
+
+    def _start_xlsx_import(self, file_path, merge_mode, existing_keys):
+        """Запуск фонового импорта XLSX в отдельном потоке."""
+        self._is_xlsx_importing = True
+        self._import_merge_mode = merge_mode
+        self._import_existing_keys = existing_keys.copy()
+
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(True)
+        self._import_status_label.setText("Открытие файла...")
+        self._import_status_label.setVisible(True)
+        self._cancel_import_btn.setVisible(True)
+        self.upload_file_btn.setEnabled(False)
+        self.select_file_btn.setEnabled(False)
+        self.file_path_input.setStyleSheet("background-color: #FFF3CD;")
+
+        self._import_thread = QThread()
+        self._import_worker = ExcelImportWorker(file_path)
+        self._import_worker.moveToThread(self._import_thread)
+
+        self._import_thread.started.connect(self._import_worker.run)
+        self._import_worker.progress.connect(self._on_import_progress)
+        self._import_worker.status_message.connect(self._on_import_status)
+        self._import_worker.finished.connect(self._on_import_finished)
+        self._import_worker.error.connect(self._on_import_error)
+        self._import_worker.finished.connect(self._import_thread.quit)
+        self._import_worker.finished.connect(self._import_worker.deleteLater)
+        self._import_thread.finished.connect(self._import_thread.deleteLater)
+
+        self._import_thread.start()
+
+    def _cancel_import(self):
+        """Отмена текущего импорта."""
+        if self._import_worker:
+            logger.info("Cancel requested by user")
+            self._import_worker.cancel()
+            self._import_status_label.setText("Отмена импорта...")
+            self._cancel_import_btn.setEnabled(False)
+
+    def _on_import_progress(self, current, total):
+        """Обновление прогресс-бара."""
+        if total > 0:
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(current)
+        else:
+            self.progress_bar.setRange(0, 0)
+
+    def _on_import_status(self, message):
+        """Обновление текстового статуса импорта."""
+        self._import_status_label.setText(message)
+
+    def _on_import_finished(self, records, error_count, error_details, error_msg):
+        """Завершение фонового импорта — финализация и UI."""
+        self._cleanup_import()
+
+        cancelled = (records is None and error_msg == ["Импорт отменён пользователем"])
+
+        if cancelled:
+            logger.info("Import was cancelled, no data loaded")
             return
 
         if records is None:
-            msgs = []
-            if xml_error_messages:
-                msgs.extend(xml_error_messages[:5])
-            if xml_xsd_errors:
-                msgs.append("XSD: " + "\n".join(xml_xsd_errors[:5]))
-            msg = "\n".join(msgs) if msgs else "Ошибка импорта"
-            self.progress_bar.setVisible(False)
-            QMessageBox.warning(self, "Ошибка импорта", msg)
+            err_msg = error_msg if error_msg else (str(error_details[0]['message']) if error_details else "Неизвестная ошибка")
+            QMessageBox.warning(self, "Ошибка импорта", err_msg)
             return
 
-        validated_records = []
+        error_rows_set = {e['row'] for e in error_details}
+        self._finalize_import(records, self._import_merge_mode, self._import_existing_keys,
+                              error_details, error_rows_set)
+
+    def _on_import_error(self, error_message):
+        """Ошибка в фоновом импорте."""
+        self._cleanup_import()
+        QMessageBox.critical(self, "Ошибка импорта", error_message)
+
+    def _cleanup_import(self):
+        """Сброс UI и очистка после импорта (успех/отмена/ошибка)."""
+        self._is_xlsx_importing = False
+        self._import_thread = None
+        self._import_worker = None
+
+        self.progress_bar.setVisible(False)
+        self._import_status_label.setVisible(False)
+        self._cancel_import_btn.setVisible(False)
+        self._cancel_import_btn.setEnabled(True)
+        self.upload_file_btn.setEnabled(True)
+        self.select_file_btn.setEnabled(True)
+        self.file_path_input.setStyleSheet("")
+
+    def _finalize_import(self, records, merge_mode, existing_keys, error_details, error_rows_set):
+        """Общая финализация импорта: дедупликация, перезапись полей, эмит данных, диалог результата."""
+        duplicate_map = {}
         existing_rows_map = {}
         if not merge_mode and self.get_existing_keys_callback:
             if hasattr(self, 'get_existing_rows_callback') and self.get_existing_rows_callback:
@@ -717,6 +820,7 @@ class DataEntryTab(QWidget):
                         existing_rows_map[key] = []
                     existing_rows_map[key].append(f"система (стр. {row_idx})")
 
+        validated_records = []
         for rec in records:
             key = (hash_for_search(rec.get('snils', '')), str(rec.get('program', '')), rec.get('date', '') or '')
             source_row = rec.get('source_row', '?')
@@ -769,8 +873,6 @@ class DataEntryTab(QWidget):
 
         self._last_error_details = error_details
         self._last_duplicate_map = duplicate_map
-
-        self.progress_bar.setVisible(False)
 
         total_errors = len(error_rows_set) + len(duplicate_map)
         if total_errors > 0:
@@ -941,6 +1043,7 @@ class DataEntryTab(QWidget):
         except ImportError:
             QMessageBox.warning(self, "Ошибка", "Установите openpyxl: pip install openpyxl")
         except Exception as e:
+            logger.exception("Error creating template")
             QMessageBox.warning(self, "Ошибка", f"Ошибка создания шаблона: {e}")
 
     def show_programs_help(self):

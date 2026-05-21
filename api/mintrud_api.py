@@ -166,9 +166,17 @@ def validate_api_key_remote(api_key: str, proxy_settings: dict = None) -> tuple[
         except requests.RequestException as e:
             logger.error(f"Remote validation connection error: {e}")
             return False, f'Ошибка подключения: {e}'
+    except (ValueError, KeyError) as e:
+        logger.error("Remote validation config error: %s", e)
+        return False, f'Ошибка конфигурации: {e}'
+    except requests.RequestException as e:
+        # Requests errors that may occur outside the inner try (e.g. proxy detection)
+        logger.error("Remote validation request error: %s", e)
+        return False, f'Ошибка подключения: {e}'
     except Exception as e:
-        logger.error(f"Remote validation error: {e}")
-        return False, f'Ошибка валидации: {e}'
+        # Safety net for any unexpected errors (import, proxy detection, XML parse, etc.)
+        logger.exception("Remote validation unexpected error")
+        return False, f'Внутренняя ошибка: {e}'
 
 
 # ============ Unified Transport Client ============

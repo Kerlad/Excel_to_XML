@@ -53,8 +53,12 @@ def load_xml(file_path, xsd_path=None):
             xsd_errors = [f"Ошибка синтаксиса XSD/XML: {e}"]
         except etree.DocumentInvalid:
             xsd_errors = [str(err.message.strip()) for err in schema.error_log]
-        except Exception as e:
+        except (etree.XMLSyntaxError, etree.DocumentInvalid, ValueError) as e:
             xsd_errors = [f"Ошибка XSD-валидации: {e}"]
+        except Exception as e:
+            # Любая другая неожиданная ошибка — логируем полный traceback
+            logger.exception("Unexpected XSD validation error")
+            xsd_errors = [f"Внутренняя ошибка: {e}"]
 
     # Определяем формат XML
     tag = root.tag

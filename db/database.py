@@ -5,6 +5,7 @@ import logging
 import threading
 import hashlib
 import time
+import atexit
 from datetime import datetime
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
@@ -24,6 +25,7 @@ class DatabaseManager:
     _instance: Optional['DatabaseManager'] = None
     _lock = threading.Lock()
     _thread_connections: Dict[int, sqlite3.Connection] = {}
+    _connections_lock = threading.Lock()
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path: Optional[str] = db_path
@@ -35,6 +37,7 @@ class DatabaseManager:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = cls(db_path)
+                    atexit.register(cls.close_all)
         elif db_path and cls._instance.db_path != db_path:
             with cls._lock:
                 cls._instance.db_path = db_path
@@ -49,32 +52,21 @@ class DatabaseManager:
         conn: Optional[sqlite3.Connection] = getattr(self._local, 'conn', None)
         if conn is None:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-            try:
-                conn = sqlite3.connect(
-                    self.db_path, check_same_thread=False, timeout=5.0
-                )
-                conn.row_factory = sqlite3.Row
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA foreign_keys=ON")
-                conn.execute("PRAGMA synchronous=NORMAL")
-                conn.execute("PRAGMA busy_timeout=5000")
-                conn.execute("PRAGMA cache_size=-8000")
-                conn.execute("PRAGMA temp_store=MEMORY")
-                self._local.conn = conn
-                tid = threading.get_ident()
+            conn = sqlite3.connect(
+                self.db_path, check_same_thread=False, timeout=5.0
+            )
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute("PRAGMA cache_size=-8000")
+            conn.execute("PRAGMA temp_store=MEMORY")
+            self._local.conn = conn
+            tid = threading.get_ident()
+            with DatabaseManager._connections_lock:
                 DatabaseManager._thread_connections[tid] = conn
-            except sqlite3.ProgrammingError:
-                conn = sqlite3.connect(
-                    self.db_path, check_same_thread=False, timeout=5.0
-                )
-                conn.row_factory = sqlite3.Row
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA foreign_keys=ON")
-                conn.execute("PRAGMA synchronous=FULL")
-                conn.execute("PRAGMA busy_timeout=5000")
-                self._local.conn = conn
-                tid = threading.get_ident()
-                DatabaseManager._thread_connections[tid] = conn
+            logger.debug(f"Connection opened for thread {tid}")
         return conn
 
     @contextmanager
@@ -97,17 +89,20 @@ class DatabaseManager:
                 return
             except sqlite3.OperationalError as e:
                 if "database is locked" in str(e) and attempt < _BUSY_RETRIES - 1:
-                    logger.warning(f"Database locked, retrying ({attempt + 1}/{_BUSY_RETRIES}): {e}")
+                    logger.warning(
+                        "Database locked, retrying (%d/%d): %s",
+                        attempt + 1, _BUSY_RETRIES, e,
+                    )
                     time.sleep(_BUSY_RETRY_DELAY)
                     continue
                 conn.rollback()
-                logger.error(f"Transaction rollback after operational error: {e}")
+                logger.error("Transaction rollback after operational error: %s", e)
                 raise
             except sqlite3.DatabaseError:
                 conn.rollback()
                 logger.error("Transaction rollback after database error")
                 raise
-            except BaseException:
+            except Exception:
                 conn.rollback()
                 raise
         conn.rollback()
@@ -130,25 +125,42 @@ class DatabaseManager:
         with self.get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
-    def close(self) -> None:
-        conn = getattr(self._local, 'conn', None)
-        if conn:
-            try:
-                conn.close()
-            except sqlite3.Error as e:
-                logger.warning(f"Error closing connection: {e}")
-            self._local.conn = None
-            tid = threading.get_ident()
-            DatabaseManager._thread_connections.pop(tid, None)
+    @classmethod
+    def close_thread_connection(cls) -> None:
+        inst = cls._instance
+        if inst is None:
+            return
+        conn: Optional[sqlite3.Connection] = getattr(inst._local, 'conn', None)
+        if conn is None:
+            return
+        tid = threading.get_ident()
+        try:
+            conn.close()
+            logger.debug("Connection closed for thread %d", tid)
+        except sqlite3.Error as e:
+            logger.warning("Error closing thread %d connection: %s", tid, e)
+        inst._local.conn = None
+        with cls._connections_lock:
+            cls._thread_connections.pop(tid, None)
 
-    def close_all(self) -> None:
-        for tid, conn in list(DatabaseManager._thread_connections.items()):
-            try:
-                conn.close()
-            except sqlite3.Error as e:
-                logger.warning(f"Error closing thread {tid} connection: {e}")
-        DatabaseManager._thread_connections.clear()
-        self._local.conn = None
+    def close(self) -> None:
+        DatabaseManager.close_thread_connection()
+
+    @classmethod
+    def close_all(cls) -> None:
+        logger.info("Closing all database connections...")
+        with cls._connections_lock:
+            for tid, conn in list(cls._thread_connections.items()):
+                try:
+                    conn.close()
+                    logger.debug("Connection closed for thread %d", tid)
+                except sqlite3.Error as e:
+                    logger.warning("Error closing thread %d connection: %s", tid, e)
+            cls._thread_connections.clear()
+        inst = cls._instance
+        if inst is not None:
+            inst._local.conn = None
+        logger.info("All database connections closed")
 
     def optimize(self) -> None:
         try:
@@ -156,7 +168,7 @@ class DatabaseManager:
                 conn.execute("PRAGMA optimize")
             logger.debug("Database optimized")
         except sqlite3.Error as e:
-            logger.warning(f"Database optimize failed: {e}")
+            logger.warning("Database optimize failed: %s", e)
 
     def create_backup(self) -> str:
         if not self.db_path or not os.path.exists(self.db_path):
@@ -178,7 +190,7 @@ class DatabaseManager:
             mk = _get_or_create_master_key()
             zip_password = hashlib.sha256(mk).hexdigest()[:16]
         except (OSError, ValueError) as e:
-            logger.warning(f"Cannot derive backup password from master key: {e}")
+            logger.warning("Cannot derive backup password from master key: %s", e)
             zip_password = datetime.now().strftime('%Y%m%d')
 
         try:
@@ -186,9 +198,9 @@ class DatabaseManager:
             with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 zf.setpassword(zip_password.encode('utf-8'))
                 zf.write(self.db_path, arcname=base)
-            logger.info(f"Password-protected backup created: {backup_path}")
+            logger.info("Password-protected backup created: %s", backup_path)
         except (zipfile.BadZipFile, OSError) as e:
-            logger.warning(f"Zip backup failed, falling back to plain copy: {e}")
+            logger.warning("Zip backup failed, falling back to plain copy: %s", e)
             shutil.copy2(self.db_path, backup_path.replace('.zip', ''))
             backup_path = backup_path.replace('.zip', '')
         return backup_path

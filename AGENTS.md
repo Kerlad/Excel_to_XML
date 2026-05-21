@@ -12,11 +12,46 @@
 
 ## Key Architecture
 - `importers/` — XLSX/XML file loading (employees import; `.xls` removed, use `.xlsx` only)
+  - XLSX uses `openpyxl read_only=True` (streaming), background `QThread`, progress reporting, cancel support
+  - Limits: `MAX_XLSX_FILE_SIZE_MB=10`, `MAX_XLSX_ROWS=100000`
 - `exporters/` — XML/XLSX generation
 - `api/` — Mintrud API client (mintrud_api.py, payload_builder.py, response_parser.py, backends/)
 - `db/` — SQLite via DatabaseManager, EmployeesRepo, EmployeeProgramsRepo
 - `tabs/` — UI tabs: employee_summary_tab, data_entry_tab, data_transfer_tab, exam_journal_tab
-- `utils/` — crypto, proxy_manager, logger, audit, app_paths
+- `utils/` — crypto, proxy_manager, logger, audit, app_paths, log_viewer_dialog
+
+## Database Architecture (`db/database.py`)
+
+### Connection Lifecycle
+- **Thread-local connections** via `threading.local()` — each thread gets its own connection on first use
+- **`_thread_connections` dict** (class-level, `_connections_lock` protected) — tracks all open connections by thread ID
+- **Auto-closed** on app shutdown via `atexit.register(cls.close_all)` in `get_instance()`
+
+### Key Methods
+| Method | Description |
+|---|---|
+| `get_instance(db_path)` | Singleton, registers `atexit` cleanup on first creation |
+| `_get_connection()` | Creates thread-local connection with WAL+FK+optimized PRAGMAs |
+| `get_conn()` | Context manager — yields connection, rolls back on `DatabaseError` |
+| `transaction()` | Context manager — commits on success, retries on lock (`_BUSY_RETRIES=3`), rolls back on error |
+| `execute(sql, params)` | Implicit cursor via `get_conn()` |
+| `executemany(sql, seq)` | Batch execute via `get_conn()` |
+| `fetchone(sql, params)` | Returns `dict` or `None` |
+| `fetchall(sql, params)` | Returns `list[dict]` |
+| **`close_thread_connection()`** | **NEW** — closes current thread's connection, removes from `_thread_connections` dict. Call in background threads at end of `run()`. |
+| **`close()`** | Instance method — delegates to `close_thread_connection()` |
+| **`close_all()`** | **NEW** — classmethod, closes ALL tracked connections, clears dict + thread-local. Idempotent. |
+
+### Rules for Background Threads
+- **Always** call `DatabaseManager.close_thread_connection()` at the end of `QThread.run()` if the thread used the database
+- Currently applied in: `tabs/employee_summary_tab.py:ApiQueryThread.run()`
+- Connections created in tests are cleaned up by fixture teardown calling `db.close_all()`
+
+### Error Handling
+- `DatabaseLockError` — raised after `_BUSY_RETRIES` exhausted (all retries got "database is locked")
+- Lock retries: 3 attempts, 100ms delay between retries
+- Logging: connection open/close at DEBUG, rollback at ERROR, lock timeout at WARNING
+- `except BaseException` changed to `except Exception` — no longer catches `KeyboardInterrupt`/`SystemExit`
 
 ## Requirements (Implemented)
 

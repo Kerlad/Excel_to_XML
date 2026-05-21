@@ -498,6 +498,7 @@ class DataTransferTab(QWidget):
                     self._set_connection_status(False, vmsg)
                     QMessageBox.warning(self, "Предупреждение", f"Ключ сохранён, но проверка не пройдена: {vmsg}")
             except Exception as e:
+                logger.exception("Remote key validation failed")
                 self._set_connection_status(True, "Ключ сохранён (проверка не выполнена)")
                 QMessageBox.information(self, "Успех", "API ключ сохранён (удалённая проверка недоступна)")
         else:
@@ -662,7 +663,11 @@ class DataTransferTab(QWidget):
         except etree.XMLSyntaxError as e:
             QMessageBox.warning(self, "Ошибка", f"Невалидный XML:\n{e}")
             return
-        except Exception as e:
+        except etree.XMLSyntaxError as e:
+            QMessageBox.warning(self, "Ошибка", f"Невалидный XML:\n{e}")
+            return
+        except (OSError, ValueError) as e:
+            logger.exception("Error reading XML file")
             QMessageBox.warning(self, "Ошибка", f"Ошибка чтения файла:\n{e}")
             return
 
@@ -676,7 +681,8 @@ class DataTransferTab(QWidget):
             except etree.DocumentInvalid as e:
                 QMessageBox.warning(self, "Ошибка валидации", f"Файл не соответствует схеме XSD:\n{e}")
                 return
-            except Exception as e:
+            except (etree.XMLSyntaxError, OSError, ValueError) as e:
+                logger.exception("XSD validation error")
                 QMessageBox.warning(self, "Ошибка", f"Ошибка валидации по XSD:\n{e}")
                 return
 

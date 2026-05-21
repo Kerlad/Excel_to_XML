@@ -52,8 +52,8 @@ class ExamJournalTab(QWidget):
             try:
                 with open(fp, 'r', encoding='utf-8') as f:
                     return json.load(f).get('last_save_path', '')
-            except Exception as e:
-                logger.debug(f"Cannot load last_save_path: {e}")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.debug("Cannot load last_save_path: %s", e)
         return ""
 
     def _save_last_save_path(self, path):
@@ -68,8 +68,8 @@ class ExamJournalTab(QWidget):
             settings['last_save_path'] = path
             with open(fp, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"Cannot save last_save_path: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Cannot save last_save_path: %s", e, exc_info=True)
 
     # ── Filter panel ──────────────────────────────────────────
 
@@ -370,6 +370,7 @@ class ExamJournalTab(QWidget):
             wb.save(fp)
             QMessageBox.information(self, "Успех", f"Журнал сохранён:\n{fp}")
         except Exception as e:
+            logger.exception("Journal export error")
             QMessageBox.warning(self, "Ошибка", f"Ошибка экспорта: {e}")
 
     # ── Import from Excel ─────────────────────────────────────
@@ -498,11 +499,12 @@ class ExamJournalTab(QWidget):
                         position=pos, program_id=pid, program_title=pt,
                         exam_date=exam, protocol=proto, result=res, base_no=bn, status=status
                     ))
-                except Exception as e:
+                except (ValueError, TypeError, KeyError) as e:
+                    logger.exception("Row %d import error", r_idx)
                     errors.append(f"Строка {r_idx}: {e}")
 
             if errors:
-                logger.error(f"Import errors: {errors}")
+                logger.error("Import errors: %s", errors)
                 QMessageBox.warning(self, "Ошибки импорта",
                                     "Обнаружены ошибки:\n" + "\n".join(errors[:10]) +
                                     (f"\n... и ещё {len(errors)-10}" if len(errors) > 10 else ""))
@@ -512,8 +514,8 @@ class ExamJournalTab(QWidget):
             self.journal.add_journal_records_directly(records)
             QMessageBox.information(self, "Успех", f"Импортировано {len(records)} записей")
             self.refresh_journal()
-        except Exception as e:
-            logger.error(f"Import failed: {e}", exc_info=True)
+        except (OSError, ValueError, TypeError) as e:
+            logger.error("Import failed: %s", e, exc_info=True)
             QMessageBox.critical(self, "Ошибка", f"Не удалось прочитать файл:\n{e}")
 
     # ── Create template ───────────────────────────────────────
@@ -544,6 +546,7 @@ class ExamJournalTab(QWidget):
             wb.save(fp)
             QMessageBox.information(self, "Успех", f"Шаблон создан:\n{fp}")
         except Exception as e:
+            logger.exception("Template creation error")
             QMessageBox.warning(self, "Ошибка", f"Ошибка: {e}")
 
     # ── Print protocol ────────────────────────────────────────

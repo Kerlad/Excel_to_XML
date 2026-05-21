@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+import xml.etree.ElementTree as etree
 from defusedxml.ElementTree import parse, fromstring, XMLParser
 from defusedxml.common import DefusedXmlException
 
@@ -63,8 +64,8 @@ def safe_parse_xml(file_path: str) -> object:
         raise
     except OSError:
         raise
-    except Exception as e:
-        logger.error(f"XML parse error for {file_path}: {e}")
+    except (etree.ParseError, ValueError) as e:
+        logger.error("XML parse error for %s: %s", file_path, e)
         raise XmlSecurityError(f"Ошибка парсинга XML: {e}")
 
 
@@ -77,6 +78,6 @@ def safe_fromstring_xml(data: str) -> object:
         return fromstring(data)
     except (DefusedXmlException, XmlSecurityError):
         raise
-    except Exception as e:
-        logger.error(f"XML fromstring error: {e}")
+    except (etree.ParseError, ValueError) as e:
+        logger.error("XML fromstring error: %s", e)
         raise XmlSecurityError(f"Ошибка парсинга XML: {e}")

@@ -301,8 +301,8 @@ class DataViewTab(QWidget):
                     org_settings = decrypt_data(encrypted)
                 else:
                     org_settings = wrapper
-            except Exception as e:
-                logger.debug(f"Could not load org settings: {e}")
+            except (OSError, json.JSONDecodeError, ValueError) as e:
+                logger.debug("Could not load org settings: %s", e)
 
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить XML", "", "XML Files (*.xml)"

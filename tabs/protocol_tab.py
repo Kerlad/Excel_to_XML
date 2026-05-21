@@ -457,8 +457,8 @@ class ProtocolTab(QWidget):
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
                     return settings.get('last_save_path', '')
-            except Exception as e:
-                logger.debug(f"Could not load last_save_path: {e}")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.debug("Could not load last_save_path: %s", e)
         return ''
 
     def _save_last_save_path(self, path):
@@ -469,14 +469,14 @@ class ProtocolTab(QWidget):
             try:
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-            except Exception as e:
-                logger.debug(f"Could not load settings: {e}")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.debug("Could not load settings: %s", e)
         settings['last_save_path'] = path
         try:
             with open(settings_file, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"Could not save settings: {e}")
+        except OSError as e:
+            logger.error("Could not save settings: %s", e, exc_info=True)
 
     # ============ Внешние ссылки ============
 

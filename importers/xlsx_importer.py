@@ -1,5 +1,5 @@
 """
-Модуль загрузки XLSX/XLS файлов
+Модуль загрузки XLSX/XLS файлов со стримингом, прогрессом и отменой.
 """
 import os
 import logging
@@ -7,11 +7,9 @@ from datetime import datetime, timedelta
 
 from utils.constants import VALID_PROGRAMS_SET as VALID_PROGRAMS
 from utils.constants import MAX_XLSX_FILE_SIZE_MB, MAX_XLSX_ROWS
-from utils.exceptions import FileTooLargeError, ImportLimitExceededError
+from utils.exceptions import FileTooLargeError, ImportLimitExceededError, ImportCancelledError
 
 logger = logging.getLogger(__name__)
-
-_READ_ONLY_THRESHOLD = 1000
 
 COLUMNS = [
     "Фамилия", "Имя", "Отчество", "СНИЛС", "Должность",
@@ -25,6 +23,7 @@ FIELD_KEYS = [
     'result', 'program', 'date', 'protocol'
 ]
 
+
 def format_snils(raw):
     """
     Приведение СНИЛС к формату '123-456-789 00'.
@@ -33,10 +32,8 @@ def format_snils(raw):
     Обрабатывает неразрывные пробелы (\xa0), табуляции и другие Unicode-пробелы.
     """
     clean = str(raw).strip()
-    # Заменяем все Unicode-пробельные символы (включая \xa0, \t, \u2000-\u200B и т.д.)
     import unicodedata
     clean = ''.join(c for c in clean if unicodedata.category(c) != 'Zs')
-    # Убираем дефисы
     clean = clean.replace('-', '')
     if not clean.isdigit() or len(clean) != 11:
         return None
@@ -109,7 +106,7 @@ class FieldValidator:
             try:
                 delta = datetime(1899, 12, 30) + timedelta(days=value)
                 return delta.strftime('%d.%m.%Y')
-            except Exception:
+            except (ValueError, OverflowError):
                 return {
                     'row': row_num,
                     'type': 'Ошибка',
@@ -117,7 +114,6 @@ class FieldValidator:
                     'message': f"Ошибка парсинга даты"
                 }
         date_str = str(value).strip()
-        # Убираем разделители для парсинга
         if '.' in date_str or '-' in date_str:
             clean_date = date_str.replace('.', '').replace('-', '')
         else:
@@ -232,87 +228,120 @@ def validate_row(row_dict, row_num):
     return True, records
 
 
-def load_xlsx(file_path, password=None):
+def load_xlsx(file_path, password=None, progress_callback=None, cancel_check=None):
     """
-    Загрузка XLSX файла.
+    Загрузка XLSX файла со стримингом, прогрессом и поддержкой отмены.
     
     Аргументы:
         file_path — путь к файлу
         password — пароль для защищённого файла (необязательно)
+        progress_callback(current: int, total: int) — вызывается каждые 100 строк
+            total=0 если неизвестно
+        cancel_check() -> bool — вызывается каждую строку; True = отмена
     
-    Возвращает (records, error_details, error_rows_set).
-    records — список словарей с данными работников.
-    error_details — список словарей с ошибками: {'row': int, 'type': str, 'field': str, 'message': str}
-    error_rows_set — множество номеров строк с ошибками
+    Возвращает (records, error_details, error_rows_set, error_msg).
+    При отмене records=None, error_msg=["Импорт отменён"].
     """
-    try:
-        size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        if size_mb > MAX_XLSX_FILE_SIZE_MB:
-            msg = f"Файл превышает лимит {MAX_XLSX_FILE_SIZE_MB} МБ ({size_mb:.1f} МБ)"
-            return None, [], set(), [msg]
-    except OSError as e:
-        return None, [], set(), [f"Ошибка доступа к файлу: {e}"]
-    
     if not file_path.endswith('.xlsx'):
         return None, [], set(), ["Неподдерживаемый формат. Используйте .xlsx"]
-    
+
+    try:
+        size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        logger.info("Loading XLSX: %s (%.1f MB)", file_path, size_mb)
+        if size_mb > MAX_XLSX_FILE_SIZE_MB:
+            msg = f"Файл превышает лимит {MAX_XLSX_FILE_SIZE_MB} МБ ({size_mb:.1f} МБ)"
+            logger.warning("File too large: %s", msg)
+            return None, [], set(), [msg]
+    except OSError as e:
+        logger.error("File access error: %s", e)
+        return None, [], set(), [f"Ошибка доступа к файлу: {e}"]
+
     try:
         from openpyxl import load_workbook
-        return _load_xlsx_openpyxl(file_path, password)
+        return _load_xlsx_openpyxl(file_path, password, progress_callback, cancel_check)
     except ImportError as e:
+        logger.error("Missing openpyxl: %s", e)
         return None, [], set(), [f"Не установлен модуль: {e}. pip install openpyxl"]
     except FileTooLargeError as e:
+        logger.warning(str(e))
         return None, [], set(), [str(e)]
     except ImportLimitExceededError as e:
+        logger.warning(str(e))
         return None, [], set(), [str(e)]
+    except ImportCancelledError:
+        logger.info("XLSX import cancelled by user: %s", file_path)
+        return None, [], set(), ["Импорт отменён пользователем"]
 
 
-def _load_xlsx_openpyxl(file_path, password=None):
-    """Загрузка .xlsx через openpyxl"""
+def _load_xlsx_openpyxl(file_path, password=None, progress_callback=None, cancel_check=None):
+    """Загрузка .xlsx через openpyxl в read_only режиме со стримингом."""
     from openpyxl import load_workbook
 
     wb = load_workbook(file_path, data_only=True, read_only=True)
-    ws = wb.active
+    try:
+        ws = wb.active
+        logger.debug("Active sheet: %s", ws.title)
 
-    records = []
-    error_details = []
-    error_rows_set = set()
+        records = []
+        error_details = []
+        error_rows_set = set()
 
-    headers = None
-    row_count = 0
+        headers = None
+        row_count = 0
+        progress_interval = 100
 
-    for row in ws.iter_rows(values_only=True):
-        row_count += 1
-        if row_count == 1:
-            headers = [str(c or '').strip() for c in row]
-            required_fields = ['СНИЛС']
-            missing_cols = [col for col in required_fields if col not in headers]
-            if missing_cols:
-                error_msg = f"Отсутствуют обязательные столбцы: {', '.join(missing_cols)}"
-                return None, [{"row": 1, "type": "Ошибка", "field": "Заголовки", "message": error_msg}], {1}, error_msg
-            continue
+        for row in ws.iter_rows(values_only=True):
+            if cancel_check and cancel_check():
+                logger.info("Cancel requested at row %d", row_count)
+                raise ImportCancelledError(f"Cancelled at row {row_count}")
 
-        if row_count > MAX_XLSX_ROWS:
-            raise ImportLimitExceededError(
-                f"Превышено максимальное количество строк: {MAX_XLSX_ROWS}"
-            )
+            row_count += 1
 
-        row_dict = {}
-        all_empty = True
-        for c_idx, col_name in enumerate(headers):
-            val = row[c_idx] if c_idx < len(row) else None
-            row_dict[col_name] = val if val is not None else ''
-            if val is not None and str(val).strip() != '':
-                all_empty = False
+            if row_count == 1:
+                headers = [str(c or '').strip() for c in row]
+                required_fields = ['СНИЛС']
+                missing_cols = [col for col in required_fields if col not in headers]
+                if missing_cols:
+                    error_msg = f"Отсутствуют обязательные столбцы: {', '.join(missing_cols)}"
+                    logger.warning("Missing columns: %s", missing_cols)
+                    return None, [{"row": 1, "type": "Ошибка", "field": "Заголовки", "message": error_msg}], {1}, error_msg
+                continue
 
-        if all_empty:
-            continue
+            if row_count > MAX_XLSX_ROWS:
+                logger.warning("Row limit exceeded: %d > %d", row_count, MAX_XLSX_ROWS)
+                raise ImportLimitExceededError(
+                    f"Превышено максимальное количество строк: {MAX_XLSX_ROWS}"
+                )
 
-        is_valid, result = validate_row(row_dict, row_count - 1)
-        if is_valid:
-            records.extend(result)
-        else:
-            error_details.extend(result)
-            error_rows_set.add(row_count - 1)
+            row_dict = {}
+            all_empty = True
+            for c_idx, col_name in enumerate(headers):
+                val = row[c_idx] if c_idx < len(row) else None
+                row_dict[col_name] = val if val is not None else ''
+                if val is not None and str(val).strip() != '':
+                    all_empty = False
+
+            if all_empty:
+                continue
+
+            is_valid, result = validate_row(row_dict, row_count - 1)
+            if is_valid:
+                records.extend(result)
+            else:
+                error_details.extend(result)
+                error_rows_set.add(row_count - 1)
+
+            if progress_callback and row_count % progress_interval == 0:
+                progress_callback(row_count, 0)
+
+    finally:
+        wb.close()
+        logger.debug("Workbook closed: %s", file_path)
+
+    if progress_callback:
+        progress_callback(row_count, 0)
+
+    logger.info("XLSX import completed: %d rows, %d records, %d errors",
+                row_count - 1, len(records), len(error_details))
 
     return records, error_details, error_rows_set, ""

@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 class ExcelImportWorker(QObject):
-    """Фоновый импорт Excel-файла."""
-    progress = Signal(int, int)
+    """Фоновый импорт Excel-файла с поддержкой прогресса и отмены."""
+    progress = Signal(int, int)      # current, total (total=0 если неизвестно)
+    status_message = Signal(str)     # текстовый статус
     finished = Signal(list, int, list, str)  # records, error_count, errors, error_msg
     error = Signal(str)
 
@@ -28,20 +29,37 @@ class ExcelImportWorker(QObject):
     def run(self):
         try:
             from importers.xlsx_importer import load_xlsx
-            self.progress.emit(1, 3)
+
+            self.status_message.emit("Открытие файла...")
+            self.progress.emit(0, 0)
+
             if self._cancelled:
                 return
 
+            def on_progress(current, total):
+                self.progress.emit(current, total)
+                if current % 1000 == 0:
+                    self.status_message.emit(f"Обработано строк: {current}")
+
+            def on_cancel():
+                return self._cancelled
+
             records, error_details, error_rows_set, error_msg = load_xlsx(
-                self.file_path, self.password
+                self.file_path, self.password,
+                progress_callback=on_progress,
+                cancel_check=on_cancel
             )
-            self.progress.emit(3, 3)
+
             if self._cancelled:
+                self.status_message.emit("Импорт отменён")
                 return
 
             error_count = len(error_details)
+            self.status_message.emit("Импорт завершён")
             self.finished.emit(records, error_count, error_details, error_msg)
+
         except Exception as e:
+            logger.exception("Excel import failed")
             self.error.emit(f"Ошибка импорта: {e}\n{traceback.format_exc()}")
 
 
@@ -77,6 +95,7 @@ class XmlGenerationWorker(QObject):
             full_xml = b'\n'.join(xml_parts) if len(xml_parts) > 1 else xml_parts[0]
             self.finished.emit(full_xml)
         except Exception as e:
+            logger.exception("XML generation failed")
             self.error.emit(f"Ошибка генерации XML: {e}")
 
 
@@ -145,7 +164,7 @@ class ApiBulkQueryWorker(QObject):
                 else:
                     error_count += 1
             except Exception as e:
-                logger.warning(f"API query failed for employee {emp.get('id')}: {e}")
+                logger.exception("API query failed for employee %s", emp.get('id'))
                 error_count += 1
 
             self.progress.emit(idx + 1, total)
@@ -219,4 +238,5 @@ class PlanGenerationWorker(QObject):
 
             self.finished.emit(plan_data, f"План обучения на {self.year} год")
         except Exception as e:
+            logger.exception("Plan generation failed")
             self.error.emit(f"Ошибка формирования плана: {e}\n{traceback.format_exc()}")

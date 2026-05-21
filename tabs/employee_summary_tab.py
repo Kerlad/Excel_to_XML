@@ -91,10 +91,11 @@ class ApiQueryThread(QThread):
                     logger.warning(f"API error: {result.get('error')}")
             except Exception as e:
                 errors += 1
-                logger.error(f"Registry API exception: {e}")
+                logger.exception("Registry API exception")
             self.progress.emit(idx + 1, total)
             if idx < total - 1:
                 time.sleep(0.5)
+        DatabaseManager.close_thread_connection()
         self.finished.emit(updated, errors)
 
     def _process_api_records(self, employee_id, records):
@@ -251,6 +252,7 @@ class PlanDialog(BaseDialog):
             wb.save(file_path)
             Toast.success(self, f"Файл сохранён:\n{file_path}")
         except Exception as e:
+            logger.exception("Export error")
             from utils.error_utils import show_error_dialog
             show_error_dialog(self, "Ошибка экспорта", str(e), critical=False)
 
@@ -429,8 +431,8 @@ class EmployeeSummaryTab(QWidget):
                     data = json.load(f)
                 result['programs'] = [p for p in data.get('programs', []) if p in VALID_PROGRAMS]
                 result['b_period_3years'] = data.get('b_period_3years', True)
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            logger.debug("Failed to load summary_programs.json: %s", e)
         return result
 
     @classmethod
@@ -439,8 +441,8 @@ class EmployeeSummaryTab(QWidget):
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump({'programs': programs, 'b_period_3years': b_period_3years}, f)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.debug("Failed to save summary_programs.json: %s", e)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1224,6 +1226,7 @@ class EmployeeSummaryTab(QWidget):
             wb.save(file_path)
             QMessageBox.information(self, "Успех", f"Файл сохранён:\n{file_path}")
         except Exception as e:
+            logger.exception("Export error")
             QMessageBox.warning(self, "Ошибка", f"Ошибка экспорта: {e}")
 
     # ── API ──────────────────────────────────────────────
@@ -1306,6 +1309,7 @@ class EmployeeSummaryTab(QWidget):
             else:
                 QMessageBox.warning(self, "Ошибка", result.get("error", "Неизвестная ошибка"))
         except Exception as e:
+            logger.exception("Registry query error")
             QMessageBox.warning(self, "Ошибка", f"Ошибка запроса: {e}")
 
     # ── Reports ──────────────────────────────────────────

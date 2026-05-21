@@ -109,13 +109,13 @@ def create_schema():
                 "DELETE FROM workers_data WHERE id NOT IN "
                 "(SELECT MIN(id) FROM workers_data GROUP BY snils_hash, program, date)"
             )
-        except Exception:
-            pass
+        except sqlite3.Error as e:
+            logger.warning("Could not deduplicate workers_data: %s", e)
         try:
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_workers_unique "
                 "ON workers_data(snils_hash, program, date)"
             )
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.warning("Could not create unique index on workers_data: %s", e)
     logger.info("Schema created/verified")

@@ -31,8 +31,8 @@ class CommissionManager:
                     return decrypt_data(encrypted)
                 else:
                     return wrapper
-            except Exception as e:
-                logger.error(f"Ошибка загрузки данных комиссии: {e}")
+            except (OSError, json.JSONDecodeError, ValueError) as e:
+                logger.error("Ошибка загрузки данных комиссии: %s", e, exc_info=True)
         return self._default_data()
 
     def _default_data(self) -> dict:
@@ -74,8 +74,8 @@ class CommissionManager:
             with open(self.commission_file, 'w', encoding='utf-8') as f:
                 json.dump({"data": encrypted}, f, ensure_ascii=False, indent=2)
             return True, "Данные комиссии сохранены (зашифрованы)"
-        except Exception as e:
-            logger.error(f"Ошибка сохранения данных комиссии: {e}")
+        except OSError as e:
+            logger.error("Ошибка сохранения данных комиссии: %s", e, exc_info=True)
             return False, f"Ошибка сохранения: {e}"
 
     def load(self) -> dict:

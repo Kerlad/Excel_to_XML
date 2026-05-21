@@ -99,7 +99,7 @@ def import_journal_from_excel(file_path: str) -> tuple[int, list]:
                 records_to_add.append(record)
                 added_count += 1
                 
-            except Exception as e:
+            except (ValueError, TypeError, AttributeError) as e:
                 errors.append(f"Строка {row_num}: {str(e)}")
         
         # Сохраняем журнал
@@ -108,7 +108,10 @@ def import_journal_from_excel(file_path: str) -> tuple[int, list]:
         
         return added_count, errors
         
-    except Exception as e:
+    except FileNotFoundError:
+        return 0, [f"Файл не найден: {file_path}"]
+    except (OSError, ValueError, TypeError) as e:
+        logger.exception("Error reading journal import file")
         return 0, [f"Ошибка чтения файла: {str(e)}"]
 
 

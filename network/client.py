@@ -31,12 +31,16 @@ def test_external_access(
         if response.status_code in (200, 201, 301, 302, 403, 404):
             return NetworkStatus.SUCCESS, f"HTTP {response.status_code}"
         return NetworkStatus.NETWORK_ERROR, f"HTTP {response.status_code}"
+    except requests.Timeout:
+        return NetworkStatus.TIMEOUT, "Connection timeout"
+    except requests.ConnectionError as e:
+        return NetworkStatus.NETWORK_ERROR, f"Connection error: {e}"
+    except requests.RequestException as e:
+        logger.exception("Unexpected requests error")
+        return NetworkStatus.UNKNOWN_ERROR, str(e)
     except Exception as e:
-        msg = str(e)
-        if "Timeout" in msg:
-            return NetworkStatus.TIMEOUT, "Connection timeout"
-        if "Connection" in msg:
-            return NetworkStatus.NETWORK_ERROR, f"Connection error: {e}"
+        # Safety net: any non-requests exception (mock tests, edge cases, etc.)
+        logger.exception("Unexpected network error")
         return NetworkStatus.UNKNOWN_ERROR, str(e)
 
 
