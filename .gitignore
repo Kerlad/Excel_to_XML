@@ -43,7 +43,13 @@ log/
 
 # Test files
 test_*.xlsx
+test_*.xml
+test_*.py
 generate_test_data.py
+tests/
+tests/*.py
+tests/test_*.py
+
 
 # Docs (optional) — moved to docs/
 docs/hide_*.md
@@ -77,3 +83,5 @@ org_settings.json
 Thumbs.db
 .o
 .opencode
+tests/test_database.py
+tests/test_crypto.py
