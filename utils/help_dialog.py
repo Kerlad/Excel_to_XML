@@ -1,5 +1,8 @@
-from PySide6.QtWidgets import QVBoxLayout, QLabel, QPushButton, QScrollArea, QGroupBox, QWidget
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+    QGroupBox, QWidget, QSizePolicy
+)
+from PySide6.QtCore import Qt, QTimer
 from utils.dialog_base import BaseDialog
 
 
@@ -155,6 +158,34 @@ HELP_SECTIONS = [
         ),
     },
     {
+        "title": "Блокировка сессии",
+        "body": (
+            "Для защиты персональных данных при временном отсутствии на рабочем месте "
+            "предусмотрена автоматическая блокировка сессии. При блокировке содержимое "
+            "окна размывается, поверх отображается диалог ввода парольной фразы.<br><br>"
+            "<b>Включение и настройка:</b><br>"
+            "&bull; Блокировка доступна только при установленной парольной фразе "
+            "(Справка → О программе → раздел «Безопасность»).<br>"
+            "&bull; <b>Ручная блокировка:</b> Файл → Заблокировать сессию.<br>"
+            "&bull; <b>Автоматическая блокировка:</b> сессия блокируется после "
+            "указанного времени бездействия. По умолчанию — 10 минут.<br>"
+            "&bull; <b>Настройка таймаута:</b> Настройки → Таймаут блокировки... "
+            "(от 1 до 120 минут).<br><br>"
+            "<b>Поведение при блокировке:</b><br>"
+            "&bull; За 30 секунд до блокировки появляется предупреждение — нажмите "
+            "«Продолжить работу», чтобы предотвратить блокировку.<br>"
+            "&bull; На экране блокировки введите парольную фразу и нажмите "
+            "«Разблокировать» (или Enter) для продолжения работы.<br>"
+            "&bull; Кнопка «Выход» закрывает приложение без разблокировки. "
+            "При следующем запуске данные будут доступны после ввода парольной фразы.<br>"
+            "&bull; Закрыть диалог блокировки крестиком или клавишей Esc невозможно "
+            "(безопасность).<br><br>"
+            "<b>Важно:</b> без установленной парольной фразы блокировка сессии недоступна. "
+            "Парольную фразу можно установить в диалоге «О программе» "
+            "(Справка → О программе → раздел «Безопасность» → «Установить парольную фразу»)."
+        ),
+    },
+    {
         "title": "Сводка по сотрудникам",
         "body": (
             "На вкладке «Сводка по сотрудникам» ведётся учёт и анализ статуса обучения "
@@ -187,20 +218,77 @@ HELP_SECTIONS = [
 
 class HelpDialog(BaseDialog):
     def __init__(self, parent=None):
-        super().__init__(parent, title="Справка по работе с программой", min_width=760, min_height=680)
+        super().__init__(parent, title="Справка по работе с программой", min_width=820, min_height=680)
 
         bl = self.body_layout()
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.setSpacing(0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        h_layout = QHBoxLayout()
+        h_layout.setSpacing(0)
+        h_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Sidebar with table of contents
+        sidebar = QWidget()
+        sidebar.setFixedWidth(220)
+        sidebar.setObjectName("helpSidebar")
+        sidebar.setStyleSheet(
+            "QWidget#helpSidebar { background-color: palette(window); "
+            "border-right: 1px solid palette(mid); }"
+        )
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 8, 0, 8)
+        sidebar_layout.setSpacing(0)
+
+        toc_label = QLabel("<b>Содержание</b>")
+        toc_label.setStyleSheet("padding: 8px 14px 4px 14px; font-size: 14px; color: palette(text);")
+        sidebar_layout.addWidget(toc_label)
+
+        scroll_toc = QScrollArea()
+        scroll_toc.setWidgetResizable(True)
+        scroll_toc.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll_toc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        toc_content = QWidget()
+        toc_layout = QVBoxLayout(toc_content)
+        toc_layout.setContentsMargins(0, 0, 0, 0)
+        toc_layout.setSpacing(0)
+
+        self._section_widgets = []
+        for i, section in enumerate(HELP_SECTIONS):
+            btn = QPushButton(section["title"])
+            btn.setObjectName("helpTocBtn")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFlat(True)
+            btn.setStyleSheet(
+                "QPushButton { text-align: left; padding: 6px 14px; font-size: 12px; "
+                "border: none; border-radius: 0; color: palette(text); }"
+                "QPushButton:hover { background-color: rgba(128, 128, 128, 30); }"
+                "QPushButton:pressed { background-color: rgba(128, 128, 128, 50); }"
+            )
+            btn.clicked.connect(lambda checked, idx=i: self._scroll_to_section(idx))
+            toc_layout.addWidget(btn)
+            self._section_widgets.append(btn)
+
+        toc_layout.addStretch()
+        scroll_toc.setWidget(toc_content)
+        sidebar_layout.addWidget(scroll_toc, 1)
+
+        h_layout.addWidget(sidebar)
+
+        # Content area
+        self._content_scroll = QScrollArea()
+        self._content_scroll.setWidgetResizable(True)
+        self._content_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._content_scroll.setObjectName("helpContentScroll")
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setSpacing(16)
-        content_layout.setContentsMargins(0, 0, 4, 0)
+        content_layout.setContentsMargins(16, 16, 16, 16)
 
+        self._section_groups = []
         for section in HELP_SECTIONS:
             group = QGroupBox(section["title"])
             group.setObjectName("helpGroupBox")
@@ -212,10 +300,13 @@ class HelpDialog(BaseDialog):
             group_layout.setSpacing(8)
             group_layout.addWidget(label)
             content_layout.addWidget(group)
+            self._section_groups.append(group)
 
         content_layout.addStretch()
-        scroll.setWidget(content)
-        bl.addWidget(scroll)
+        self._content_scroll.setWidget(content)
+        h_layout.addWidget(self._content_scroll, 1)
+
+        bl.addLayout(h_layout)
 
         donate_btn = QPushButton("Поддержать проект ❤️")
         donate_btn.setFixedHeight(32)
@@ -228,6 +319,11 @@ class HelpDialog(BaseDialog):
         self._button_layout.addWidget(donate_btn)
 
         self.add_close_button("Закрыть")
+
+    def _scroll_to_section(self, idx: int):
+        if 0 <= idx < len(self._section_groups):
+            target = self._section_groups[idx]
+            self._content_scroll.ensureWidgetVisible(target)
 
     def _open_donation(self):
         from utils.donation_dialog import DonationDialog

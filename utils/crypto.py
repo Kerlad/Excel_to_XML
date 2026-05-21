@@ -172,6 +172,8 @@ def _dpapi_decrypt(encrypted: bytes) -> bytes:
                 kf = kd / 'master.key'
                 reencrypted = _dpapi_encrypt(data)
                 kf.write_bytes(reencrypted)
+                meta = _load_key_metadata()
+                _save_key_metadata(meta)
             return data
         except (ImportError, ValueError, OSError, RuntimeError, TypeError):
             continue
@@ -216,17 +218,21 @@ def _restrict_file_access(filepath: Path) -> None:
 # ============ Key Metadata (signed with HMAC) ============
 
 def _compute_metadata_hmac(meta: dict) -> str:
-    """Compute HMAC-SHA256 for metadata integrity."""
-    kd = _key_dir()
-    kf = kd / 'master.key'
-    raw = b""
-    try:
-        if kf.exists():
-            raw = kf.read_bytes()
-    except OSError:
-        pass
+    """Compute HMAC-SHA256 for metadata integrity using raw master key bytes.
+    Uses the in-memory raw key (stable) instead of DPAPI-encrypted file bytes
+    (which change on every DPAPI re-encryption due to random salt)."""
+    hmac_key = _MASTER_KEY or b""
+    if not hmac_key:
+        kd = _key_dir()
+        kf = kd / 'master.key'
+        try:
+            if kf.exists():
+                raw = kf.read_bytes()
+                hmac_key = raw[:32] if len(raw) >= 32 else raw
+        except OSError:
+            pass
     serialized = json.dumps(meta, sort_keys=True, ensure_ascii=False).encode('utf-8')
-    return hmac.new(raw[:32] if len(raw) >= 32 else raw, serialized, hashlib.sha256).hexdigest()[:16]
+    return hmac.new(hmac_key, serialized, hashlib.sha256).hexdigest()[:16]
 
 
 def _load_key_metadata() -> dict:

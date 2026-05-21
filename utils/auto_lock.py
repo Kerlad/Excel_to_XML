@@ -5,15 +5,15 @@ Unlock requires passphrase (if set).
 Locked screen is blurred and overlaid with semi-transparent dark layer.
 """
 import os
-import sys
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QDialog, QMessageBox, QWidget, QApplication
 )
-from PySide6.QtCore import Qt, QTimer, QEvent, QObject, QRect
-from PySide6.QtGui import QPixmap, QIcon, QPainter, QImage, QColor, QBrush, QPainterPath
+from PySide6.QtCore import Qt, QTimer, QEvent, QObject, QPoint, QRect
+from PySide6.QtGui import QPixmap, QPainter, QImage, QColor, QRegion
+from PySide6.QtGui import QPixmap, QPainter, QImage, QColor
 from utils.crypto import verify_passphrase, is_passphrase_protected, CryptoPassphraseRequiredError
 from utils.audit import log_audit
 from utils.app_paths import get_resource_dir
@@ -26,26 +26,25 @@ WARNING_SECONDS = 30
 CHECK_INTERVAL_MS = 1000
 BLUR_DOWNSCALE_FACTOR = 6
 OVERLAY_OPACITY = 180
+EXIT_CODE_QUIT = 42
 
 
-class BlurOverlay(QWidget):
-    """Child overlay widget with blurred + darkened content for lock screen.
-    Child of the main window so it renders correctly behind the modal LockDialog."""
+class LockDialog(QDialog):
+    """Full-window modal lock screen with blurred background + centered unlock UI.
+    Captures the parent window, pixelation-blurs it, and overlays the passphrase dialog.
+    """
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setGeometry(parent.rect())
-        self.setStyleSheet("background: transparent;")
+        self._unlocked = False
+        self._bg_pixmap = None
+        self._capture_and_blur(parent)
+        self._build_ui(parent)
 
-    def capture_and_blur(self):
-        """Capture parent widget content and apply pixelation blur + dark overlay."""
-        parent = self.parentWidget()
+    def _capture_and_blur(self, parent: QWidget):
+        """Capture parent content and create pixelation-blurred + darkened pixmap."""
         if not parent or not parent.isVisible():
-            self.setStyleSheet("background-color: rgba(0, 0, 0, 200);")
             return
-
         size = parent.size()
         if size.width() < 1 or size.height() < 1:
             return
@@ -56,6 +55,7 @@ class BlurOverlay(QWidget):
         pixmap = QPixmap(size)
         pixmap.fill(Qt.transparent)
         parent.render(pixmap, QPoint(), QRegion(QRect(QPoint(0, 0), size)))
+        QApplication.processEvents()
 
         blurred = QImage(pixmap.toImage())\
             .scaled(small_w, small_h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)\
@@ -65,56 +65,42 @@ class BlurOverlay(QWidget):
         result.fill(Qt.transparent)
 
         painter = QPainter(result)
-        painter.begin(result)
         painter.drawImage(QPoint(0, 0), blurred)
         painter.fillRect(QRect(QPoint(0, 0), size), QColor(0, 0, 0, OVERLAY_OPACITY))
         painter.end()
 
-        self._bg = QPixmap.fromImage(result)
-        self.setStyleSheet("background: transparent;")
-        self.update()
+        self._bg_pixmap = QPixmap.fromImage(result)
 
-    def paintEvent(self, event):
-        if hasattr(self, '_bg') and not self._bg.isNull():
-            painter = QPainter(self)
-            painter.drawPixmap(QPoint(0, 0), self._bg)
-            painter.end()
-        else:
-            super().paintEvent(event)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.setGeometry(self.parentWidget().rect())
-        if self.isVisible():
-            self.capture_and_blur()
-
-
-class LockDialog(QDialog):
-    """Modal lock screen. Cannot be dismissed without valid passphrase.
-    Provides Exit button to close the application without unlocking.
-    """
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._unlocked = False
-        self._build_ui()
-        self.setStyleSheet("")
-
-    def _build_ui(self):
+    def _build_ui(self, parent: QWidget):
         self.setWindowTitle("Сессия заблокирована")
-        self.setFixedSize(440, 340)
         self.setModal(True)
+        self.setGeometry(parent.geometry())
         self.setWindowFlags(
-            Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint
+            Qt.Dialog | Qt.FramelessWindowHint
         )
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet(
-            "LockDialog { background-color: palette(window); }"
-        )
+        self.setStyleSheet("LockDialog { background: transparent; }")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        outer = QHBoxLayout()
+        outer.addStretch()
+
+        center = QVBoxLayout()
+        center.setContentsMargins(28, 24, 28, 20)
+        center.setSpacing(12)
+        center.setAlignment(Qt.AlignCenter)
+
+        card = QWidget()
+        card.setFixedSize(440, 340)
+        card.setStyleSheet(
+            "QWidget { background-color: palette(window); "
+            "border: 1px solid palette(mid); border-radius: 8px; }"
+        )
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(28, 24, 28, 20)
+        card_layout.setSpacing(12)
 
         icon_path = os.path.join(get_resource_dir(), "resources", "ico.ico")
         icon_lbl = QLabel()
@@ -125,14 +111,14 @@ class LockDialog(QDialog):
                     pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 )
         icon_lbl.setAlignment(Qt.AlignCenter)
-        layout.addWidget(icon_lbl)
+        card_layout.addWidget(icon_lbl)
 
         title = QLabel("Сессия заблокирована")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
             "font-size: 18px; font-weight: bold; color: palette(text); background: transparent;"
         )
-        layout.addWidget(title)
+        card_layout.addWidget(title)
 
         desc = QLabel(
             "Приложение было заблокировано из-за отсутствия активности.\n"
@@ -141,7 +127,7 @@ class LockDialog(QDialog):
         desc.setAlignment(Qt.AlignCenter)
         desc.setWordWrap(True)
         desc.setStyleSheet("font-size: 13px; color: palette(mid); background: transparent;")
-        layout.addWidget(desc)
+        card_layout.addWidget(desc)
 
         self.pwd_input = QLineEdit()
         self.pwd_input.setEchoMode(QLineEdit.Password)
@@ -153,7 +139,7 @@ class LockDialog(QDialog):
             "QLineEdit:focus { border: 1px solid #27AE60; }"
         )
         self.pwd_input.returnPressed.connect(self._try_unlock)
-        layout.addWidget(self.pwd_input)
+        card_layout.addWidget(self.pwd_input)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -184,9 +170,22 @@ class LockDialog(QDialog):
         )
         self.lock_btn.clicked.connect(self._try_unlock)
         btn_row.addWidget(self.lock_btn)
-        layout.addLayout(btn_row)
+        card_layout.addLayout(btn_row)
 
         self.pwd_input.setFocus()
+
+        center.addWidget(card)
+        outer.addLayout(center)
+        outer.addStretch()
+        layout.addLayout(outer)
+
+    def paintEvent(self, event):
+        if self._bg_pixmap and not self._bg_pixmap.isNull():
+            painter = QPainter(self)
+            painter.drawPixmap(QPoint(0, 0), self._bg_pixmap)
+            painter.end()
+        else:
+            super().paintEvent(event)
 
     def _try_unlock(self):
         pp = self.pwd_input.text()
@@ -216,7 +215,7 @@ class LockDialog(QDialog):
     def _exit_app(self):
         logger.info("Session: user chose to exit application from lock screen")
         log_audit("SESSION_LOCK", "Application closed from lock screen (exit button)")
-        QApplication.quit()
+        self.done(EXIT_CODE_QUIT)
 
     def _shake_input(self, placeholder: str):
         self.pwd_input.setStyleSheet(
@@ -252,9 +251,7 @@ class LockDialog(QDialog):
 
 
 class LockWarningDialog(QDialog):
-    """Non-modal warning shown shortly before auto-lock.
-    Inherits application-wide palette and stylesheet automatically.
-    """
+    """Non-modal warning shown shortly before auto-lock."""
 
     def __init__(self, remaining_sec: int, parent=None):
         super().__init__(parent)
@@ -298,9 +295,7 @@ class LockWarningDialog(QDialog):
 
 class AutoLockManager(QObject):
     """Tracks user inactivity and locks the session after timeout.
-
     Only activates when a passphrase is set on the master key.
-    On lock, blurs and darkens the main window content behind the LockDialog.
     """
 
     def __init__(self, parent: QWidget = None):
@@ -311,7 +306,6 @@ class AutoLockManager(QObject):
         self._locked = False
         self._warning_shown = False
         self._warning_dialog: QWidget = None
-        self._blur_overlay: BlurOverlay = None
 
         self._timer = QTimer(self)
         self._timer.setInterval(CHECK_INTERVAL_MS)
@@ -350,7 +344,6 @@ class AutoLockManager(QObject):
         self._warning_shown = False
 
     def refresh(self):
-        """Re-check passphrase state (call after passphrase changes)."""
         self._check_passphrase_state()
         self._warning_shown = False
         self._last_activity = datetime.now()
@@ -421,47 +414,23 @@ class AutoLockManager(QObject):
 
         parent = self.parent() if isinstance(self.parent(), QWidget) else None
 
-        self._show_blur(parent)
         dialog = LockDialog(parent)
-        dialog.exec()
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        result = dialog.exec()
+
+        if result == EXIT_CODE_QUIT:
+            QApplication.closeAllWindows()
+            return
 
         if dialog.was_unlocked:
-            self._hide_blur()
             self._unlock()
-        else:
-            self._locked = True
 
     def _unlock(self):
         self._locked = False
         self._last_activity = datetime.now()
         self._warning_shown = False
 
-    def _show_blur(self, parent: QWidget):
-        """Create and show a blur overlay over the main window."""
-        if parent and parent.isVisible():
-            try:
-                self._blur_overlay = BlurOverlay(parent)
-                self._blur_overlay.capture_and_blur()
-                self._blur_overlay.show()
-                self._blur_overlay.raise_()
-                from PySide6.QtWidgets import QApplication as QApp
-                QApp.processEvents()
-            except Exception as e:
-                logger.debug("Blur overlay failed: %s", e)
-                self._blur_overlay = None
-
-    def _hide_blur(self):
-        """Remove the blur overlay."""
-        if self._blur_overlay:
-            try:
-                self._blur_overlay.hide()
-                self._blur_overlay.deleteLater()
-            except RuntimeError:
-                pass
-            self._blur_overlay = None
-
     def force_lock(self):
-        """Manually lock the session immediately."""
         self._check_passphrase_state()
         if not self._enabled:
             safe_message_box(

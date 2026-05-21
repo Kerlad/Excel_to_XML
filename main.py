@@ -214,15 +214,24 @@ class MainWindow(QMainWindow):
 
     def _create_template(self):
         self.tabs.setCurrentIndex(0)
+        self.data_entry_tab.create_template()
 
     def _export_all(self):
         self.tabs.setCurrentIndex(1)
+        self.data_view_tab._export_xlsx()
 
     def _open_proxy_settings(self):
         for i in range(self.tabs.count()):
             if "Передача данных" in self.tabs.tabText(i):
                 self.tabs.setCurrentIndex(i)
                 break
+        self.data_transfer_tab.scroll_to_proxy()
+
+    def _open_security(self):
+        from utils.security_dialog import SecurityDialog
+        dialog = SecurityDialog(self)
+        dialog.exec()
+        self.auto_lock.refresh()
 
     def _apply_theme(self, theme: str):
         self.current_theme = theme
@@ -259,6 +268,9 @@ class MainWindow(QMainWindow):
         lock_action.triggered.connect(self._manual_lock)
         timeout_action = settings_menu.addAction("Таймаут блокировки...")
         timeout_action.triggered.connect(self._configure_lock_timeout)
+        settings_menu.addSeparator()
+        security_action = settings_menu.addAction("Безопасность")
+        security_action.triggered.connect(self._open_security)
         settings_menu.addSeparator()
         proxy_action = settings_menu.addAction("Настройки прокси")
         proxy_action.triggered.connect(self._open_proxy_settings)

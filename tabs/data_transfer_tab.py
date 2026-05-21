@@ -29,19 +29,17 @@ logger = logging.getLogger(__name__)
 class _ConnectionWorker(QObject):
     finished = Signal(bool, str)
 
-    def __init__(self, api_key, proxy_settings, timeout):
+    def __init__(self, url, timeout, tls_verify):
         super().__init__()
-        self.api_key = api_key
-        self.proxy_settings = proxy_settings
+        self.url = url
         self.timeout = timeout
+        self.tls_verify = tls_verify
 
     def run(self):
-        from api.mintrud_api import validate_api_key_remote
-        try:
-            valid, msg = validate_api_key_remote(self.api_key, self.proxy_settings)
-            self.finished.emit(valid, msg)
-        except Exception as e:
-            self.finished.emit(False, str(e))
+        status, msg = test_external_access(
+            url=self.url, timeout=self.timeout, tls_verify=self.tls_verify
+        )
+        self.finished.emit(status == NetworkStatus.SUCCESS, msg)
 
 
 class _ProxyTestWorker(QObject):
@@ -71,6 +69,24 @@ class _ProxyTestWorker(QObject):
         self.finished.emit(result_text, status == NetworkStatus.SUCCESS)
 
 
+class _SnilsQueryWorker(QObject):
+    finished = Signal(dict)
+
+    def __init__(self, api_key, snils, proxy_settings):
+        super().__init__()
+        self.api_key = api_key
+        self.snils = snils
+        self.proxy_settings = proxy_settings
+
+    def run(self):
+        from api.mintrud_api import get_by_snils
+        try:
+            result = get_by_snils(self.api_key, self.snils, proxy_settings=self.proxy_settings)
+            self.finished.emit(result)
+        except Exception as e:
+            self.finished.emit({"success": False, "error": str(e), "records": []})
+
+
 class DataTransferTab(QWidget):
     def __init__(self):
         super().__init__()
@@ -82,6 +98,8 @@ class DataTransferTab(QWidget):
 
         self._journal_add_callback = None
         self._journal_update_callback = None
+        self._snils_thread = None
+        self._snils_worker = None
 
         self._setup_ui()
         self._connect_signals()
@@ -103,6 +121,7 @@ class DataTransferTab(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll_area = scroll
 
         content = QWidget()
         self._scroll_layout = QVBoxLayout(content)
@@ -199,8 +218,15 @@ class DataTransferTab(QWidget):
     # Group: Proxy Settings
     # ============================================================
 
+    def scroll_to_proxy(self):
+        proxy = getattr(self, '_proxy_group', None)
+        area = getattr(self, '_scroll_area', None)
+        if proxy and area:
+            area.ensureWidgetVisible(proxy)
+
     def _create_proxy_group(self):
         group = QGroupBox("Настройки прокси")
+        self._proxy_group = group
 
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
@@ -457,12 +483,12 @@ class DataTransferTab(QWidget):
         self.query_snils_input = QLineEdit()
         self.query_snils_input.setPlaceholderText("123-456-789 00 или 12345678900")
 
-        query_btn = QPushButton("Отправить запрос")
-        query_btn.clicked.connect(self.query_by_snils)
+        self.query_snils_btn = QPushButton("Отправить запрос")
+        self.query_snils_btn.clicked.connect(self.query_by_snils)
 
         row.addWidget(QLabel("Введите СНИЛС:"))
         row.addWidget(self.query_snils_input)
-        row.addWidget(query_btn)
+        row.addWidget(self.query_snils_btn)
         row.addStretch()
 
         return group
@@ -531,14 +557,13 @@ class DataTransferTab(QWidget):
         self.conn_status_dot.setStyleSheet(
             "background-color: #F1C40F; border-radius: 6px;"
         )
-        self.conn_status_text.setText("Проверка ключа...")
+        self.conn_status_text.setText("Проверка подключения...")
 
-        proxy_settings = self._get_proxy_settings()
         self._conn_thread = QThread()
         self._conn_worker = _ConnectionWorker(
-            api_key=api_key,
-            proxy_settings=proxy_settings,
+            url="https://edu.rosmintrud.ru",
             timeout=15,
+            tls_verify=self.tls_checkbox.isChecked(),
         )
         self._conn_worker.moveToThread(self._conn_thread)
         self._conn_thread.started.connect(self._conn_worker.run)
@@ -550,9 +575,9 @@ class DataTransferTab(QWidget):
 
     def _on_connection_result(self, ok, msg):
         if ok:
-            self._set_connection_status(True, "Ключ действителен, сервер доступен")
+            self._set_connection_status(True, "Подключено к серверу")
         else:
-            self._set_connection_status(False, msg)
+            self._set_connection_status(False, f"Ошибка: {msg}")
         self.check_conn_btn.setEnabled(True)
         self.check_conn_btn.setText("Проверить подключение")
 
@@ -904,14 +929,39 @@ class DataTransferTab(QWidget):
             return
         snils = f"{snils_clean[0:3]}-{snils_clean[3:6]}-{snils_clean[6:9]} {snils_clean[9:11]}"
 
-        proxy_settings = self._get_proxy_settings()
-        try:
-            result = get_by_snils(api_key, snils, proxy_settings=proxy_settings)
-        except Exception as e:
-            logger.exception("Ошибка запроса по СНИЛС")
-            safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка", f"Ошибка запроса по СНИЛС:\n{e}")
+        if self._snils_thread and self._snils_thread.isRunning():
+            QMessageBox.warning(self, "Ошибка", "Запрос уже выполняется")
             return
 
+        self._snils_thread = QThread()
+        self._snils_worker = _SnilsQueryWorker(
+            api_key=api_key, snils=snils, proxy_settings=self._get_proxy_settings()
+        )
+        self._snils_worker.moveToThread(self._snils_thread)
+        self._snils_thread.started.connect(self._snils_worker.run)
+        self._snils_worker.finished.connect(self._on_snils_query_result)
+        self._snils_worker.finished.connect(self._snils_thread.quit)
+        self._snils_thread.finished.connect(self._snils_worker.deleteLater)
+        self._snils_thread.finished.connect(self._snils_thread.deleteLater)
+        self._snils_thread.finished.connect(self._re_enable_snils_btn)
+        self._snils_thread.start()
+
+        self._set_snils_query_state(False, "Запрос...")
+
+    def _set_snils_query_state(self, enabled: bool, text: str = None):
+        btn = getattr(self, 'query_snils_btn', None)
+        if btn:
+            btn.setEnabled(enabled)
+            if text:
+                btn.setText(text)
+
+    def _re_enable_snils_btn(self):
+        btn = getattr(self, 'query_snils_btn', None)
+        if btn:
+            btn.setEnabled(True)
+            btn.setText("Запросить")
+
+    def _on_snils_query_result(self, result):
         if not result["success"]:
             safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка", result.get("error", "Неизвестная ошибка"))
             return
@@ -930,9 +980,9 @@ class DataTransferTab(QWidget):
         masked_name = ' '.join(p for p in name_parts if p)
         safe_message_box(self, QMessageBox.Icon.Information, "Найдено", f"Записей: {len(records)}\n{masked_name}")
 
-        snils_file = snils.replace('-', '').replace(' ', '')
+        snils_clean = ''.join(c for c in self.query_snils_input.text().strip() if c.isdigit())
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Сохранить XLSX", f"{snils_file}.xlsx", "Excel Files (*.xlsx)"
+            self, "Сохранить XLSX", f"{snils_clean}.xlsx", "Excel Files (*.xlsx)"
         )
         if file_path:
             ok, msg = export_records_to_xlsx(records, file_path)
