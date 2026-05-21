@@ -922,10 +922,8 @@ class DataTransferTab(QWidget):
     # ============================================================
 
     def _parse_xml_for_journal(self, xml_file_path):
-        try:
-            from defusedxml.ElementTree import parse as _xparse
-        except ImportError:
-            from xml.etree.ElementTree import parse as _xparse
+        from defusedxml.ElementTree import parse as _xparse
+        from defusedxml.common import DefusedXmlException
 
         records = []
         try:
@@ -954,7 +952,7 @@ class DataTransferTab(QWidget):
                     'protocol': get_text(test, 'ProtocolNumber'),
                 }
                 records.append(rec)
-        except Exception as e:
+        except (DefusedXmlException, ValueError) as e:
             logger.warning(f"Failed to parse XML for journal: {e}")
 
         return records

@@ -6,6 +6,14 @@ VALID_PROGRAMS = sorted(VALID_PROGRAMS_SET, key=int)
 
 DEFAULT_PROGRAMS = ["1", "2", "3", "4", "18", "23"]
 
+MAX_FILE_SIZE_MB = 10
+MAX_XLSX_ROWS = 100000
+MAX_XML_ELEMENTS = 50000
+MAX_XML_DEPTH = 20
+MAX_XLSX_FILE_SIZE_MB = 10
+MAX_XML_FILE_SIZE_MB = 100
+MAX_EXPORT_RECORDS = 5000
+
 PROGRAM_TITLES = {
     "1": "Оказание первой помощи пострадавшим",
     "2": "Использование СИЗ",

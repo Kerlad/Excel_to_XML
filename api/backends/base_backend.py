@@ -91,6 +91,6 @@ class BackendRegistry:
                 instance = backend_class()
                 if instance.is_available():
                     available.append(name)
-            except Exception:
-                pass
+            except (ImportError, RuntimeError):
+                continue
         return available

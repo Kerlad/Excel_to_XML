@@ -5,17 +5,11 @@ import os
 import logging
 
 from utils.constants import VALID_PROGRAMS_SET as VALID_PROGRAMS
+from utils.constants import MAX_XML_ELEMENTS, MAX_XML_DEPTH
+from utils.exceptions import FileTooLargeError, XmlSecurityError
+from utils.xml_safe import safe_parse_xml, safe_fromstring_xml
 
-try:
-    from defusedxml.ElementTree import parse as _parse, fromstring as _fromstring
-    from defusedxml.ElementTree import XMLParser as _XMLParser
-    _HAS_DEFUSEDXML = True
-except ImportError:
-    from xml.etree.ElementTree import parse as _parse, fromstring as _fromstring
-    from xml.etree.ElementTree import XMLParser as _XMLParser
-    _HAS_DEFUSEDXML = False
-
-logging.basicConfig(filename='import_errors.log', level=logging.ERROR, encoding='utf-8')
+logger = logging.getLogger(__name__)
 
 MAX_XML_SIZE_MB = 100
 NS = {'xs': 'http://www.w3.org/2001/XMLSchema'}
@@ -34,11 +28,13 @@ def load_xml(file_path, xsd_path=None):
     size_mb = os.path.getsize(file_path) / (1024 * 1024)
     if size_mb > MAX_XML_SIZE_MB:
         return None, 0, [f"Файл превышает лимит {MAX_XML_SIZE_MB} МБ ({size_mb:.1f} МБ)"], []
-    # Парсинг (XXE-safe)
+
     try:
-        tree = _parse(file_path)
+        tree = safe_parse_xml(file_path)
         root = tree.getroot()
-    except Exception as e:
+    except (FileTooLargeError, XmlSecurityError) as e:
+        return None, 0, [str(e)], []
+    except ValueError as e:
         return None, 0, [f"Ошибка парсинга XML: {e}"], []
 
     # XSD-валидация (если указана схема)
@@ -46,15 +42,17 @@ def load_xml(file_path, xsd_path=None):
     if xsd_path and os.path.exists(xsd_path):
         try:
             from lxml import etree
-            schema_doc = etree.parse(xsd_path)
+            parser = etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)
+            schema_doc = etree.parse(xsd_path, parser)
             schema = etree.XMLSchema(schema_doc)
-            xml_doc = etree.parse(file_path)
-            try:
-                schema.assertValid(xml_doc)
-            except etree.DocumentInvalid as e:
-                xsd_errors = [str(err.message.strip()) for err in schema.error_log]
+            xml_doc = etree.parse(file_path, parser)
+            schema.assertValid(xml_doc)
         except ImportError:
             xsd_errors = ["lxml не установлен. XSD-валидация недоступна: pip install lxml"]
+        except etree.XMLSyntaxError as e:
+            xsd_errors = [f"Ошибка синтаксиса XSD/XML: {e}"]
+        except etree.DocumentInvalid:
+            xsd_errors = [str(err.message.strip()) for err in schema.error_log]
         except Exception as e:
             xsd_errors = [f"Ошибка XSD-валидации: {e}"]
 

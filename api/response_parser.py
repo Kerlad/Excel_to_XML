@@ -5,10 +5,9 @@ Parses XML responses from the server.
 import logging
 from typing import Dict, Any
 
-try:
-    from defusedxml.ElementTree import parse as _parse, fromstring as _fromstring
-except ImportError:
-    from xml.etree.ElementTree import parse as _parse, fromstring as _fromstring
+from xml.etree.ElementTree import ParseError as _ETParseError
+from defusedxml.ElementTree import fromstring as _fromstring
+from defusedxml.common import DefusedXmlException
 
 from utils.logger import mask_sensitive
 
@@ -35,6 +34,16 @@ def _format_error(status_code: str, message: str) -> str:
     return base_msg
 
 
+def _decode_response(response_bytes: bytes) -> str:
+    """Decode response bytes with fallback encodings."""
+    for enc in ('utf-8', 'cp1251'):
+        try:
+            return response_bytes.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return str(response_bytes)
+
+
 def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[str, Any]:
     """
     Parse response from send XML API.
@@ -46,19 +55,14 @@ def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[s
     Returns:
         Dict with keys: success, set_id, send_educated_person, message, error, raw_response
     """
-    try:
-        response_text = response_bytes.decode('utf-8')
-    except Exception:
-        try:
-            response_text = response_bytes.decode('cp1251')
-        except Exception:
-            response_text = str(response_bytes)
+    response_text = _decode_response(response_bytes)
     
     logger.info(f"Response (first 500 chars): {mask_sensitive(response_text[:500])}")
     
     try:
         root = _fromstring(response_text)
-    except Exception:
+    except (DefusedXmlException, _ETParseError, ValueError) as e:
+        logger.error(f"XML parse error: {e}")
         return {
             "success": False,
             "set_id": None,
@@ -66,7 +70,7 @@ def parse_send_response(response_bytes: bytes, status_code: int = 200) -> Dict[s
             "error": f"HTTP {status_code}: Не удалось разобрать ответ сервера",
             "raw_response": response_text[:1000]
         }
-    
+
     if root.tag == "Response":
         set_id_elem = root.find("SetId")
         send_elem = root.find("SendEducatedPerson")
@@ -183,20 +187,14 @@ def parse_setid_response(response_bytes: bytes, status_code: int = 200) -> Dict[
     Returns:
         Dict with keys: success, records, error, raw_response
     """
-    try:
-        response_text = response_bytes.decode('utf-8')
-    except Exception:
-        try:
-            response_text = response_bytes.decode('cp1251')
-        except Exception:
-            response_text = str(response_bytes)
+    response_text = _decode_response(response_bytes)
 
     logger.info(f"parse_setid_response: status={status_code}, text_len={len(response_text)}")
 
     try:
         root = _fromstring(response_text)
-    except Exception:
-        logger.error(f"XML parse error: {mask_sensitive(response_text[:500])}")
+    except (DefusedXmlException, _ETParseError, ValueError) as e:
+        logger.error(f"XML parse error: {e}")
         return {
             "success": False,
             "records": [],
@@ -346,14 +344,12 @@ def parse_error_response(response_bytes: bytes) -> Dict[str, Any]:
     Returns:
         Dict with keys: success, error, raw_response
     """
-    try:
-        response_text = response_bytes.decode('utf-8')
-    except Exception:
-        response_text = str(response_bytes)
+    response_text = _decode_response(response_bytes)
     
     try:
         root = _fromstring(response_text)
-    except Exception:
+    except (DefusedXmlException, _ETParseError, ValueError) as e:
+        logger.error(f"Error response parse failed: {e}")
         return {
             "success": False,
             "error": f"Не удалось разобрать ответ сервера: {response_text[:200]}",

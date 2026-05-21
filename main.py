@@ -342,15 +342,17 @@ if __name__ == "__main__":
         audit_logger = logging.getLogger(__name__)
         mode, msg = check_master_key_security()
         audit_logger.info(f"Security audit - master.key: [{mode}] {msg}")
-        if mode == 'raw':
+        if mode in ('raw',):
             audit_logger.warning(
                 "SECURITY: DPAPI unavailable - master.key stored as plaintext! "
-                "Consider creating a backup via 'About' dialog."
+                "Consider setting a passphrase via 'About' dialog."
             )
+        elif mode == 'raw_passphrase':
+            audit_logger.info("Security audit - master.key: plaintext but passphrase protected (PBKDF2)")
         elif mode == 'none':
             audit_logger.error("SECURITY: Master key not found!")
-        elif mode == 'dpapi':
-            audit_logger.info("Security audit - master.key protection: OK (DPAPI)")
+        elif mode in ('dpapi', 'dpapi_passphrase'):
+            audit_logger.info(f"Security audit - master.key protection: OK ({mode})")
 
         # Check API key existence
         from api.mintrud_api import load_api_key

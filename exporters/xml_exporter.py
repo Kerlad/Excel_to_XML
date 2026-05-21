@@ -7,7 +7,6 @@ import logging
 from datetime import datetime
 from xml.etree.ElementTree import Element, SubElement, ElementTree
 import xml.etree.ElementTree as ET
-import xml.dom.minidom
 
 logger = logging.getLogger(__name__)
 
@@ -157,15 +156,15 @@ def build_xml(records, org_settings=None):
     rough_string = ET.tostring(root, encoding='utf-8', xml_declaration=False)
 
     try:
-        dom = xml.dom.minidom.parseString(rough_string)
+        from xml.dom.minidom import parseString as _minidom_parse
+        dom = _minidom_parse(rough_string)
         pretty_xml = dom.toprettyxml(indent="  ", encoding='UTF-8')
-        # Заменяем декларацию minidom на нашу
         pretty_str = pretty_xml.decode('utf-8')
         lines = pretty_str.split('\n')
         if lines[0].startswith('<?xml'):
             lines[0] = '<?xml version="1.0" encoding="UTF-8"?>'
         return '\n'.join(lines).encode('utf-8')
-    except Exception as e:
+    except (ValueError, OSError) as e:
         logger.error(f"Ошибка форматирования XML: {e}")
         xml_declaration = b'<?xml version="1.0" encoding="UTF-8"?>\n'
         return xml_declaration + rough_string
@@ -201,6 +200,6 @@ def export_to_xml(records, file_path, org_settings=None):
 
     except PermissionError:
         return False, "Нет прав на запись файла"
-    except Exception as e:
-        logger.error(f"Ошибка экспорта в XML: {e}")
-        return False, f"Ошибка экспорта: {e}"
+    except OSError as e:
+        logger.error(f"Ошибка ввода-вывода при экспорте XML: {e}")
+        return False, f"Ошибка записи файла: {e}"

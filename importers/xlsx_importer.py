@@ -6,10 +6,11 @@ import logging
 from datetime import datetime, timedelta
 
 from utils.constants import VALID_PROGRAMS_SET as VALID_PROGRAMS
+from utils.constants import MAX_XLSX_FILE_SIZE_MB, MAX_XLSX_ROWS
+from utils.exceptions import FileTooLargeError, ImportLimitExceededError
 
 logger = logging.getLogger(__name__)
 
-# PERFORMANCE: максимальное количество строк для read_only режима
 _READ_ONLY_THRESHOLD = 1000
 
 COLUMNS = [
@@ -231,9 +232,6 @@ def validate_row(row_dict, row_num):
     return True, records
 
 
-MAX_FILE_SIZE_MB = 10
-
-
 def load_xlsx(file_path, password=None):
     """
     Загрузка XLSX файла.
@@ -249,64 +247,72 @@ def load_xlsx(file_path, password=None):
     """
     try:
         size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        if size_mb > MAX_FILE_SIZE_MB:
-            return None, [], set(), [f"Файл превышает лимит {MAX_FILE_SIZE_MB} МБ ({size_mb:.1f} МБ)"]
-        if file_path.endswith('.xlsx'):
-            from openpyxl import load_workbook
-            return _load_xlsx_openpyxl(file_path, password)
-        else:
-            return None, [], set(), ["Неподдерживаемый формат. Используйте .xlsx"]
+        if size_mb > MAX_XLSX_FILE_SIZE_MB:
+            msg = f"Файл превышает лимит {MAX_XLSX_FILE_SIZE_MB} МБ ({size_mb:.1f} МБ)"
+            return None, [], set(), [msg]
+    except OSError as e:
+        return None, [], set(), [f"Ошибка доступа к файлу: {e}"]
+    
+    if not file_path.endswith('.xlsx'):
+        return None, [], set(), ["Неподдерживаемый формат. Используйте .xlsx"]
+    
+    try:
+        from openpyxl import load_workbook
+        return _load_xlsx_openpyxl(file_path, password)
     except ImportError as e:
         return None, [], set(), [f"Не установлен модуль: {e}. pip install openpyxl"]
-    except Exception as e:
-        logger.error(f"Ошибка загрузки файла {file_path}: {e}")
-        err_msg = str(e)
-        if "password" in err_msg.lower() or "protect" in err_msg.lower() or "wrong" in err_msg.lower():
-            return None, [], set(), ["Файл защищён паролем. Требуется пароль."]
-        return None, [], set(), [f"Ошибка открытия файла: {e}"]
+    except FileTooLargeError as e:
+        return None, [], set(), [str(e)]
+    except ImportLimitExceededError as e:
+        return None, [], set(), [str(e)]
 
 
 def _load_xlsx_openpyxl(file_path, password=None):
     """Загрузка .xlsx через openpyxl"""
     from openpyxl import load_workbook
-    from datetime import datetime as dt
 
-    # openpyxl не поддерживает пароли Excel - требуется файл без пароля
-    wb = load_workbook(file_path, data_only=True)
+    wb = load_workbook(file_path, data_only=True, read_only=True)
     ws = wb.active
 
     records = []
-    error_details = []  # [{'row': int, 'type': str, 'field': str, 'message': str}]
-    error_rows_set = set()  # номера строк с ошибками
+    error_details = []
+    error_rows_set = set()
 
-    # Читаем заголовки
-    headers = [str(ws.cell(row=1, column=c).value or '').strip() for c in range(1, ws.max_column + 1)]
+    headers = None
+    row_count = 0
 
-    # Проверка обязательных полей (без ИНН/названий УЦ и Заказчика — они подставляются из настроек)
-    required_fields = ['СНИЛС']
-    missing_cols = [col for col in required_fields if col not in headers]
-    if missing_cols:
-        error_msg = f"Отсутствуют обязательные столбцы: {', '.join(missing_cols)}"
-        return None, [{"row": 1, "type": "Ошибка", "field": "Заголовки", "message": error_msg}], {1}, error_msg
+    for row in ws.iter_rows(values_only=True):
+        row_count += 1
+        if row_count == 1:
+            headers = [str(c or '').strip() for c in row]
+            required_fields = ['СНИЛС']
+            missing_cols = [col for col in required_fields if col not in headers]
+            if missing_cols:
+                error_msg = f"Отсутствуют обязательные столбцы: {', '.join(missing_cols)}"
+                return None, [{"row": 1, "type": "Ошибка", "field": "Заголовки", "message": error_msg}], {1}, error_msg
+            continue
 
-    for row_num in range(2, ws.max_row + 1):
+        if row_count > MAX_XLSX_ROWS:
+            raise ImportLimitExceededError(
+                f"Превышено максимальное количество строк: {MAX_XLSX_ROWS}"
+            )
+
         row_dict = {}
         all_empty = True
         for c_idx, col_name in enumerate(headers):
-            val = ws.cell(row=row_num, column=c_idx + 1).value
+            val = row[c_idx] if c_idx < len(row) else None
             row_dict[col_name] = val if val is not None else ''
             if val is not None and str(val).strip() != '':
                 all_empty = False
 
-        # Пропускаем полностью пустые строки (после таблицы)
         if all_empty:
             continue
 
-        is_valid, result = validate_row(row_dict, row_num)
+        is_valid, result = validate_row(row_dict, row_count - 1)
         if is_valid:
             records.extend(result)
         else:
             error_details.extend(result)
-            error_rows_set.add(row_num)
+            error_rows_set.add(row_count - 1)
 
     return records, error_details, error_rows_set, ""

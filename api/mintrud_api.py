@@ -36,15 +36,19 @@ def _save_error_response(response_bytes: bytes, status_code: int = 0):
         os.makedirs(_LOG_DIR, exist_ok=True)
         path = os.path.join(_LOG_DIR, "error_response.txt")
         text = f"HTTP {status_code}\n"
-        try:
-            text += response_bytes.decode("utf-8")
-        except Exception:
+        for enc in ("utf-8", "cp1251"):
+            try:
+                text += response_bytes.decode(enc)
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+        else:
             text += str(response_bytes)
         text = filter_sensitive_text(text)
         with open(path, "w", encoding="utf-8-sig") as f:
             f.write(text)
         logger.info(f"Error response saved to {path}")
-    except Exception as e:
+    except OSError as e:
         logger.warning(f"Failed to save error response: {e}")
 
 
@@ -84,7 +88,7 @@ def save_api_key(api_key: str, data_dir: str) -> tuple[bool, str]:
         with open(key_file, 'w', encoding='utf-8') as f:
             json.dump({"key": encrypted}, f)
         return True, "API ключ сохранён"
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         return False, f"Ошибка сохранения: {e}"
 
 
@@ -99,7 +103,8 @@ def load_api_key(data_dir: str) -> Optional[str]:
             data = json.load(f)
         encrypted = data.get('key', '')
         return decrypt_value(encrypted)
-    except Exception:
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        logger.error(f"Failed to load API key: {e}")
         return None
 
 
@@ -143,12 +148,8 @@ def validate_api_key_remote(api_key: str, proxy_settings: dict = None) -> tuple[
                 verify = proxy_settings.get('tls_verify', True)
             resp = req.post(url, files=files, proxies=proxies, verify=verify, timeout=15)
             if resp.status_code == 200:
-                try:
-                    from defusedxml.ElementTree import fromstring as _fromstring
-                    root = _fromstring(resp.content)
-                except ImportError:
-                    from xml.etree.ElementTree import fromstring as _fromstring
-                    root = _fromstring(resp.content)
+                from defusedxml.ElementTree import fromstring as _fromstring
+                root = _fromstring(resp.content)
                 if root.tag in ('Response', 'EducatedPersons'):
                     return True, 'Ключ действителен'
                 elif root.tag == 'Error':
@@ -162,9 +163,11 @@ def validate_api_key_remote(api_key: str, proxy_settings: dict = None) -> tuple[
                 return False, f'Ошибка сервера (HTTP {resp.status_code})'
         except ImportError:
             return False, 'Библиотека requests не установлена'
-        except Exception as e:
+        except requests.RequestException as e:
+            logger.error(f"Remote validation connection error: {e}")
             return False, f'Ошибка подключения: {e}'
     except Exception as e:
+        logger.error(f"Remote validation error: {e}")
         return False, f'Ошибка валидации: {e}'
 
 
@@ -216,10 +219,9 @@ class MintrudClient:
                     if instance.is_available():
                         logger.info(f"Using backend: {backend_name}")
                         return instance
-                except Exception as e:
+                except (ImportError, RuntimeError) as e:
                     logger.warning(f"Backend {backend_name} not available: {e}")
         
-        # Ни один backend не доступен
         logger.error("No backends available")
         raise RuntimeError("Не удалось создать ни один HTTP-транспорт. "
                            "Убедитесь, что установлены зависимости (requests).")
@@ -250,8 +252,8 @@ class MintrudClient:
                     if instance.is_available():
                         backends.append((instance, backend_name))
                         seen.add(backend_name)
-                except Exception:
-                    pass
+                except (ImportError, RuntimeError):
+                    continue
         
         return backends
     
@@ -339,15 +341,19 @@ class MintrudClient:
                 if response_bytes:
                     _save_error_response(response_bytes, status_code)
 
-                # Only fallback on SSL errors
                 if not _is_ssl_error(error_msg):
                     return {"success": False, "error": error_msg}
                     
                 logger.info(f"SSL error detected, trying next backend...")
                 
-            except Exception as e:
+            except requests.RequestException as e:
                 last_error = str(e)
-                logger.warning(f"Backend {backend_name} exception: {mask_sensitive(str(e))}")
+                logger.warning(f"Backend {backend_name} request exception: {mask_sensitive(str(e))}")
+                if not _is_ssl_error(str(e)):
+                    return {"success": False, "error": str(e)}
+            except RuntimeError as e:
+                last_error = str(e)
+                logger.error(f"Backend {backend_name} runtime error: {e}")
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
         
@@ -413,9 +419,14 @@ class MintrudClient:
                     
                 logger.info(f"SSL error detected, trying next backend...")
                 
-            except Exception as e:
+            except requests.RequestException as e:
                 last_error = str(e)
-                logger.warning(f"Backend {backend_name} exception: {mask_sensitive(str(e))}")
+                logger.warning(f"Backend {backend_name} request exception: {mask_sensitive(str(e))}")
+                if not _is_ssl_error(str(e)):
+                    return {"success": False, "error": str(e)}
+            except RuntimeError as e:
+                last_error = str(e)
+                logger.error(f"Backend {backend_name} runtime error: {e}")
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
         
@@ -457,9 +468,14 @@ class MintrudClient:
 
                 logger.info(f"SSL error, trying next backend...")
 
-            except Exception as e:
+            except requests.RequestException as e:
                 last_error = str(e)
-                logger.warning(f"Backend {backend_name} exception: {mask_sensitive(str(e))}")
+                logger.warning(f"Backend {backend_name} request exception: {mask_sensitive(str(e))}")
+                if not _is_ssl_error(str(e)):
+                    return {"success": False, "error": str(e)}
+            except RuntimeError as e:
+                last_error = str(e)
+                logger.error(f"Backend {backend_name} runtime error: {e}")
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
 
@@ -664,8 +680,10 @@ def export_records_to_xlsx(records, file_path):
         
         wb.save(file_path)
         return True, f"Файл сохранён: {file_path}"
-    except Exception as e:
-        return False, f"Ошибка экспорта: {e}"
+    except OSError as e:
+        return False, f"Ошибка записи файла: {e}"
+    except PermissionError:
+        return False, "Нет прав на запись файла"
 
 
 def get_available_backends() -> list:

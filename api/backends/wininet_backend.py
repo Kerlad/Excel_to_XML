@@ -61,14 +61,20 @@ def _make_request(
             err_text = f"HTTP {status_code}"
             try:
                 err_text += f": {http.StatusText}"
-            except Exception:
+            except AttributeError:
                 pass
             return False, status_code, response_bytes, err_text
 
         return True, status_code, response_bytes, ""
 
-    except Exception as e:
-        logger.error(f"WinHTTP error: {e}")
+    except AttributeError as e:
+        logger.error(f"WinHTTP COM error: {e}")
+        return False, 0, b"", str(e)
+    except OSError as e:
+        logger.error(f"WinHTTP network error: {e}")
+        return False, 0, b"", str(e)
+    except ValueError as e:
+        logger.error(f"WinHTTP value error: {e}")
         return False, 0, b"", str(e)
 
 
@@ -116,7 +122,7 @@ class WinINETBackend(BaseBackend):
 
             return _make_request("POST", url, body, req_headers, timeout, verify, proxies)
 
-        except Exception as e:
+        except (ValueError, OSError) as e:
             logger.error(f"WinINET error: {e}")
             return False, 0, b"", str(e)
 
@@ -143,7 +149,7 @@ class WinINETBackend(BaseBackend):
 
         try:
             return _make_request("GET", url, None, headers, timeout, verify, proxies)
-        except Exception as e:
+        except (ValueError, OSError) as e:
             logger.error(f"WinINET error: {e}")
             return False, 0, b"", str(e)
 

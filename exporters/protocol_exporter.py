@@ -48,19 +48,8 @@ class ProtocolExporter:
             # Группируем работников по полному имени
             grouped_workers = ProtocolExporter._group_workers_by_name(worker_records)
             
-            # Заполняем таблицу работников (выполняем ПЕРЕД _fill_commission_data)
-            try:
-                ProtocolExporter._fill_worker_table(doc, grouped_workers, programs_manager)
-            except Exception as e:
-                print(f"ERROR in _fill_worker_table: {e}")
-                raise
-
-            # Заполняем данные комиссии (выполняем ПОСЛЕ)
-            try:
-                ProtocolExporter._fill_commission_data(doc, commission_data, protocol_number, programs_manager, worker_records, grouped_workers)
-            except Exception as e:
-                print(f"ERROR in _fill_commission_data: {e}")
-                raise
+            ProtocolExporter._fill_worker_table(doc, grouped_workers, programs_manager)
+            ProtocolExporter._fill_commission_data(doc, commission_data, protocol_number, programs_manager, worker_records, grouped_workers)
 
             # Применяем шрифт Times New Roman ко всему документу
             from docx.shared import Pt
@@ -84,11 +73,9 @@ class ProtocolExporter:
             doc.save(output_path)
             return True, f"Протокол сформирован.\nФайл сохранён: {output_path}\nЗаписей: {len(grouped_workers)}"
 
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            logger.error(f"Ошибка генерации протокола: {e}\n{tb}", exc_info=True)
-            return False, f"Ошибка формирования протокола: {e}\n\n{tb}"
+        except (OSError, ValueError, KeyError) as e:
+            logger.error(f"Ошибка генерации протокола: {e}", exc_info=True)
+            return False, f"Ошибка формирования протокола: {e}"
 
     @staticmethod
     def _fill_commission_data(doc, commission_data: dict, protocol_number: str, programs_manager, worker_records: list, grouped_workers: list = None):
@@ -577,8 +564,6 @@ class ProtocolExporter:
 
             return success, msg
 
-        except Exception as e:
+        except (OSError, ValueError, KeyError, AttributeError) as e:
             logger.error(f"Ошибка экспорта протокола из журнала: {e}", exc_info=True)
-            import traceback
-            tb = traceback.format_exc()
-            return False, f"Ошибка формирования протокола: {e}\n\nTraceback:\n{tb}"
+            return False, f"Ошибка формирования протокола: {e}"

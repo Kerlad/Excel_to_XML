@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict
 
 from utils.crypto import encrypt_value, decrypt_value
 
@@ -34,7 +34,7 @@ def load_proxy_settings(data_dir: str) -> dict:
             data["username"] = data.get("username", "")
             data["password"] = data.get("password", "")
         return data
-    except Exception as e:
+    except (json.JSONDecodeError, OSError) as e:
         logger.error(f"Error loading proxy settings: {e}")
         return defaults
 
@@ -61,7 +61,7 @@ def save_proxy_settings(data_dir: str, settings: dict) -> tuple[bool, str]:
         global ENABLE_TLS_VERIFY
         ENABLE_TLS_VERIFY = settings.get("tls_verify", True)
         return True, "Proxy settings saved"
-    except Exception as e:
+    except OSError as e:
         return False, f"Error saving: {e}"
 
 
@@ -89,7 +89,7 @@ def detect_windows_proxy() -> Optional[str]:
             if not server.startswith(("http://", "https://")):
                 server = "http://" + server
             return server
-    except Exception:
+    except (ImportError, OSError):
         return None
 
 
@@ -107,14 +107,16 @@ def build_proxies_for_requests(settings: dict) -> Optional[Dict[str, str]]:
         username = settings.get("username", "").strip()
         password = settings.get("password", "").strip()
         if username and password:
-            from urllib.parse import urlparse, urlunparse
+            from urllib.parse import urlparse
             parsed = urlparse(url)
-            auth_url = urlunparse((
-                parsed.scheme,
-                f"{username}:{password}@{parsed.hostname}:{parsed.port or 3128}",
-                parsed.path, parsed.params, parsed.query, parsed.fragment
-            ))
-            proxies = {"http": auth_url, "https": auth_url}
+            host = parsed.hostname or url
+            port = parsed.port or 3128
+            proxies = {
+                "http": f"http://{host}:{port}",
+                "https": f"http://{host}:{port}",
+            }
+            proxies["_username"] = username
+            proxies["_password"] = password
         else:
             proxies = {"http": url, "https": url}
         return proxies

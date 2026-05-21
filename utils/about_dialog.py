@@ -1,11 +1,19 @@
 import os
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget, QMessageBox, QFileDialog
+from PySide6.QtWidgets import (
+    QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget,
+    QMessageBox, QFileDialog, QInputDialog, QLineEdit
+)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QFont, QDesktopServices
 from PySide6.QtCore import QUrl
 from utils.dialog_base import BaseDialog
 from utils.app_paths import get_resource_dir
-from utils.crypto import check_master_key_security, create_master_key_backup
+from utils.crypto import (
+    check_master_key_security, create_master_key_backup,
+    is_passphrase_protected, set_passphrase, remove_passphrase,
+    verify_passphrase, get_key_fingerprint, CryptoPassphraseRequiredError,
+    CryptoError
+)
 
 
 VERSION = "1.3.0"
@@ -114,6 +122,22 @@ class AboutDialog(BaseDialog):
         backup_btn.clicked.connect(self._create_key_backup)
         security_layout.addWidget(backup_btn)
 
+        passphrase_btn_row = QHBoxLayout()
+
+        self._set_passphrase_btn = QPushButton("Установить парольную фразу")
+        self._set_passphrase_btn.setObjectName("dialogPrimaryBtn")
+        self._set_passphrase_btn.setMinimumHeight(36)
+        self._set_passphrase_btn.clicked.connect(self._set_passphrase)
+        passphrase_btn_row.addWidget(self._set_passphrase_btn)
+
+        self._remove_passphrase_btn = QPushButton("Снять парольную фразу")
+        self._remove_passphrase_btn.setObjectName("dialogDangerBtn")
+        self._remove_passphrase_btn.setMinimumHeight(36)
+        self._remove_passphrase_btn.clicked.connect(self._remove_passphrase)
+        passphrase_btn_row.addWidget(self._remove_passphrase_btn)
+
+        security_layout.addLayout(passphrase_btn_row)
+
         bl.addWidget(security_widget)
         bl.addStretch()
 
@@ -126,13 +150,61 @@ class AboutDialog(BaseDialog):
 
     def _update_security_status(self):
         mode, msg = check_master_key_security()
-        if mode == 'dpapi':
+        pp = is_passphrase_protected()
+        if mode in ('dpapi', 'dpapi_passphrase'):
+            html = f'<span style="color:#27AE60;"><b>✓ Безопасность:</b> {msg}</span>'
+        elif mode == 'raw_passphrase':
             html = f'<span style="color:#27AE60;"><b>✓ Безопасность:</b> {msg}</span>'
         elif mode == 'raw':
             html = f'<span style="color:#E74C3C;"><b>✗ ВНИМАНИЕ!</b> {msg}</span>'
         else:
             html = f'<span style="color:#F39C12;"><b>⚠</b> {msg}</span>'
+        fingerprint = get_key_fingerprint()
+        html += f'<br><span style="font-size:11px;color:#7F8C8D;">Отпечаток ключа: {fingerprint}</span>'
         self._security_status_label.setText(html)
+        self._set_passphrase_btn.setVisible(not pp)
+        self._remove_passphrase_btn.setVisible(pp)
+
+    def _set_passphrase(self):
+        pp, ok = QInputDialog.getText(
+            self, "Установка парольной фразы",
+            "Введите парольную фразу для дополнительной защиты мастер-ключа:",
+            QLineEdit.EchoMode.Password
+        )
+        if not ok or not pp:
+            return
+        confirm, ok = QInputDialog.getText(
+            self, "Подтверждение парольной фразы",
+            "Повторите парольную фразу:",
+            QLineEdit.EchoMode.Password
+        )
+        if not ok or pp != confirm:
+            QMessageBox.warning(self, "Ошибка", "Парольные фразы не совпадают")
+            return
+        try:
+            set_passphrase(pp)
+            QMessageBox.information(self, "Успех", "Парольная фраза установлена")
+            self._update_security_status()
+        except CryptoError as e:
+            QMessageBox.warning(self, "Ошибка", f"Не удалось установить парольную фразу:\n{e}")
+
+    def _remove_passphrase(self):
+        pp, ok = QInputDialog.getText(
+            self, "Снятие парольной фразы",
+            "Введите текущую парольную фразу:",
+            QLineEdit.EchoMode.Password
+        )
+        if not ok or not pp:
+            return
+        try:
+            verify_passphrase(pp)
+            remove_passphrase(pp)
+            QMessageBox.information(self, "Успех", "Парольная фраза снята")
+            self._update_security_status()
+        except CryptoPassphraseRequiredError:
+            QMessageBox.warning(self, "Ошибка", "Неверная парольная фраза")
+        except CryptoError as e:
+            QMessageBox.warning(self, "Ошибка", f"Не удалось снять парольную фразу:\n{e}")
 
     def _create_key_backup(self):
         backup_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для бэкапа master.key")
