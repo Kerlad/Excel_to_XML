@@ -217,4 +217,19 @@ class HelpDialog(BaseDialog):
         scroll.setWidget(content)
         bl.addWidget(scroll)
 
+        donate_btn = QPushButton("Поддержать проект ❤️")
+        donate_btn.setFixedHeight(32)
+        donate_btn.setStyleSheet(
+            "QPushButton { font-size: 12px; color: #9B59B6; border: 1px solid #9B59B6; "
+            "border-radius: 4px; padding: 4px 12px; background: transparent; }"
+            "QPushButton:hover { background-color: rgba(155, 89, 182, 0.1); }"
+        )
+        donate_btn.clicked.connect(self._open_donation)
+        self._button_layout.addWidget(donate_btn)
+
         self.add_close_button("Закрыть")
+
+    def _open_donation(self):
+        from utils.donation_dialog import DonationDialog
+        dialog = DonationDialog(self)
+        dialog.exec()

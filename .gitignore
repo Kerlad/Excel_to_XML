@@ -10,7 +10,8 @@ venv/
 
 # Build
 build/
-dist/
+dist/*
+!dist/*.zip
 *.exe
 
 # IDE

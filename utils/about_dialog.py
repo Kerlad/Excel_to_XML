@@ -174,10 +174,21 @@ class AboutDialog(BaseDialog):
         bl.addWidget(security_widget)
         bl.addStretch()
 
+        donate_btn = QPushButton("Поддержать разработчика ❤️")
+        donate_btn.setFixedHeight(32)
+        donate_btn.setStyleSheet(
+            "QPushButton { font-size: 12px; color: #9B59B6; border: 1px solid #9B59B6; "
+            "border-radius: 4px; padding: 4px 12px; background: transparent; }"
+            "QPushButton:hover { background-color: rgba(155, 89, 182, 0.1); }"
+        )
+        donate_btn.clicked.connect(self._open_donation)
+        self._button_layout.addWidget(donate_btn)
+
+        self._button_layout.addStretch()
+
         close_btn = QPushButton("Закрыть")
         close_btn.setObjectName("dialogPrimaryBtn")
         close_btn.setMinimumHeight(40)
-        self._button_layout.addStretch()
         self._button_layout.addWidget(close_btn)
         close_btn.clicked.connect(self.close)
 
@@ -325,6 +336,11 @@ class AboutDialog(BaseDialog):
             if msg.clickedButton() == open_btn:
                 folder = os.path.dirname(zip_path)
                 QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+
+    def _open_donation(self):
+        from utils.donation_dialog import DonationDialog
+        dialog = DonationDialog(self)
+        dialog.exec()
 
     def _set_passphrase(self):
         pp, ok = QInputDialog.getText(
