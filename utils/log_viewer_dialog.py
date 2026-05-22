@@ -24,6 +24,7 @@ from PySide6.QtGui import (
 from utils.logger import tail_log, get_log_files
 from utils.app_paths import get_app_log_dir
 from utils.error_utils import safe_message_box
+from utils.audit import verify_audit_log
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,11 @@ class LogViewerDialog(QDialog):
         self._copy_btn.setToolTip("Копировать все отображаемые строки в буфер")
         self._copy_btn.clicked.connect(self._copy_all)
         btn_bar.addWidget(self._copy_btn)
+
+        self._audit_check_btn = QPushButton("Проверить целостность аудита")
+        self._audit_check_btn.setToolTip("Проверить HMAC-целостность audit.log")
+        self._audit_check_btn.clicked.connect(self._check_audit_integrity)
+        btn_bar.addWidget(self._audit_check_btn)
 
         btn_bar.addStretch()
 
@@ -376,8 +382,68 @@ class LogViewerDialog(QDialog):
             self._refresh_timer.stop()
         super().closeEvent(event)
 
+    def _check_audit_integrity(self):
+        from utils.audit import verify_audit_log
+        from utils.app_paths import get_app_log_dir
+        log_dir = get_app_log_dir()
+        log_path = os.path.join(log_dir, "audit.log")
+        violations = verify_audit_log(log_path)
+        show_audit_verification_result(self, violations, log_path)
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             self.close()
         else:
             super().keyPressEvent(event)
+
+
+def show_audit_verification_result(parent, violations, log_path):
+    from PySide6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QFileDialog
+    from PySide6.QtCore import Qt
+    if not violations:
+        QMessageBox.information(
+            parent, "Проверка целостности аудита",
+            "Целостность audit.log подтверждена.\n\n"
+            "Все HMAC-теги корректны, цепочка хэшей не нарушена."
+        )
+        return
+
+    dialog = QDialog(parent)
+    dialog.setWindowTitle("Нарушение целостности audit.log")
+    dialog.setMinimumSize(700, 400)
+    layout = QVBoxLayout(dialog)
+
+    info = (f"Найдено нарушений: {len(violations)}\n\n"
+            "Следующие записи были изменены после подписания:\n")
+    text = QTextEdit()
+    text.setReadOnly(True)
+    text.setPlainText(info + "\n" + "\n".join(
+        f"  Строка {v['line_number']}: ожидаемый тег {v['expected_tag'][:12]}..., "
+        f"фактический {v['actual_tag'][:12]}...\n    {v['content']}"
+        for v in violations
+    ))
+    layout.addWidget(text)
+
+    btn_bar = QHBoxLayout()
+    export_btn = QPushButton("Экспортировать отчёт (CSV)")
+    close_btn = QPushButton("Закрыть")
+
+    def export_csv():
+        csv_path, _ = QFileDialog.getSaveFileName(
+            dialog, "Сохранить отчёт", "audit_integrity_report.csv",
+            "CSV файлы (*.csv)"
+        )
+        if csv_path:
+            import csv
+            with open(csv_path, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.DictWriter(f, fieldnames=['line_number', 'expected_tag', 'actual_tag', 'content'])
+                writer.writeheader()
+                writer.writerows(violations)
+
+    export_btn.clicked.connect(export_csv)
+    close_btn.clicked.connect(dialog.close)
+    btn_bar.addWidget(export_btn)
+    btn_bar.addStretch()
+    btn_bar.addWidget(close_btn)
+    layout.addLayout(btn_bar)
+    dialog.exec()

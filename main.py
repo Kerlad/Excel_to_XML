@@ -27,6 +27,7 @@ from utils.about_dialog import AboutDialog, VERSION
 from utils.help_dialog import HelpDialog
 from utils.log_viewer_dialog import LogViewerDialog
 from utils.crypto import check_master_key_security, check_environment
+from utils.clipboard_guard import ClipboardGuard
 from utils.auto_lock import AutoLockManager
 from db import DatabaseManager, create_schema
 from db.employees_repo import EmployeesRepo
@@ -324,6 +325,10 @@ class MainWindow(QMainWindow):
             self.auto_lock.timeout_minutes = value
             logger.info("Auto-lock timeout set to %d min", value)
 
+    def closeEvent(self, event):
+        log_audit("SHUTDOWN", "Application shutdown")
+        super().closeEvent(event)
+
 
 def global_exception_handler(exc_type, exc_value, exc_tb):
     """Safe global exception handler - no PII in crash dialog."""
@@ -450,6 +455,7 @@ if __name__ == "__main__":
 
     window = MainWindow(app=app)
     window.show()
+    ClipboardGuard.start()
 
     apply_mica(window)
     logger.info("Window displayed, theme: %s", theme)

@@ -1,3 +1,4 @@
+import os
 import logging
 from datetime import datetime
 from typing import List, Optional
@@ -6,6 +7,17 @@ from .database import DatabaseManager
 from utils.crypto import encrypt_value, decrypt_value, hash_for_search
 
 logger = logging.getLogger(__name__)
+
+
+def _secure_delete_record(conn, table, id_field, id_value):
+    encrypted_fields = ['last_name_enc', 'first_name_enc', 'middle_name_enc', 'snils_enc']
+    for field in encrypted_fields:
+        if id_value is not None:
+            conn.execute(f"UPDATE {table} SET {field} = ? WHERE {id_field} = ?",
+                        (os.urandom(64), id_value))
+        else:
+            conn.execute(f"UPDATE {table} SET {field} = ?",
+                        (os.urandom(64),))
 
 
 def _decrypt_emp(r: dict) -> dict:
@@ -94,6 +106,7 @@ class EmployeesRepo:
     def delete(emp_id: int):
         db = DatabaseManager.get_instance()
         with db.transaction() as conn:
+            _secure_delete_record(conn, 'employees', 'id', emp_id)
             conn.execute(f"DELETE FROM {EmployeesRepo.TABLE} WHERE id = ?", (emp_id,))
             conn.execute(f"DELETE FROM employee_programs WHERE employee_id = ?", (emp_id,))
 
@@ -101,6 +114,7 @@ class EmployeesRepo:
     def clear():
         db = DatabaseManager.get_instance()
         with db.transaction() as conn:
+            _secure_delete_record(conn, 'employees', 'id', None)
             conn.execute("DELETE FROM employee_programs")
             conn.execute(f"DELETE FROM {EmployeesRepo.TABLE}")
 

@@ -260,7 +260,7 @@ parser = etree.XMLParser(
 - `docs/OPSEC_GUIDE.md` — operational security guide (Mermaid diagrams, key rotation, incident response)
 - `docs/API_MINTTRUD.md` — Mintrud API reference
 - `docs/Техническое_задание.md` — full TS with section 9 (ИБ, model угроз, требования к окружению/хранению/доступу)
-- `reports/hardening_report.md` — v3.0.0 security audit report (18 vulnerabilities fixed)
+- `reports/hardening_report.md` — v3.1.0 security audit report (18 vulnerabilities fixed)
 - `reports/compliance_audit.md` — 152-ФЗ / ПП 1119 compliance audit (юридико-технический аудит)
 - `reports/threat_model.md` — STRIDE threat model (8 components, 48 threat/mitigation pairs)
 - `reports/data_flow.md` — 11 data flows, data matrix, storage table, deletion scheme

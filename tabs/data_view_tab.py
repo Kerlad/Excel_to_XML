@@ -13,7 +13,7 @@ import logging
 
 from exporters.xml_exporter import export_to_xml
 from db.workers_data_repo import WorkersDataRepo
-from utils.crypto import decrypt_data, hash_for_search, CryptoPassphraseRequiredError
+from utils.crypto import decrypt_data, hash_for_search, verify_org_settings_hmac, CryptoPassphraseRequiredError
 from utils.table_models import DataViewTableModel, MultiColumnFilterProxyModel, FIELD_KEYS, COLUMN_LABELS
 from utils.error_utils import safe_message_box
 
@@ -301,6 +301,9 @@ class DataViewTab(QWidget):
                 import json
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     wrapper = json.load(f)
+                if not verify_org_settings_hmac(wrapper):
+                    logger.warning("org_settings.json HMAC mismatch — file may be tampered")
+                    raise ValueError("org_settings integrity check failed")
                 encrypted = wrapper.get('data', '')
                 if encrypted:
                     org_settings = decrypt_data(encrypted)

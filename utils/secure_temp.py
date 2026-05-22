@@ -9,6 +9,7 @@ import os
 import shutil
 import logging
 import atexit
+import threading
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -17,13 +18,15 @@ logger = logging.getLogger(__name__)
 
 _secure_temp_dir: Optional[str] = None
 _cleanup_registered = False
+_secure_temp_lock = threading.Lock()
 
 
 def get_secure_temp_dir() -> str:
     """Get or create a secure per-process temp directory with restricted permissions."""
     global _secure_temp_dir, _cleanup_registered
-    if _secure_temp_dir is not None and os.path.exists(_secure_temp_dir):
-        return _secure_temp_dir
+    with _secure_temp_lock:
+        if _secure_temp_dir is not None and os.path.exists(_secure_temp_dir):
+            return _secure_temp_dir
 
     base = tempfile.gettempdir()
     import uuid
@@ -45,6 +48,10 @@ def get_secure_temp_dir() -> str:
             sid
         )
         sd.SetSecurityDescriptorDacl(1, dacl, 0)
+        sd.SetSecurityDescriptorControl(
+            win32security.SE_DACL_PROTECTED,
+            win32security.SE_DACL_PROTECTED
+        )
         win32security.SetFileSecurity(
             _secure_temp_dir,
             win32security.DACL_SECURITY_INFORMATION,

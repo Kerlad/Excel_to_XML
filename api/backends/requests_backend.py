@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -60,7 +61,8 @@ class RequestsBackend(BaseBackend):
         proxies: Optional[Dict[str, str]] = None,
         **kwargs
     ) -> tuple[bool, int, bytes, str]:
-        logger.info(f"RequestsBackend: POST {url}")
+        parsed = urlparse(url)
+        logger.info("RequestsBackend: POST %s://%s%s", parsed.scheme, parsed.netloc, parsed.path)
         session = self._create_session(proxies, verify)
         try:
             response = session.post(
@@ -88,7 +90,8 @@ class RequestsBackend(BaseBackend):
         proxies: Optional[Dict[str, str]] = None,
         **kwargs
     ) -> tuple[bool, int, bytes, str]:
-        logger.info(f"RequestsBackend: GET {url}")
+        parsed = urlparse(url)
+        logger.info("RequestsBackend: GET %s://%s%s", parsed.scheme, parsed.netloc, parsed.path)
         session = self._create_session(proxies, verify)
         try:
             response = session.get(

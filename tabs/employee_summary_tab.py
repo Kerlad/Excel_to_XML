@@ -26,6 +26,8 @@ from db import (
 from api.mintrud_api import load_api_key, get_by_snils
 from utils.proxy_manager import load_proxy_settings
 from utils.training_rules import get_dynamic_status, compute_expiry_date, get_training_period_years
+from utils.audit import log_audit
+from utils.logger import filter_sensitive_text
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +91,7 @@ class ApiQueryThread(QThread):
                     EmployeesRepo.update_sync(emp['id'], now)
                 else:
                     errors += 1
-                    logger.warning(f"API error: {result.get('error')}")
+                    logger.warning("API error: %s", filter_sensitive_text(str(result.get('error'))))
             except Exception as e:
                 errors += 1
                 logger.exception("Registry API exception")
@@ -1179,6 +1181,14 @@ class EmployeeSummaryTab(QWidget):
             safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка импорта: {e}")
 
     def _export_xlsx(self, filtered=True):
+        reply = QMessageBox.warning(
+            self, "Экспорт данных",
+            "⚠️ Файл будет содержать персональные данные (ФИО, СНИЛС).\n"
+            "Убедитесь, что файл сохраняется на зашифрованном диске (BitLocker).",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+        )
+        if reply != QMessageBox.StandardButton.Ok:
+            return
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить XLSX", "Сводка_сотрудников.xlsx", "Excel Files (*.xlsx)")
         if not file_path:
@@ -1188,6 +1198,7 @@ class EmployeeSummaryTab(QWidget):
             from openpyxl.styles import Font, PatternFill, Alignment
 
             employees = EmployeesRepo.get_all()
+            log_audit("EXPORT_XLSX", f"employees={len(employees)}")
             wb = Workbook()
             ws = wb.active
             ws.title = "Сводка"
@@ -1248,7 +1259,7 @@ class EmployeeSummaryTab(QWidget):
 
         self._api_thread = ApiQueryThread(employees, api_key, proxy_settings)
         self._api_thread.finished.connect(self._on_query_finished)
-        self._api_thread.error_signal.connect(lambda msg: logger.error(msg))
+        self._api_thread.error_signal.connect(lambda msg: logger.error("%s", filter_sensitive_text(str(msg))))
         self._api_thread.progress.connect(lambda c, t: self.query_btn.setText(f"Запрос... {c}/{t}"))
         self._api_thread.start()
 
@@ -1402,6 +1413,8 @@ class EmployeeSummaryTab(QWidget):
             QMessageBox.information(self, "Информация", "Нет данных для отображения")
             return
 
+        log_audit("EXPORT_SNAPSHOT", f"employees={len(plan_data)}")
+
         title = f"Текущая ситуация на {today.strftime('%d.%m.%Y')}"
         plan_dlg = PlanDialog(plan_data, title, self)
         plan_dlg.exec()
@@ -1450,6 +1463,9 @@ class EmployeeSummaryTab(QWidget):
         dialog.setMinimumSize(700, 350)
 
         layout = QVBoxLayout(dialog)
+        total_trained = sum(c[1] for c in report_data.values())
+        log_audit("EXPORT_TRAINED_REPORT", f"employees={total_trained}")
+
         title = QLabel(f"Отчет по обученным за {year} год")
         title.setObjectName("reportTitleLabel")
         layout.addWidget(title)
@@ -1585,9 +1601,14 @@ class EmployeeSummaryTab(QWidget):
                         'reason': reason, 'priority': priority,
                     })
 
-            plan_data.sort(key=lambda x: (
-                {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3), x['last_name']))
-            dialog.accept()
+            n = sum(1 for x in plan_data if x['reason'] == 'Не обучен')
+            e = sum(1 for x in plan_data if x['reason'] == 'Просрочено')
+            t = sum(1 for x in plan_data if x['reason'] == 'Истекает срок действия')
+            log_audit("EXPORT_PLAN", f"employees={len(plan_data)}, not_trained={n}, expired={e}, trained={t}")
+
+        plan_data.sort(key=lambda x: (
+            {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3), x['last_name']))
+        dialog.accept()
 
         generate_btn.clicked.connect(do_generate)
         btn_layout.addWidget(generate_btn); btn_layout.addStretch(); btn_layout.addWidget(cancel_btn)

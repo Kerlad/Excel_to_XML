@@ -22,6 +22,7 @@ from utils.proxy_manager import (
 from network.client import (
     get_network_diagnostics, test_external_access, NetworkStatus
 )
+from utils.audit import log_audit
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ class DataTransferTab(QWidget):
         self.proxy_test_btn.clicked.connect(self.test_proxy)
         self.select_sig_btn.clicked.connect(self.select_sig_file)
         self.send_xml_signed_btn.clicked.connect(self.send_xml_signed)
+        self.tls_checkbox.toggled.connect(self._on_tls_verify_toggled)
 
     def _load_settings(self):
         self.load_api_key()
@@ -324,6 +326,7 @@ class DataTransferTab(QWidget):
         for be in get_available_backends():
             self.backend_combo.addItem(be.capitalize(), be)
         self.backend_combo.setFixedWidth(120)
+        self.backend_combo.currentIndexChanged.connect(self._on_backend_change)
         extra_row.addWidget(self.backend_combo)
         extra_row.addStretch()
         layout.addLayout(extra_row)
@@ -337,6 +340,22 @@ class DataTransferTab(QWidget):
         layout.addLayout(btn_row)
 
         return group
+
+    def _on_tls_verify_toggled(self, checked):
+        if not checked:
+            from PySide6.QtWidgets import QMessageBox
+            reply = QMessageBox.warning(
+                self, "Отключение TLS",
+                "⚠️ ВНИМАНИЕ! Отключение проверки TLS-сертификата делает соединение\n"
+                "незащищённым от атак Man-in-the-Middle.\n\n"
+                "Вы подтверждаете отключение?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self.tls_checkbox.setChecked(True)
+                return
+        from utils.audit import log_audit
+        log_audit("TLS_WARNING", f"TLS verify set to {checked}")
 
     def _on_proxy_mode_changed(self, button):
         mode = self.proxy_mode_group.id(button)
@@ -638,6 +657,7 @@ class DataTransferTab(QWidget):
 
         ok, msg = save_proxy_settings(self.data_dir, settings)
         if ok:
+            log_audit("PROXY_CHANGE", f"mode={mode}, tls_verify={settings['tls_verify']}")
             mode_text = {'off': 'Без прокси', 'auto': 'Авто (системный)', 'manual': 'Ручной'}
             safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Режим: {mode_text.get(mode, mode)}\n{msg}")
         else:
@@ -667,6 +687,10 @@ class DataTransferTab(QWidget):
             safe_message_box(self, QMessageBox.Icon.Warning, "Проблема с доступом", result_text)
         self.proxy_test_btn.setEnabled(True)
         self.proxy_test_btn.setText("Тест подключения")
+
+    def _on_backend_change(self, index):
+        backend_name = self.backend_combo.currentData()
+        log_audit("BACKEND_CHANGE", f"backend={backend_name}")
 
     def _get_proxy_settings(self):
         mode_id = self.proxy_mode_group.checkedId()

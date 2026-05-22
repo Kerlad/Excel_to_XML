@@ -45,11 +45,12 @@ class FieldValidator:
     def validate_snils(value: str, row_num: int):
         formatted = format_snils(str(value))
         if formatted is None:
+            masked = str(value)[:3] + '***' + str(value)[-2:] if len(str(value)) > 5 else '***'
             return {
                 'row': row_num,
                 'type': 'Ошибка',
                 'field': 'СНИЛС',
-                'message': f"СНИЛС должен содержать 11 цифр (введено: {value})"
+                'message': f"СНИЛС должен содержать 11 цифр (введено: {masked})"
             }
         return None
 
@@ -71,11 +72,12 @@ class FieldValidator:
     def validate_result(value: str, row_num: int):
         result = str(value).strip()
         if result not in ['Удовлетворительно', 'Неудовлетворительно']:
+            masked = result[:3] + '***' if len(result) > 3 else result
             return {
                 'row': row_num,
                 'type': 'Ошибка',
                 'field': 'Результат',
-                'message': f"Результат должен быть 'Удовлетворительно' или 'Неудовлетворительно' (введено: {result})"
+                'message': f"Результат должен быть 'Удовлетворительно' или 'Неудовлетворительно' (введено: {masked})"
             }
         return None
 
@@ -242,12 +244,12 @@ def load_xlsx(file_path, password=None, progress_callback=None, cancel_check=Non
     Возвращает (records, error_details, error_rows_set, error_msg).
     При отмене records=None, error_msg=["Импорт отменён"].
     """
-    if not file_path.endswith('.xlsx'):
+    if not file_path.lower().endswith('.xlsx'):
         return None, [], set(), ["Неподдерживаемый формат. Используйте .xlsx"]
 
     try:
         size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        logger.info("Loading XLSX: %s (%.1f MB)", file_path, size_mb)
+        logger.info("Loading XLSX: %s (%.1f MB)", os.path.basename(file_path), size_mb)
         if size_mb > MAX_XLSX_FILE_SIZE_MB:
             msg = f"Файл превышает лимит {MAX_XLSX_FILE_SIZE_MB} МБ ({size_mb:.1f} МБ)"
             logger.warning("File too large: %s", msg)

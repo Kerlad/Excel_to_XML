@@ -14,6 +14,8 @@ import hashlib
 import hmac
 import logging
 import threading
+import atexit
+import ctypes
 from pathlib import Path
 from typing import Optional, Tuple, Any, Dict, Callable
 from datetime import datetime
@@ -24,9 +26,12 @@ from cryptography.hazmat.primitives import hashes
 
 logger = logging.getLogger(__name__)
 
+from utils.audit import log_audit
+
 _MASTER_KEY: Optional[bytes] = None
 _FERNET_INSTANCE: Optional[Fernet] = None
 _KEY_LOCK = threading.Lock()
+_crypto_lock = threading.RLock()
 
 _ENCRYPT_CACHE: Dict[str, str] = {}
 _MAX_CACHE_ITEMS: int = 2000
@@ -70,6 +75,20 @@ class CryptoProductionModeError(CryptoError):
 
 
 _CURRENT_PASSPHRASE_KEY: Optional[bytes] = None
+
+
+def _zero_memory(data: Optional[bytearray]) -> None:
+    if data is not None:
+        try:
+            ctypes.memset(id(data) + 16, 0, len(data))
+        except (ValueError, TypeError, ctypes.ArgumentError):
+            pass
+
+
+def _zero_memory_bytes(data: Optional[bytes]) -> None:
+    if data is not None:
+        ba = bytearray(data)
+        _zero_memory(ba)
 
 
 # ============ Environment Safety Checks ============
@@ -331,8 +350,11 @@ def set_passphrase(passphrase: str) -> None:
         sf.write_bytes(salt + wrapped)
         _restrict_file_access(sf)
     except OSError as e:
+        _zero_memory_bytes(derived)
         raise CryptoError(f"Failed to save passphrase-wrapped key: {e}")
-    _CURRENT_PASSPHRASE_KEY = derived
+    with _crypto_lock:
+        _CURRENT_PASSPHRASE_KEY = derived
+    log_audit("PASSPHRASE_SET", "Passphrase protection enabled")
     meta = _load_key_metadata()
     meta["passphrase_protected"] = True
     meta[_KEY_VERSION_TAG] = _KEY_VERSION
@@ -350,7 +372,11 @@ def remove_passphrase(passphrase: str) -> None:
         _secure_delete(sf)
     except OSError:
         pass
-    _CURRENT_PASSPHRASE_KEY = None
+    with _crypto_lock:
+        if _CURRENT_PASSPHRASE_KEY is not None:
+            _zero_memory_bytes(_CURRENT_PASSPHRASE_KEY)
+        _CURRENT_PASSPHRASE_KEY = None
+    log_audit("PASSPHRASE_REMOVED", "Passphrase protection removed")
     meta = _load_key_metadata()
     meta["passphrase_protected"] = False
     _save_key_metadata(meta)
@@ -375,9 +401,13 @@ def verify_passphrase(passphrase: str) -> bool:
     try:
         Fernet(derived).decrypt(wrapped)
     except (InvalidToken, ValueError, TypeError) as e:
-        _CURRENT_PASSPHRASE_KEY = None
+        with _crypto_lock:
+            if _CURRENT_PASSPHRASE_KEY is not None:
+                _zero_memory_bytes(_CURRENT_PASSPHRASE_KEY)
+            _CURRENT_PASSPHRASE_KEY = None
         raise CryptoPassphraseRequiredError("Invalid passphrase") from e
-    _CURRENT_PASSPHRASE_KEY = derived
+    with _crypto_lock:
+        _CURRENT_PASSPHRASE_KEY = derived
     return True
 
 
@@ -385,19 +415,23 @@ def verify_passphrase(passphrase: str) -> bool:
 
 def _get_or_create_master_key() -> bytes:
     global _MASTER_KEY
-    if _MASTER_KEY:
-        return _MASTER_KEY
-    with _KEY_LOCK:
+    with _crypto_lock:
         if _MASTER_KEY:
             return _MASTER_KEY
+    with _KEY_LOCK:
+        with _crypto_lock:
+            if _MASTER_KEY:
+                return _MASTER_KEY
         kd = _key_dir()
         kd.mkdir(parents=True, exist_ok=True)
         kf = kd / 'master.key'
         if kf.exists():
             try:
-                _MASTER_KEY = _load_existing_key(kf, kd)
+                with _crypto_lock:
+                    _MASTER_KEY = _load_existing_key(kf, kd)
                 if not verify_metadata_integrity():
                     logger.critical("SECURITY: Metadata integrity check failed on key load!")
+                log_audit("KEY_ACCESS", "Master key loaded from storage")
                 return _MASTER_KEY
             except CryptoKeyCorruptedError:
                 logger.warning(
@@ -415,7 +449,8 @@ def _get_or_create_master_key() -> bytes:
                     "PRODUCTION MODE: Cannot create master key - DPAPI unavailable. "
                     f"Details: {e}"
                 )
-        _MASTER_KEY = _create_new_key(kf, kd)
+        with _crypto_lock:
+            _MASTER_KEY = _create_new_key(kf, kd)
         return _MASTER_KEY
 
 
@@ -479,8 +514,9 @@ def _unlock_with_passphrase_if_needed() -> None:
     if not is_passphrase_protected():
         return
     global _CURRENT_PASSPHRASE_KEY
-    if _CURRENT_PASSPHRASE_KEY:
-        return
+    with _crypto_lock:
+        if _CURRENT_PASSPHRASE_KEY:
+            return
     raise CryptoPassphraseRequiredError(
         "Application is passphrase-protected. Call verify_passphrase() first."
     )
@@ -490,21 +526,24 @@ def _unlock_with_passphrase_if_needed() -> None:
 
 def _fernet() -> Fernet:
     global _FERNET_INSTANCE
-    if _FERNET_INSTANCE is None:
-        mk = _get_or_create_master_key()
-        pkey = _CURRENT_PASSPHRASE_KEY
-        if pkey:
-            try:
-                kf = _key_dir() / "passphrase_wrapped.key"
-                raw = kf.read_bytes()
-                salt = raw[:32]
-                wrapped = raw[32:]
-                actual_mk = Fernet(pkey).decrypt(wrapped)
-                mk_encoded = base64.urlsafe_b64encode(actual_mk)
-            except (ValueError, TypeError, OSError) as e:
-                raise CryptoError(f"Failed to unwrap master key with passphrase: {e}") from e
-        else:
-            mk_encoded = base64.urlsafe_b64encode(mk)
+    with _crypto_lock:
+        if _FERNET_INSTANCE is not None:
+            return _FERNET_INSTANCE
+    mk = _get_or_create_master_key()
+    pkey = _CURRENT_PASSPHRASE_KEY
+    if pkey:
+        try:
+            kf = _key_dir() / "passphrase_wrapped.key"
+            raw = kf.read_bytes()
+            salt = raw[:32]
+            wrapped = raw[32:]
+            actual_mk = Fernet(pkey).decrypt(wrapped)
+            mk_encoded = base64.urlsafe_b64encode(actual_mk)
+        except (ValueError, TypeError, OSError) as e:
+            raise CryptoError(f"Failed to unwrap master key with passphrase: {e}") from e
+    else:
+        mk_encoded = base64.urlsafe_b64encode(mk)
+    with _crypto_lock:
         _FERNET_INSTANCE = Fernet(mk_encoded)
     return _FERNET_INSTANCE
 
@@ -514,23 +553,29 @@ def _fernet() -> Fernet:
 def encrypt_value(plain: str) -> str:
     if not plain:
         return ''
-    if plain in _ENCRYPT_CACHE:
-        return _ENCRYPT_CACHE[plain]
     _unlock_with_passphrase_if_needed()
     f = _fernet()
     result = f.encrypt(plain.encode('utf-8')).decode('utf-8')
-    if len(_ENCRYPT_CACHE) < _MAX_CACHE_ITEMS:
-        _ENCRYPT_CACHE[plain] = result
+    with _crypto_lock:
+        if len(_ENCRYPT_CACHE) < _MAX_CACHE_ITEMS:
+            _ENCRYPT_CACHE[result] = plain
     return result
 
 
 def decrypt_value(enc: str) -> str:
     if not enc:
         return ''
+    with _crypto_lock:
+        if enc in _ENCRYPT_CACHE:
+            return _ENCRYPT_CACHE[enc]
     _unlock_with_passphrase_if_needed()
     try:
         f = _fernet()
-        return f.decrypt(enc.encode('utf-8')).decode('utf-8')
+        plain = f.decrypt(enc.encode('utf-8')).decode('utf-8')
+        with _crypto_lock:
+            if len(_ENCRYPT_CACHE) < _MAX_CACHE_ITEMS:
+                _ENCRYPT_CACHE[enc] = plain
+        return plain
     except CryptoError:
         raise
     except (InvalidToken, ValueError, TypeError) as e:
@@ -564,9 +609,13 @@ def decrypt_data(enc: str) -> Any:
 
 
 def clear_caches() -> None:
-    global _FERNET_INSTANCE, _ENCRYPT_CACHE
-    _FERNET_INSTANCE = None
-    _ENCRYPT_CACHE.clear()
+    global _FERNET_INSTANCE, _ENCRYPT_CACHE, _CURRENT_PASSPHRASE_KEY
+    with _crypto_lock:
+        _FERNET_INSTANCE = None
+        _ENCRYPT_CACHE.clear()
+        if _CURRENT_PASSPHRASE_KEY is not None:
+            _zero_memory_bytes(_CURRENT_PASSPHRASE_KEY)
+        _CURRENT_PASSPHRASE_KEY = None
 
 
 def _write_key_file(kf: Path, key_bytes: bytes) -> None:
@@ -592,8 +641,9 @@ def rotate_master_key(
     _write_key_file(kf, new_raw)
 
     global _MASTER_KEY, _FERNET_INSTANCE
-    _MASTER_KEY = new_raw
-    _FERNET_INSTANCE = None
+    with _crypto_lock:
+        _MASTER_KEY = new_raw
+        _FERNET_INSTANCE = None
 
     rotation_failed = False
     if reencrypt_func is not None:
@@ -601,9 +651,11 @@ def rotate_master_key(
             reencrypt_func(old_fernet, _fernet())
         except Exception as e:
             logger.exception("Key rotation re-encryption failed, rolling back")
-            _MASTER_KEY = old_key
+            with _crypto_lock:
+                _MASTER_KEY = old_key
             _write_key_file(kf, old_key)
-            _FERNET_INSTANCE = None
+            with _crypto_lock:
+                _FERNET_INSTANCE = None
             clear_caches()
             rotation_failed = True
             raise CryptoRotationError(f"Key rotation failed during re-encryption: {e}")
@@ -616,13 +668,16 @@ def rotate_master_key(
                 logger.exception("Key rotated but passphrase update failed")
                 logger.warning("Key rotated but passphrase update failed: %s", e)
 
+        old_fp = _compute_key_fingerprint(old_key)
+        new_fp = _compute_key_fingerprint(new_raw)
         meta = _load_key_metadata()
         meta[_KEY_VERSION_TAG] = _KEY_VERSION
         meta[_KEY_ROTATED_TAG] = datetime.now().isoformat()
-        meta[_KEY_FINGERPRINT_TAG] = _compute_key_fingerprint(new_raw)
+        meta[_KEY_FINGERPRINT_TAG] = new_fp
         _save_key_metadata(meta)
 
         clear_caches()
+        log_audit("KEY_ROTATION", f"old_fingerprint={old_fp}, new_fingerprint={new_fp}")
         logger.info("Master key rotation completed successfully")
         return True, "Master key rotated successfully"
 
@@ -722,19 +777,33 @@ def create_master_key_backup(backup_dir: Optional[str] = None) -> Tuple[bool, st
     try:
         import zipfile
         zip_password = _get_backup_password()
-        with zipfile.ZipFile(str(zip_path), 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.setpassword(zip_password.encode('utf-8'))
-            zf.write(str(kf), arcname='master.key')
-            mf = kd / _KEY_METADATA_FILE
-            if mf.exists():
-                zf.write(str(mf), arcname=_KEY_METADATA_FILE)
-            pf = kd / 'passphrase_wrapped.key'
-            if pf.exists():
-                zf.write(str(pf), arcname='passphrase_wrapped.key')
+        try:
+            import pyzipper
+            with pyzipper.AESZipFile(str(zip_path), 'w', compression=pyzipper.ZIP_DEFLATED,
+                                      encryption=pyzipper.WZ_AES) as zf:
+                zf.setpassword(zip_password.encode('utf-8'))
+                zf.write(str(kf), arcname='master.key')
+                mf = kd / _KEY_METADATA_FILE
+                if mf.exists():
+                    zf.write(str(mf), arcname=_KEY_METADATA_FILE)
+                pf = kd / 'passphrase_wrapped.key'
+                if pf.exists():
+                    zf.write(str(pf), arcname='passphrase_wrapped.key')
+        except ImportError:
+            with zipfile.ZipFile(str(zip_path), 'w', zipfile.ZIP_DEFLATED) as zf:
+                zf.setpassword(zip_password.encode('utf-8'))
+                zf.write(str(kf), arcname='master.key')
+                mf = kd / _KEY_METADATA_FILE
+                if mf.exists():
+                    zf.write(str(mf), arcname=_KEY_METADATA_FILE)
+                pf = kd / 'passphrase_wrapped.key'
+                if pf.exists():
+                    zf.write(str(pf), arcname='passphrase_wrapped.key')
         _restrict_file_access(zip_path)
         logger.info("Master key backup created (encrypted): %s", zip_path)
+        log_audit("KEY_BACKUP", f"backup_path={zip_path}")
         return True, str(zip_path)
-    except (zipfile.BadZipFile, OSError) as e:
+    except (OSError, RuntimeError, zipfile.BadZipFile) as e:
         logger.error("Failed to create master key backup: %s", e)
         return False, str(e)
 
@@ -748,7 +817,12 @@ def restore_master_key_backup(zip_path: str) -> Tuple[bool, str]:
     try:
         import zipfile
         zip_password = _get_backup_password()
-        with zipfile.ZipFile(str(zpath), 'r') as zf:
+        try:
+            import pyzipper
+            zf_ctx = pyzipper.AESZipFile(str(zpath), 'r')
+        except ImportError:
+            zf_ctx = zipfile.ZipFile(str(zpath), 'r')
+        with zf_ctx as zf:
             zf.setpassword(zip_password.encode('utf-8'))
             zf.extract('master.key', str(kd))
             if 'passphrase_wrapped.key' in zf.namelist():
@@ -760,12 +834,14 @@ def restore_master_key_backup(zip_path: str) -> Tuple[bool, str]:
             if fp.exists():
                 _restrict_file_access(fp)
         global _MASTER_KEY, _FERNET_INSTANCE
-        _MASTER_KEY = None
-        _FERNET_INSTANCE = None
+        with _crypto_lock:
+            _MASTER_KEY = None
+            _FERNET_INSTANCE = None
         clear_caches()
         logger.info("Master key restored from: %s", zip_path)
+        log_audit("KEY_RESTORE", "Master key restored from backup")
         return True, 'Мастер-ключ восстановлен'
-    except (zipfile.BadZipFile, OSError, RuntimeError) as e:
+    except (OSError, RuntimeError, zipfile.BadZipFile) as e:
         return False, str(e)
 
 
@@ -794,3 +870,31 @@ def get_key_fingerprint() -> str:
 def get_key_version() -> int:
     meta = _load_key_metadata()
     return meta.get(_KEY_VERSION_TAG, 1)
+
+
+# ============ Org Settings HMAC Integrity ============
+
+def compute_org_settings_hmac(data: dict) -> str:
+    serialized = json.dumps(data, sort_keys=True, ensure_ascii=False).encode('utf-8')
+    hmac_key = _get_or_create_master_key()[:16]
+    return hmac.new(hmac_key, serialized, hashlib.sha256).hexdigest()[:16]
+
+
+def verify_org_settings_hmac(wrapper: dict) -> bool:
+    stored_hmac = wrapper.pop("hmac", None)
+    if stored_hmac is None:
+        return True
+    computed = compute_org_settings_hmac(wrapper)
+    wrapper["hmac"] = stored_hmac
+    return hmac.compare_digest(stored_hmac, computed)
+
+
+# ============ Process Exit Cleanup ============
+
+def _zero_master_key_on_exit():
+    global _MASTER_KEY
+    if _MASTER_KEY is not None:
+        _zero_memory_bytes(_MASTER_KEY)
+    _MASTER_KEY = None
+
+atexit.register(_zero_master_key_on_exit)

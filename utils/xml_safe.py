@@ -12,13 +12,13 @@ import xml.etree.ElementTree as etree
 from defusedxml.ElementTree import parse, fromstring, XMLParser
 from defusedxml.common import DefusedXmlException
 
-from utils.constants import MAX_XML_ELEMENTS, MAX_XML_DEPTH
+from utils.constants import MAX_XML_ELEMENTS, MAX_XML_DEPTH, MAX_XML_FILE_SIZE_BYTES
 from utils.exceptions import XmlSecurityError
 from utils.audit import log_audit
 
 logger = logging.getLogger(__name__)
 
-_MAX_XML_SIZE_BYTES = 100 * 1024 * 1024
+_MAX_XML_SIZE_BYTES = MAX_XML_FILE_SIZE_BYTES
 
 
 class CountingTarget:
@@ -89,8 +89,10 @@ def safe_parse_xml(file_path: str) -> object:
 
 def safe_fromstring_xml(data: str) -> object:
     """Safely parse XML from string with security limits and XXE protection."""
-    if not isinstance(data, str):
-        data = data.decode("utf-8") if isinstance(data, bytes) else str(data)
+    if isinstance(data, bytes):
+        data = data.decode("utf-8")
+    elif not isinstance(data, str):
+        raise TypeError(f"Expected str or bytes, got {type(data).__name__}")
     if len(data.encode("utf-8")) > _MAX_XML_SIZE_BYTES:
         log_audit("XML_SECURITY_ERROR", "XML data size limit exceeded")
         raise XmlSecurityError("Размер XML превышает допустимый лимит")

@@ -68,17 +68,21 @@ class SensitiveDataFilter(logging.Filter):
         # Session IDs
         (r'(?i)session[_-]?id["\s:=]*[a-z0-9]{16,}', 'session_id=***'),
         # Raw XML/SOAP bodies (large payloads)
-        (r'(<\?xml[^>]*>.*</[^>]+>)(?:\s*http)', '<XML_PAYLOAD ***>'),
+        (r'<\?xml[^>]*>.*?</[^>]+>', '<XML_PAYLOAD ***>'),
+        # API XML payloads (Request, EducatedPersonFilter, RegistrySet)
+        (r'(<(?:Request|EducatedPersonFilter|RegistrySet)[^>]*>.*?</(?:Request|EducatedPersonFilter|RegistrySet)>)',
+         '<XML_API_PAYLOAD ***>'),
     ]
 
     def filter(self, record):
+        if hasattr(record, '_sanitized'):
+            return True
+        record._sanitized = True
         msg = record.getMessage()
-        # Apply all patterns
+        msg = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', msg)
         for pattern, replacement in self.SENSITIVE_PATTERNS:
             msg = re.sub(pattern, replacement, msg)
-        # Additional pass: check for common JSON key patterns
         msg = self._mask_json_sensitive_keys(msg)
-        msg = msg.replace('%', '%%')
         record.msg = msg
         record.args = ()
         # Sanitize exception traceback — exc_info bypasses msg/args filtering
@@ -93,26 +97,33 @@ class SensitiveDataFilter(logging.Filter):
             key = match.group(1).lower()
             for sk in _SENSITIVE_KEYS:
                 if sk in key:
-                    return match.group(0)[:match.start(2) - match.start(0)] + '***"'
+                    full = match.group(0)
+                    colon_pos = full.find(':')
+                    return full[:colon_pos + 1] + ' ***'
             return match.group(0)
 
-        text = re.sub(r'"(password|passwd|secret|token|api_key|apikey|api-key|auth|'
-                      r'authorization|cookie|session|jwt|refresh_token|access_token|'
-                      r'private_key|snils|снилс|inn|инн|lastname|фамилия|'
-                      r'firstname|имя|middlename|отчество)"\s*:\s*"([^"]+)"',
-                      replace_value,
-                      text,
-                      flags=re.IGNORECASE)
+        text = re.sub(
+            r'"(password|passwd|secret|token|api_key|apikey|api-key|auth|'
+            r'authorization|cookie|session|jwt|refresh_token|access_token|'
+            r'private_key|snils|снилс|inn|инн|lastname|фамилия|'
+            r'firstname|имя|middlename|отчество)"\s*:\s*'
+            r'(?:"[^"]*"|\d+(?:\.\d+)?|true|false|null|\{[^}]*\}|\[[^\]]*\])',
+            replace_value,
+            text,
+            flags=re.IGNORECASE
+        )
         return text
 
 
 def mask_sensitive(text: str) -> str:
-    """Mask middle portion of sensitive string, keep first 4 + last 4 chars."""
+    """Mask middle portion of sensitive string, keep first 2 + last 2 chars."""
     if not text:
         return ''
-    if len(text) < 10:
+    if len(text) < 6:
         return text
-    return text[:4] + '*' * (len(text) - 8) + text[-4:]
+    if len(text) < 10:
+        return text[:2] + '*' * (len(text) - 4) + text[-2:]
+    return text[:2] + '*' * (len(text) - 4) + text[-2:]
 
 
 def filter_sensitive_text(text: str) -> str:
@@ -124,11 +135,13 @@ def filter_sensitive_text(text: str) -> str:
 
 def safe_format_exception(limit: int = 3) -> str:
     """Format exception traceback without PII. Returns limited, sanitized traceback."""
-    tb_lines = traceback.format_exception(
-        type(None), None, None, limit=limit
-    ) if False else []
+    import sys
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    if exc_type is None:
+        return "No exception"
     try:
-        tb = traceback.format_exc(limit=limit)
+        tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb, limit=limit)
+        tb = ''.join(tb_lines)
         tb = filter_sensitive_text(tb)
         return tb
     except Exception:

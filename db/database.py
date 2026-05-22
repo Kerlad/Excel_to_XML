@@ -10,6 +10,8 @@ from datetime import datetime
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
 
+from utils.audit import log_audit
+
 logger = logging.getLogger(__name__)
 
 MAX_BACKUPS: int = 5
@@ -47,6 +49,20 @@ class DatabaseManager:
         if not self.db_path:
             raise RuntimeError("Database path not set")
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        self._check_integrity()
+
+    def _check_integrity(self) -> None:
+        try:
+            conn = self._get_connection()
+            cursor = conn.execute("PRAGMA integrity_check")
+            result = cursor.fetchone()
+            if result and result[0] != 'ok':
+                logger.critical("Database integrity check FAILED: %s", result[0])
+                log_audit("SECURITY_WARNING", f"Database integrity check failed: {result[0]}")
+            else:
+                logger.info("Database integrity check: OK")
+        except sqlite3.Error as e:
+            logger.warning("Database integrity check error: %s", e)
 
     def _get_connection(self) -> sqlite3.Connection:
         conn: Optional[sqlite3.Connection] = getattr(self._local, 'conn', None)
@@ -84,6 +100,7 @@ class DatabaseManager:
         conn = self._get_connection()
         for attempt in range(_BUSY_RETRIES):
             try:
+                conn.execute("BEGIN IMMEDIATE")
                 yield conn
                 conn.commit()
                 return
@@ -94,10 +111,13 @@ class DatabaseManager:
                         attempt + 1, _BUSY_RETRIES, e,
                     )
                     time.sleep(_BUSY_RETRY_DELAY)
-                    continue
-                conn.rollback()
-                logger.error("Transaction rollback after operational error: %s", e)
-                raise
+                else:
+                    conn.rollback()
+                    logger.error("Transaction rollback after operational error: %s", e)
+                    raise DatabaseLockError(
+                        f"Transaction failed after {_BUSY_RETRIES} retries: {e}"
+                    )
+                continue
             except sqlite3.DatabaseError:
                 conn.rollback()
                 logger.error("Transaction rollback after database error")
@@ -204,12 +224,22 @@ class DatabaseManager:
 
         try:
             import zipfile
-            with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                zf.setpassword(zip_password.encode('utf-8'))
-                zf.write(self.db_path, arcname=base)
+            try:
+                import pyzipper
+                with pyzipper.AESZipFile(backup_path, 'w', compression=pyzipper.ZIP_DEFLATED,
+                                          encryption=pyzipper.WZ_AES) as zf:
+                    zf.setpassword(zip_password.encode('utf-8'))
+                    zf.write(self.db_path, arcname=base)
+            except ImportError:
+                with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    zf.setpassword(zip_password.encode('utf-8'))
+                    zf.write(self.db_path, arcname=base)
             logger.info("Password-protected backup created: %s", backup_path)
         except (zipfile.BadZipFile, OSError) as e:
             logger.warning("Zip backup failed, falling back to plain copy: %s", e)
             shutil.copy2(self.db_path, backup_path.replace('.zip', ''))
             backup_path = backup_path.replace('.zip', '')
+        if os.path.exists(backup_path):
+            size_mb = os.path.getsize(backup_path) / (1024 * 1024)
+            log_audit("BACKUP", f"backup_path={backup_path}, size={size_mb:.1f}MB")
         return backup_path

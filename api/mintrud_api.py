@@ -48,6 +48,7 @@ def _save_error_response(response_bytes: bytes, status_code: int = 0):
         with open(path, "w", encoding="utf-8-sig") as f:
             f.write(text)
         logger.info("Error response saved")
+        log_audit("ERROR_RESPONSE_SAVED", f"status_code={status_code}, size={len(text)}")
     except OSError as e:
         logger.warning(f"Failed to save error response: {e}")
 
@@ -117,6 +118,7 @@ def validate_api_key(api_key: str) -> tuple[bool, str]:
         return False, "API ключ не введён"
     if len(api_key) != 32:
         return False, f"Длина ключа: {len(api_key)} (требуется 32 символа)"
+    log_audit("LOGIN", "API key validated successfully")
     return True, ""
 
 
@@ -471,7 +473,9 @@ class MintrudClient:
         
         for backend_instance, backend_name in backends_to_try:
             try:
-                logger.info(f"Trying backend {backend_name} for {url}")
+                from urllib.parse import urlparse
+                _parsed = urlparse(url)
+                logger.info("Trying backend %s for %s://%s%s", backend_name, _parsed.scheme, _parsed.netloc, _parsed.path)
                 success, status_code, response_bytes, error_msg = backend_instance.send(
                     url=url,
                     files=files,
@@ -493,10 +497,13 @@ class MintrudClient:
                     return {"success": False, "error": error_msg}
 
                 logger.info(f"SSL error, trying next backend...")
+                log_audit("TLS_ERROR", f"SSL connection failed: {str(error_msg)[:100]}")
 
             except requests.RequestException as e:
                 last_error = str(e)
                 logger.warning("Backend %s request exception: %s", backend_name, mask_sensitive(str(e)))
+                if _is_ssl_error(str(e)):
+                    log_audit("TLS_ERROR", f"SSL connection failed: {str(e)[:100]}")
                 if not _is_ssl_error(str(e)):
                     return {"success": False, "error": str(e)}
             except RuntimeError as e:
@@ -565,6 +572,7 @@ class MintrudClient:
             page_no += 1
             time.sleep(0.5)
 
+        log_audit("QUERY_SETID", f"set_id={set_id}, records={len(all_records)}")
         return {"success": True, "records": all_records, "error": None}
 
     def query_by_snils(self, api_key: str, snils: str, page_size: int = 100) -> Dict[str, Any]:

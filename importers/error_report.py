@@ -23,6 +23,8 @@ def export_error_report(error_details, duplicate_map, file_path):
         return False, "Не установлен модуль openpyxl"
 
     try:
+        from utils.logger import filter_sensitive_text
+
         wb = Workbook()
         ws = wb.active
         ws.title = "Отчёт об ошибках"
@@ -54,17 +56,23 @@ def export_error_report(error_details, duplicate_map, file_path):
                     err.get('type', 'Ошибка'),
                     err['row'],
                     err.get('field', ''),
-                    err.get('message', '')
+                    filter_sensitive_text(err.get('message', ''))
                 ]
                 ws.append(row_data)
 
         # Добавляем дубликаты
-        for key, row_labels in duplicate_map.items():
+        for key_data, row_labels in duplicate_map.items():
             rows_str = "; ".join(str(r) for r in row_labels)
-            snils, program = key
+            if isinstance(key_data, tuple) and len(key_data) == 3:
+                key_hash, program, date = key_data
+            elif isinstance(key_data, tuple) and len(key_data) == 2:
+                key_hash, program = key_data
+                date = ''
+            else:
+                key_hash, program, date = str(key_data), '', ''
             
-            # Формируем описание с аналогичными строками
-            desc = f"Дубликат: СНИЛС={snils}, Программа={program}"
+            desc = f"Дубликат: ключ={key_hash}, Программа={program}"
+            desc = filter_sensitive_text(desc)
             # Добавляем аналогичные строки
             if len(row_labels) > 1:
                 desc += f"\nАналогичные строки: {rows_str}"

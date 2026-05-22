@@ -5,6 +5,7 @@ Available on all Windows systems via win32com.
 import logging
 import os
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse
 
 from .base_backend import BaseBackend, BackendRegistry
 
@@ -101,7 +102,8 @@ class WinINETBackend(BaseBackend):
         if not WININET_AVAILABLE:
             return False, 0, b"", "WinINET not available"
 
-        logger.info(f"WinINETBackend: POST {url}")
+        parsed = urlparse(url)
+        logger.info("WinINETBackend: POST %s://%s%s", parsed.scheme, parsed.netloc, parsed.path)
 
         try:
             boundary = "----FormBoundary" + os.urandom(8).hex()
@@ -145,7 +147,8 @@ class WinINETBackend(BaseBackend):
         if params:
             url = f"{url}?{urllib.parse.urlencode(params)}"
 
-        logger.info(f"WinINETBackend: GET {url}")
+        parsed = urlparse(url)
+        logger.info("WinINETBackend: GET %s://%s%s", parsed.scheme, parsed.netloc, parsed.path)
 
         try:
             return _make_request("GET", url, None, headers, timeout, verify, proxies)

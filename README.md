@@ -131,7 +131,7 @@ py -m PyInstaller ExcelXML-Mintrud.spec
 
 [📘 API Минтруда →](docs/API_MINTTRUD.md)
 
-### Отчёты аудита безопасности (v3.0.0)
+### Отчёты аудита безопасности (v3.1.0)
 
 | Документ | Описание |
 |----------|----------|
@@ -142,7 +142,7 @@ py -m PyInstaller ExcelXML-Mintrud.spec
 | [security_checklist.md](Reports/security_checklist.md) | Чеклисты deployment, IR, disposal |
 | [dpia.md](Reports/dpia.md) | ОВЗД (Data Protection Impact Assessment) |
 | [hardening_report.md](Reports/hardening_report.md) | 18 уязвимостей устранено (3 CRITICAL) |
-| [SECURITY_AUDIT_REPORT.md](Reports/SECURITY_AUDIT_REPORT.md) | Полный аудит (v3.0.0) — 1 CRITICAL, 17 HIGH, 39 MEDIUM |
+| [SECURITY_AUDIT_REPORT.md](Reports/SECURITY_AUDIT_REPORT.md) | Полный аудит (v3.1.0) — 1 CRITICAL, 17 HIGH, 39 MEDIUM |
 | [GAP_ANALYSIS.md](Reports/GAP_ANALYSIS.md) | Матрица расхождений по 48 требованиям |
 | [COMPLIANCE.md](Reports/COMPLIANCE.md) | Соответствие 152-ФЗ, ПП 1119, ФСТЭК №21 |
 | [FIX_TASKS.md](docs/FIX_TASKS.md) | ТЗ на устранение замечаний аудита |

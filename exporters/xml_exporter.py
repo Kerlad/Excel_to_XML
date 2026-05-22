@@ -8,6 +8,8 @@ from datetime import datetime
 from xml.etree.ElementTree import Element, SubElement, ElementTree
 import xml.etree.ElementTree as ET
 
+from utils.audit import log_audit
+
 logger = logging.getLogger(__name__)
 
 # Названия программ согласно XSD (learnProgram: название)
@@ -166,8 +168,12 @@ def build_xml(records, org_settings=None):
         return xml_declaration + b'\n' + rough_string
 
 
+import re as _re
+_ILLEGAL_XML_CHARS = _re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+
 def _escape_xml(s: str) -> str:
-    """Escape XML special characters."""
+    """Escape XML special characters and remove illegal control chars."""
+    s = _ILLEGAL_XML_CHARS.sub('', s)
     s = s.replace('&', '&amp;')
     s = s.replace('<', '&lt;')
     s = s.replace('>', '&gt;')
@@ -218,9 +224,33 @@ def export_to_xml(records, file_path, org_settings=None):
 
         xml_content = build_xml(records, org_settings)
 
+        xsd_path = os.path.join(os.path.dirname(__file__), '..', 'schemas', 'educated_person_import_v1.0.9.xsd')
+        if os.path.exists(xsd_path):
+            try:
+                from lxml import etree
+                import io
+                parser = etree.XMLParser(
+                    resolve_entities=False,
+                    no_network=True,
+                    dtd_validation=False,
+                    huge_tree=False,
+                )
+                schema_doc = etree.parse(xsd_path, parser)
+                schema = etree.XMLSchema(schema_doc)
+                xml_doc = etree.parse(io.BytesIO(xml_content), parser)
+                schema.assertValid(xml_doc)
+            except ImportError:
+                pass
+            except etree.DocumentInvalid as e:
+                log_audit("XML_VALIDATION_ERROR", f"Output XML invalid: {e}")
+                return False, f"Валидация XSD не пройдена: {e}"
+            except Exception as e:
+                logger.warning("XSD validation skipped: %s", e)
+
         with open(file_path, 'wb') as f:
             f.write(xml_content)
 
+        log_audit("EXPORT_XML", f"records={len(records)}, file={os.path.basename(file_path)}")
         return True, f"Файл сохранён: {file_path}\nЗаписей: {len(records)}"
 
     except PermissionError:

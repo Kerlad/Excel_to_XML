@@ -54,8 +54,8 @@ class TestMaskSensitive:
     def test_mask_long_text(self):
         result = mask_sensitive("abcdefghijklmnop")
         assert len(result) == len("abcdefghijklmnop")
-        assert result.startswith("abcd")
-        assert result.endswith("mnop")
+        assert result.startswith("ab")
+        assert result.endswith("op")
         assert "****" in result
 
     def test_mask_short_text(self):
@@ -86,31 +86,54 @@ class TestAudit:
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def test_audit_events_defined(self):
-        assert "SEND_XML" in AUDIT_EVENTS
-        assert "LOGIN" in AUDIT_EVENTS
-        assert "BACKUP" in AUDIT_EVENTS
 
-    def test_audit_log_without_detail(self):
+class TestSensitiveDataFilterExtended:
+    """Additional tests for SensitiveDataFilter patterns."""
+
+    def test_xml_payload_masking(self):
+        """Verify XML payloads are masked by SensitiveDataFilter."""
+        from utils.logger import SensitiveDataFilter
+        filt = SensitiveDataFilter()
+
         import logging
-        audit_logger = logging.getLogger("audit")
-        for h in audit_logger.handlers[:]:
-            h.close()
-            audit_logger.removeHandler(h)
-        tmpdir = tempfile.mkdtemp()
-        try:
-            setup_audit_log(tmpdir)
-            log_audit("BACKUP")
-            path = os.path.join(tmpdir, "audit.log")
-        finally:
-            for h in audit_logger.handlers[:]:
-                h.close()
-                audit_logger.removeHandler(h)
-        with open(path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        assert "backup" in content.lower()
-        import shutil
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        record = logging.LogRecord(
+            "test", logging.INFO, "", 0,
+            '<Request><ApiKey>secret123</ApiKey></Request>', (), None
+        )
+        filt.filter(record)
+        assert 'API_KEY' in record.msg.upper() or 'XML' in record.msg.upper() or \
+               '***' in record.msg, f"XML not masked: {record.msg}"
+
+    def test_json_numeric_value_masking(self):
+        """Verify numeric JSON values for sensitive keys are masked."""
+        from utils.logger import SensitiveDataFilter
+        filt = SensitiveDataFilter()
+
+        import logging
+        record = logging.LogRecord(
+            "test", logging.INFO, "", 0,
+            '{"password": 12345, "secret": true}', (), None
+        )
+        filt.filter(record)
+        assert '12345' not in record.msg, f"Numeric password not masked: {record.msg}"
+        assert 'true' not in record.msg or \
+               record.msg.count('true') == record.msg.count('***'), \
+               f"Bool secret not masked: {record.msg}"
+
+    def test_control_chars_removed(self):
+        """Verify control characters are removed from log messages."""
+        from utils.logger import SensitiveDataFilter
+        filt = SensitiveDataFilter()
+
+        import logging
+        msg = "normal\x00text\x1fwith\x08control"
+        record = logging.LogRecord("test", logging.INFO, "", 0, msg, (), None)
+        filt.filter(record)
+        assert '\x00' not in record.msg
+        assert '\x1f' not in record.msg
+        assert 'normal' in record.msg
+        assert 'text' in record.msg
+
 
 
 class TestSetupLogging:

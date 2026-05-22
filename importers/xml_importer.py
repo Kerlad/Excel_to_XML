@@ -5,13 +5,12 @@ import os
 import logging
 
 from utils.constants import VALID_PROGRAMS_SET as VALID_PROGRAMS
-from utils.constants import MAX_XML_ELEMENTS, MAX_XML_DEPTH
+from utils.constants import MAX_XML_ELEMENTS, MAX_XML_DEPTH, MAX_XML_FILE_SIZE_MB
 from utils.exceptions import FileTooLargeError, XmlSecurityError
 from utils.xml_safe import safe_parse_xml, safe_fromstring_xml
 
 logger = logging.getLogger(__name__)
 
-MAX_XML_SIZE_MB = 100
 NS = {'xs': 'http://www.w3.org/2001/XMLSchema'}
 
 
@@ -25,9 +24,10 @@ def load_xml(file_path, xsd_path=None):
     Возвращает (records, error_count, error_messages, xsd_errors)
     xsd_errors — список ошибок XSD-валидации (если xsd_path указан)
     """
+    file_path = os.path.realpath(file_path)
     size_mb = os.path.getsize(file_path) / (1024 * 1024)
-    if size_mb > MAX_XML_SIZE_MB:
-        return None, 0, [f"Файл превышает лимит {MAX_XML_SIZE_MB} МБ ({size_mb:.1f} МБ)"], []
+    if size_mb > MAX_XML_FILE_SIZE_MB:
+        return None, 0, [f"Файл превышает лимит {MAX_XML_FILE_SIZE_MB} МБ ({size_mb:.1f} МБ)"], []
 
     try:
         tree = safe_parse_xml(file_path)
@@ -37,11 +37,12 @@ def load_xml(file_path, xsd_path=None):
     except ValueError as e:
         return None, 0, [f"Ошибка парсинга XML: {e}"], []
 
-    # XSD-валидация (если указана схема)
+    # XSD-валидация (если указана схема) — переиспользуем уже распаршенное дерево
     xsd_errors = []
     if xsd_path and os.path.exists(xsd_path):
         try:
             from lxml import etree
+            import io
             parser = etree.XMLParser(
                 resolve_entities=False,
                 no_network=True,
@@ -50,7 +51,8 @@ def load_xml(file_path, xsd_path=None):
             )
             schema_doc = etree.parse(xsd_path, parser)
             schema = etree.XMLSchema(schema_doc)
-            xml_doc = etree.parse(file_path, parser)
+            xml_bytes = etree.tostring(root)
+            xml_doc = etree.parse(io.BytesIO(xml_bytes), parser)
             schema.assertValid(xml_doc)
             from utils.audit import log_audit
             log_audit("XML_VALIDATION_ERROR", "XSD validation passed")

@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.1.0 "Version Bump"
+
+### Version Update (2026-05-22)
+- Application version updated from 3.0.0 to 3.1.0 across all sources
+- Updated VERSION constant, version_info.txt, documentation headers, and report metadata
+
 ## v3.0.1 "Security Audit & Compliance"
 
 ### Documentation (2026-05-22)

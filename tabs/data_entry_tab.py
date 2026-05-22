@@ -15,9 +15,10 @@ from utils.error_utils import safe_message_box
 from PySide6.QtCore import Qt, Signal, QUrl, QThread
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from importers.xml_importer import load_xml
-from utils.crypto import encrypt_data, decrypt_data, CryptoPassphraseRequiredError
+from utils.crypto import encrypt_data, decrypt_data, compute_org_settings_hmac, CryptoPassphraseRequiredError
 from utils.constants import VALID_PROGRAMS_SET
 from utils.workers import ExcelImportWorker
+from utils.audit import log_audit
 
 logger = logging.getLogger(__name__)
 
@@ -618,8 +619,10 @@ class DataEntryTab(QWidget):
 
         try:
             encrypted = encrypt_data(settings)
+            wrapper = {"data": encrypted}
+            wrapper["hmac"] = compute_org_settings_hmac(wrapper)
             with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump({"data": encrypted}, f, ensure_ascii=False, indent=4)
+                json.dump(wrapper, f, ensure_ascii=False, indent=4)
             QMessageBox.information(self, "Успех", "Данные сохранены (зашифрованы)")
         except Exception as e:
             logger.exception("Error saving org settings")
@@ -714,6 +717,7 @@ class DataEntryTab(QWidget):
                 self._import_status_label.setVisible(False)
                 return
 
+            log_audit("IMPORT_XML", f"records={len(records)}, errors={xml_error_count}")
             self._finalize_import(records, merge_mode, existing_keys, [], set())
 
         except Exception as e:
@@ -789,6 +793,7 @@ class DataEntryTab(QWidget):
             return
 
         error_rows_set = {e['row'] for e in error_details}
+        log_audit("IMPORT_XLSX", f"rows={len(records)}, records={len(records)}, errors={error_count}")
         self._finalize_import(records, self._import_merge_mode, self._import_existing_keys,
                               error_details, error_rows_set)
 
@@ -813,6 +818,7 @@ class DataEntryTab(QWidget):
 
     def _finalize_import(self, records, merge_mode, existing_keys, error_details, error_rows_set):
         """Общая финализация импорта: дедупликация, перезапись полей, эмит данных, диалог результата."""
+        # Тип: Dict[Union[str, Tuple[str, str, str]], List[int]]
         duplicate_map = {}
         existing_rows_map = {}
         if not merge_mode and self.get_existing_keys_callback:
@@ -1021,6 +1027,14 @@ class DataEntryTab(QWidget):
         parent_dialog.close()
 
     def create_template(self):
+        reply = QMessageBox.warning(
+            self, "Экспорт данных",
+            "⚠️ Файл будет содержать персональные данные (ФИО, СНИЛС).\n"
+            "Убедитесь, что файл сохраняется на зашифрованном диске (BitLocker).",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+        )
+        if reply != QMessageBox.StandardButton.Ok:
+            return
         try:
             wb = Workbook()
             ws = wb.active

@@ -1,4 +1,4 @@
-# Security Hardening Report v3.0.0
+# Security Hardening Report v3.1.0
 
 **Date**: 21.05.2026
 **Project**: Excel_to_XML (ИСПДн)
