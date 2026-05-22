@@ -217,6 +217,22 @@ def _restrict_file_access(filepath: Path) -> None:
 
 # ============ Key Metadata (signed with HMAC) ============
 
+def _compute_metadata_hmac_legacy(meta: dict) -> str:
+    """Legacy HMAC computation using DPAPI-encrypted file bytes.
+    Kept for migration: old metadata was signed against file bytes
+    which change on DPAPI re-encryption."""
+    kd = _key_dir()
+    kf = kd / 'master.key'
+    raw = b""
+    try:
+        if kf.exists():
+            raw = kf.read_bytes()
+    except OSError:
+        pass
+    serialized = json.dumps(meta, sort_keys=True, ensure_ascii=False).encode('utf-8')
+    return hmac.new(raw[:32] if len(raw) >= 32 else raw, serialized, hashlib.sha256).hexdigest()[:16]
+
+
 def _compute_metadata_hmac(meta: dict) -> str:
     """Compute HMAC-SHA256 for metadata integrity using raw master key bytes.
     Uses the in-memory raw key (stable) instead of DPAPI-encrypted file bytes
@@ -255,6 +271,7 @@ def _save_key_metadata(meta: dict) -> None:
     kd = _key_dir()
     kd.mkdir(parents=True, exist_ok=True)
     mf = kd / _KEY_METADATA_FILE
+    meta.pop(_KEY_INTEGRITY_TAG, None)
     meta[_KEY_INTEGRITY_TAG] = _compute_metadata_hmac(meta)
     try:
         with open(str(mf), 'w', encoding='utf-8') as f:
@@ -265,17 +282,23 @@ def _save_key_metadata(meta: dict) -> None:
 
 
 def verify_metadata_integrity() -> bool:
-    """Verify metadata file has not been tampered with."""
+    """Verify metadata file has not been tampered with.
+    Supports migration from legacy HMAC (file-based) to stable HMAC (raw key)."""
     meta = _load_key_metadata()
     stored_hmac = meta.pop(_KEY_INTEGRITY_TAG, None)
     if stored_hmac is None:
         logger.warning("Metadata integrity: no HMAC tag found (legacy metadata)")
         return True
     computed = _compute_metadata_hmac(meta)
-    if not hmac.compare_digest(stored_hmac, computed):
-        logger.critical("SECURITY: Key metadata integrity check FAILED!")
-        return False
-    return True
+    if hmac.compare_digest(stored_hmac, computed):
+        return True
+    legacy = _compute_metadata_hmac_legacy(meta)
+    if hmac.compare_digest(stored_hmac, legacy):
+        logger.info("Metadata integrity: legacy HMAC matched — migrating to stable HMAC")
+        _save_key_metadata(meta)
+        return True
+    logger.critical("SECURITY: Key metadata integrity check FAILED!")
+    return False
 
 
 # ============ Passphrase Operations ============

@@ -5,6 +5,7 @@ Unlock requires passphrase (if set).
 Locked screen is blurred and overlaid with semi-transparent dark layer.
 """
 import os
+import json
 import logging
 from datetime import datetime
 from PySide6.QtWidgets import (
@@ -16,7 +17,7 @@ from PySide6.QtGui import QPixmap, QPainter, QImage, QColor, QRegion
 from PySide6.QtGui import QPixmap, QPainter, QImage, QColor
 from utils.crypto import verify_passphrase, is_passphrase_protected, CryptoPassphraseRequiredError
 from utils.audit import log_audit
-from utils.app_paths import get_resource_dir
+from utils.app_paths import get_resource_dir, get_app_data_dir
 from utils.error_utils import safe_message_box
 
 logger = logging.getLogger(__name__)
@@ -93,11 +94,8 @@ class LockDialog(QDialog):
         center.setAlignment(Qt.AlignCenter)
 
         card = QWidget()
+        card.setObjectName("lockCard")
         card.setFixedSize(440, 340)
-        card.setStyleSheet(
-            "QWidget { background-color: palette(window); "
-            "border: 1px solid palette(mid); border-radius: 8px; }"
-        )
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(28, 24, 28, 20)
         card_layout.setSpacing(12)
@@ -114,30 +112,24 @@ class LockDialog(QDialog):
         card_layout.addWidget(icon_lbl)
 
         title = QLabel("Сессия заблокирована")
+        title.setObjectName("lockTitle")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet(
-            "font-size: 18px; font-weight: bold; color: palette(text); background: transparent;"
-        )
         card_layout.addWidget(title)
 
         desc = QLabel(
             "Приложение было заблокировано из-за отсутствия активности.\n"
             "Введите парольную фразу для продолжения работы."
         )
+        desc.setObjectName("lockDesc")
         desc.setAlignment(Qt.AlignCenter)
         desc.setWordWrap(True)
-        desc.setStyleSheet("font-size: 13px; color: palette(mid); background: transparent;")
         card_layout.addWidget(desc)
 
         self.pwd_input = QLineEdit()
+        self.pwd_input.setObjectName("lockPwdInput")
         self.pwd_input.setEchoMode(QLineEdit.Password)
         self.pwd_input.setPlaceholderText("Парольная фраза")
         self.pwd_input.setMinimumHeight(40)
-        self.pwd_input.setStyleSheet(
-            "QLineEdit { font-size: 14px; padding: 4px 12px; "
-            "border: 1px solid palette(mid); border-radius: 4px; }"
-            "QLineEdit:focus { border: 1px solid #27AE60; }"
-        )
         self.pwd_input.returnPressed.connect(self._try_unlock)
         card_layout.addWidget(self.pwd_input)
 
@@ -145,29 +137,19 @@ class LockDialog(QDialog):
         btn_row.addStretch()
 
         self.exit_btn = QPushButton("Выход")
+        self.exit_btn.setObjectName("lockExitBtn")
         self.exit_btn.setMinimumHeight(40)
         self.exit_btn.setMinimumWidth(100)
-        self.exit_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: palette(text); "
-            "border: 1px solid palette(mid); padding: 8px 16px; "
-            "border-radius: 5px; font-size: 13px; }"
-            "QPushButton:hover { background-color: rgba(128, 128, 128, 40); }"
-        )
         self.exit_btn.clicked.connect(self._exit_app)
         btn_row.addWidget(self.exit_btn)
 
         btn_row.addSpacing(12)
 
         self.lock_btn = QPushButton("Разблокировать")
+        self.lock_btn.setObjectName("lockUnlockBtn")
         self.lock_btn.setMinimumHeight(40)
         self.lock_btn.setMinimumWidth(180)
         self.lock_btn.setDefault(True)
-        self.lock_btn.setStyleSheet(
-            "QPushButton { background-color: #27AE60; color: white; border: none; "
-            "padding: 8px 24px; border-radius: 5px; font-weight: bold; font-size: 13px; }"
-            "QPushButton:hover { background-color: #219A52; }"
-            "QPushButton:pressed { background-color: #1E8449; }"
-        )
         self.lock_btn.clicked.connect(self._try_unlock)
         btn_row.addWidget(self.lock_btn)
         card_layout.addLayout(btn_row)
@@ -218,20 +200,18 @@ class LockDialog(QDialog):
         self.done(EXIT_CODE_QUIT)
 
     def _shake_input(self, placeholder: str):
-        self.pwd_input.setStyleSheet(
-            "QLineEdit { font-size: 14px; padding: 4px 12px; "
-            "border: 2px solid #E74C3C; border-radius: 4px; }"
-        )
+        self.pwd_input.setProperty("danger", True)
+        self.pwd_input.style().unpolish(self.pwd_input)
+        self.pwd_input.style().polish(self.pwd_input)
         self.pwd_input.clear()
         self.pwd_input.setPlaceholderText(placeholder)
         QTimer.singleShot(2000, self._restore_input_style)
 
     def _restore_input_style(self):
-        self.pwd_input.setStyleSheet(
-            "QLineEdit { font-size: 14px; padding: 4px 12px; "
-            "border: 1px solid palette(mid); border-radius: 4px; }"
-            "QLineEdit:focus { border: 1px solid #27AE60; }"
-        )
+        self.pwd_input.setProperty("danger", False)
+        self.pwd_input.style().unpolish(self.pwd_input)
+        self.pwd_input.style().polish(self.pwd_input)
+        self.pwd_input.setPlaceholderText("Парольная фраза")
 
     def closeEvent(self, event):
         if not self._unlocked:
@@ -271,6 +251,7 @@ class LockWarningDialog(QDialog):
             f"Сессия будет заблокирована через {remaining_sec} секунд\n"
             "из-за отсутствия активности."
         )
+        msg.setObjectName("lockWarningMsg")
         msg.setWordWrap(True)
         msg.setAlignment(Qt.AlignCenter)
         layout.addWidget(msg)
@@ -279,12 +260,8 @@ class LockWarningDialog(QDialog):
         btn_row.addStretch()
 
         ok_btn = QPushButton("Продолжить работу")
+        ok_btn.setObjectName("lockWarningBtn")
         ok_btn.setMinimumHeight(36)
-        ok_btn.setStyleSheet(
-            "QPushButton { background-color: #2980B9; color: white; border: none; "
-            "padding: 6px 16px; border-radius: 4px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #2471A3; }"
-        )
         ok_btn.clicked.connect(self.accept)
         btn_row.addWidget(ok_btn)
         layout.addLayout(btn_row)
@@ -301,7 +278,7 @@ class AutoLockManager(QObject):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self._enabled = False
-        self._timeout_minutes = DEFAULT_TIMEOUT_MINUTES
+        self._timeout_minutes = self._load_timeout()
         self._last_activity = datetime.now()
         self._locked = False
         self._warning_shown = False
@@ -313,6 +290,29 @@ class AutoLockManager(QObject):
         self._timer.start()
 
         self._check_passphrase_state()
+
+    def _settings_path(self) -> str:
+        return os.path.join(get_app_data_dir(), "auto_lock_settings.json")
+
+    def _load_timeout(self) -> int:
+        path = self._settings_path()
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return max(1, min(int(data.get("timeout_minutes", DEFAULT_TIMEOUT_MINUTES)), 120))
+        except Exception as e:
+            logger.debug("AutoLock: failed to load timeout setting: %s", e)
+        return DEFAULT_TIMEOUT_MINUTES
+
+    def _save_timeout(self):
+        path = self._settings_path()
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"timeout_minutes": self._timeout_minutes}, f)
+        except Exception as e:
+            logger.debug("AutoLock: failed to save timeout setting: %s", e)
 
     def _check_passphrase_state(self):
         self._enabled = is_passphrase_protected()
@@ -342,6 +342,7 @@ class AutoLockManager(QObject):
         self._timeout_minutes = max(1, min(minutes, 120))
         self._last_activity = datetime.now()
         self._warning_shown = False
+        self._save_timeout()
 
     def refresh(self):
         self._check_passphrase_state()

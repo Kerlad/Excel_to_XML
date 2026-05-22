@@ -107,8 +107,8 @@ class MainWindow(QMainWindow):
             (self.data_view_tab, _nl("Просмотр данных"), sp.SP_FileDialogDetailedView),
             (self.data_transfer_tab, _nl("Передача данных"), sp.SP_ComputerIcon),
             (self.exam_journal_tab, _nl("Журнал проверки знаний"), sp.SP_FileDialogContentsView),
-            (self.protocol_tab, "Протокол", sp.SP_FileDialogInfoView),
-            (self.single_worker_tab, _nl("Протокол одиночного"), sp.SP_FileDialogListView),
+            (self.protocol_tab, _nl("Настройка протоколов"), sp.SP_FileDialogInfoView),
+            (self.single_worker_tab, _nl("Быстрый протокол"), sp.SP_FileDialogListView),
             (self.employee_summary_tab, _nl("Сводка по сотрудникам"), sp.SP_CommandLink),
         ]
         for tab, title, pixmap in tab_data:
@@ -222,7 +222,8 @@ class MainWindow(QMainWindow):
 
     def _open_proxy_settings(self):
         for i in range(self.tabs.count()):
-            if "Передача данных" in self.tabs.tabText(i):
+            text = self.tabs.tabText(i).replace("\n", " ")
+            if "Передача данных" in text:
                 self.tabs.setCurrentIndex(i)
                 break
         self.data_transfer_tab.scroll_to_proxy()

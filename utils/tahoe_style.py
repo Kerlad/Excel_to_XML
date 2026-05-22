@@ -1087,6 +1087,82 @@ def get_global_stylesheet(theme: str = "light") -> str:
             color: {c.TEXT_PRIMARY};
         }}
 
+        /* ============ LockDialog ============ */
+        #lockCard {{
+            background-color: {c.SURFACE_BG};
+            border: 1px solid {c.BORDER_LIGHT};
+            border-radius: 12px;
+        }}
+        #lockTitle {{
+            font-size: 18px;
+            font-weight: bold;
+            color: {c.TEXT_PRIMARY};
+            background: transparent;
+        }}
+        #lockDesc {{
+            font-size: 13px;
+            color: {c.TEXT_SECONDARY};
+            background: transparent;
+        }}
+        #lockPwdInput {{
+            font-size: 14px;
+            padding: 4px 12px;
+            border: 1px solid {c.BORDER_LIGHT};
+            border-radius: 4px;
+            background-color: {c.INPUT_BG};
+            color: {c.TEXT_PRIMARY};
+        }}
+        #lockPwdInput:focus {{
+            border: 1px solid {c.PRIMARY};
+        }}
+        #lockPwdInput[danger="true"] {{
+            border: 2px solid {c.ERROR};
+        }}
+        #lockExitBtn {{
+            background-color: transparent;
+            color: {c.TEXT_PRIMARY};
+            border: 1px solid {c.BORDER_LIGHT};
+            padding: 8px 16px;
+            border-radius: 5px;
+            font-size: 13px;
+        }}
+        #lockExitBtn:hover {{
+            background-color: {highlight_bg};
+        }}
+        #lockUnlockBtn {{
+            background-color: {c.SUCCESS};
+            color: {c.TEXT_ON_ACCENT};
+            border: none;
+            padding: 8px 24px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 13px;
+        }}
+        #lockUnlockBtn:hover {{
+            background-color: {c.SUCCESS}dd;
+        }}
+        #lockUnlockBtn:pressed {{
+            background-color: {c.SUCCESS}bb;
+        }}
+
+        /* ============ LockWarningDialog ============ */
+        #lockWarningMsg {{
+            font-size: 13px;
+            color: {c.TEXT_PRIMARY};
+            background: transparent;
+        }}
+        #lockWarningBtn {{
+            background-color: {c.PRIMARY};
+            color: {c.TEXT_ON_ACCENT};
+            border: none;
+            padding: 6px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+        }}
+        #lockWarningBtn:hover {{
+            background-color: {c.PRIMARY}dd;
+        }}
+
         /* ============ AboutDialog ============ */
         #aboutTitleLabel {{
             font-size: 16px;
@@ -1158,6 +1234,27 @@ def get_global_stylesheet(theme: str = "light") -> str:
             line-height: 1.5;
             padding: 2px 0;
             background-color: transparent;
+        }}
+        #helpTocBtn {{
+            text-align: left;
+            padding: 6px 14px;
+            font-size: 12px;
+            border: none;
+            border-radius: 0;
+            color: {c.TEXT_PRIMARY};
+            background-color: transparent;
+        }}
+        #helpTocBtn:hover {{
+            background-color: {highlight_bg};
+        }}
+        #helpTocBtn:pressed {{
+            background-color: rgba(128, 128, 128, 50);
+        }}
+        #helpTocBtn[selected="true"] {{
+            background-color: {highlight_bg};
+            border-left: 3px solid {c.PRIMARY};
+            color: {c.PRIMARY};
+            font-weight: bold;
         }}
 
         /* ============ QFileDialog ============ */

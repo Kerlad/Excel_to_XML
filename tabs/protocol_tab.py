@@ -82,7 +82,7 @@ class ProtocolTab(QWidget):
         main_layout.setSpacing(8)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_tab1(), "Данные протокола и организации")
+        self.tabs.addTab(self._build_tab1(), "Данные организации")
         self.tabs.addTab(self._build_tab2(), "Состав комиссии")
         self.tabs.addTab(self._build_tab3(), "Программы обучения")
 
@@ -118,17 +118,9 @@ class ProtocolTab(QWidget):
         org_layout.addRow("Приказ о создании комиссии:", order_row)
         layout.addWidget(org_group)
 
-        proto_group = QGroupBox("Протокол")
-        proto_layout = QFormLayout(proto_group)
         self.protocol_combo = QComboBox()
-        self.protocol_combo.setMinimumWidth(200)
         self.protocol_combo.currentTextChanged.connect(self._on_protocol_selected)
-        proto_layout.addRow("№ протокола:", self.protocol_combo)
-
         self.exam_date_input = QLineEdit()
-        self.exam_date_input.setPlaceholderText("ДД.ММ.ГГГГ")
-        proto_layout.addRow("Дата проверки знаний:", self.exam_date_input)
-        layout.addWidget(proto_group)
 
         layout.addStretch()
         return w
@@ -164,16 +156,14 @@ class ProtocolTab(QWidget):
         members_inner = QVBoxLayout(members_group)
         members_inner.setSpacing(6)
         members_inner.addWidget(self._members_scroll)
-
-        add_member_btn = QPushButton("+ Добавить члена комиссии")
-        add_member_btn.setObjectName("addMemberBtn")
-        add_member_btn.clicked.connect(self._add_member_card)
-        members_inner.addWidget(add_member_btn)
         layout.addWidget(members_group)
 
         self._add_member_card("Член комиссии №1")
         self._add_member_card("Член комиссии №2")
         self._add_member_card("Член комиссии №3")
+
+        for card in self.member_cards:
+            card.remove_btn.hide()
 
         union_group = QGroupBox("Представитель профсоюза")
         union_layout = QFormLayout(union_group)
@@ -201,6 +191,8 @@ class ProtocolTab(QWidget):
         return w
 
     def _add_member_card(self, title=None, fio="", position=""):
+        if len(self.member_cards) >= 3:
+            return
         idx = len(self.member_cards) + 1
         if title is None:
             title = f"Член комиссии №{idx}"
@@ -237,7 +229,7 @@ class ProtocolTab(QWidget):
 
         self.programs_table = QTableWidget()
         self.programs_table.setColumnCount(4)
-        self.programs_table.setHorizontalHeaderLabels(["№ программы", "Название", "Номер документа", "Часы"])
+        self.programs_table.setHorizontalHeaderLabels(["№\nпрограммы", "Название", "Номер документа", "Часы"])
         self.programs_table.setAlternatingRowColors(True)
         self.programs_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.programs_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -249,6 +241,8 @@ class ProtocolTab(QWidget):
         self.programs_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.programs_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         self.programs_table.setColumnWidth(2, 200)
+        header = self.programs_table.horizontalHeader()
+        header.setDefaultSectionSize(40)
         self.programs_table.doubleClicked.connect(self._on_program_double_click)
         self.programs_table.setObjectName("programsTable")
         layout.addWidget(self.programs_table, 1)
@@ -402,8 +396,6 @@ class ProtocolTab(QWidget):
             "union_fio": self.union_fio_input.text().strip(),
             "union_position": self.union_pos_input.text().strip(),
         }
-        if len(members) > 3:
-            data["extra_members"] = members[3:]
         return data
 
     def _apply_commission_data(self, data):
@@ -430,10 +422,15 @@ class ProtocolTab(QWidget):
         extra = data.get("extra_members", [])
         all_members = list(base_members)
         for em in extra:
+            if len(all_members) >= 3:
+                break
             all_members.append((em.get("fio", ""), em.get("position", "")))
 
         for i, (fio, pos) in enumerate(all_members):
             self._add_member_card(f"Член комиссии №{i + 1}", fio, pos)
+
+        for card in self.member_cards:
+            card.remove_btn.hide()
 
     def _save_commission_data(self):
         data = self._collect_commission_data()
