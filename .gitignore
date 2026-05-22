@@ -43,9 +43,9 @@ log/
 # Project specific
 .opencode/
 
-# Test generated data
-test_*.xlsx
-test_*.xml
+# Test generated data (root only, keep tests/data/)
+/test_*.xlsx
+/test_*.xml
 generate_test_data.py
 mock_payloads/
 generated/
@@ -79,3 +79,4 @@ org_settings.json
 .DS_Store
 Thumbs.db
 QR.jpg
+.opencode

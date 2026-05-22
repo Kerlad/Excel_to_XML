@@ -1,5 +1,23 @@
 # Changelog
 
+## v3.0.1 "Security Audit & Compliance"
+
+### Documentation (2026-05-22)
+- **SECURITY_AUDIT_REPORT.md** — Full security audit report: 1 CRITICAL, 17 HIGH, 39 MEDIUM findings
+- **COMPLIANCE.md** — Comprehensive 152-ФЗ / ПП №1119 / ФСТЭК №21 compliance matrix
+- **PRIVACY.md** — Privacy policy document per 152-ФЗ (privacy-by-design)
+- **DEPLOYMENT.md** — Secure deployment guide (hardened)
+- **GAP_ANALYSIS.md** — Gap analysis matrix across 48 requirements
+- **AGENTS.md** — Updated with audit findings and compliance requirements
+
+### Security Audit Findings Summary
+- **CRITICAL**: Audit HMAC is NEVER verified (security theater)
+- **HIGH**: 17/34 audit events never emitted (dead code); SNILS leak in xlsx_importer error messages
+- **HIGH**: Master key lives in module-level global, not zeroed; no thread safety in crypto
+- **HIGH**: XML pattern in SensitiveDataFilter is broken (trailing regex anchor)
+- **MEDIUM**: TOCTOU in XSD validation (file read twice); PKWARE ZipCrypto for backups
+- **MEDIUM**: No retention policy, no secure delete, no clipboard auto-clear
+
 ## v2.2.0 "Logging & Observability"
 
 ### Logging System Overhaul

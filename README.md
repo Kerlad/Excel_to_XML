@@ -142,6 +142,17 @@ py -m PyInstaller ExcelXML-Mintrud.spec
 | [security_checklist.md](Reports/security_checklist.md) | Чеклисты deployment, IR, disposal |
 | [dpia.md](Reports/dpia.md) | ОВЗД (Data Protection Impact Assessment) |
 | [hardening_report.md](Reports/hardening_report.md) | 18 уязвимостей устранено (3 CRITICAL) |
+| [SECURITY_AUDIT_REPORT.md](Reports/SECURITY_AUDIT_REPORT.md) | Полный аудит (v3.0.0) — 1 CRITICAL, 17 HIGH, 39 MEDIUM |
+| [GAP_ANALYSIS.md](Reports/GAP_ANALYSIS.md) | Матрица расхождений по 48 требованиям |
+| [COMPLIANCE.md](Reports/COMPLIANCE.md) | Соответствие 152-ФЗ, ПП 1119, ФСТЭК №21 |
+| [FIX_TASKS.md](docs/FIX_TASKS.md) | ТЗ на устранение замечаний аудита |
+
+### Политика обработки и развёртывание
+
+| Документ | Описание |
+|----------|----------|
+| [PRIVACY.md](docs/PRIVACY.md) | Политика обработки ПДн (privacy-by-design) |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Руководство по развёртыванию (hardened) |
 
 ### Прочее
 - [📄 Техническое задание](docs/Техническое_задание.md) — полное ТЗ с разделом 9 по ИБ
@@ -176,20 +187,25 @@ Excel_to_XML/
 │   ├── error_utils.py         ├── proxy_manager.py      ├── app_paths.py
 │   └── ... (dialog_base, about_dialog, help_dialog, passphrase_dialog и др.)
 ├── schema/                    # XSD-схемы
-├── tests/                     # 389 тестов
+├── tests/                     # 389+ тестов
+│   └── data/                  # Тестовые данные (XLSX, XML)
 ├── docs/                      # Документация
 │   ├── SECURITY.md            # Архитектура безопасности
 │   ├── HARDENING.md           # Hardening ОС
 │   ├── OPSEC_GUIDE.md         # Эксплуатация, IR, ключи
 │   ├── API_MINTTRUD.md        # API Минтруда
+│   ├── PRIVACY.md             # Политика обработки ПДн
+│   ├── DEPLOYMENT.md          # Развёртывание (hardened)
+│   ├── FIX_TASKS.md           # ТЗ на устранение замечаний
 │   ├── MOK.md                 # Mock-тесты (спецификация)
 │   ├── ROL_API_Registry_Section.md  # API реестра РОЛ
-│   └── Техническое_задание.md # ТЗ
-├── Reports/                   # Отчёты аудита
+│   └── archive/               # Архивные/черновики документов
+├── Reports/                   # Отчёты аудита и compliance
 │   ├── compliance_audit.md    ├── threat_model.md
 │   ├── risk_register.md       ├── data_flow.md
 │   ├── security_checklist.md  ├── dpia.md
-│   └── hardening_report.md
+│   ├── hardening_report.md    ├── SECURITY_AUDIT_REPORT.md
+│   ├── GAP_ANALYSIS.md        └── COMPLIANCE.md
 ├── AGENTS.md                  # Инструкция для AI
 ├── CHANGELOG.md               # История версий
 ├── requirements.txt           # Зависимости
