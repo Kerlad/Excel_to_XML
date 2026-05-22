@@ -94,6 +94,7 @@ class DatabaseManager:
             conn.rollback()
             logger.error("Database error in get_conn, rolling back")
             raise
+        conn.commit()
 
     @contextmanager
     def transaction(self) -> sqlite3.Connection:

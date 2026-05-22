@@ -17,7 +17,7 @@ from utils.error_utils import safe_message_box
 from utils.dialog_base import BaseDialog
 from utils.field_validators import ValidatedLineEdit
 from utils.constants import VALID_PROGRAMS, VALID_PROGRAMS_SET, DEFAULT_PROGRAMS, PROGRAM_TITLES
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QColor, QFont, QPalette
 
 from db import (
@@ -597,7 +597,7 @@ class EmployeeSummaryTab(QWidget):
         self.stat_sync = QLabel("нет"); self.stat_sync.setObjectName("statValueInfo")
 
         for value_lbl, label, obj_name in [
-            (self.stat_total, "Всего сотрудников", "statCardBlue"),
+            (self.stat_total, "Подлежащих\nобучению", "statCardBlue"),
             (self.stat_trained, "Обучено сотрудников", "statCardGreen"),
             (self.stat_untrained, "Не обучено сотрудников", "statCardRed"),
             (self.stat_expired, "Просрочено сотрудников", "statCardYellow"),
@@ -656,6 +656,12 @@ class EmployeeSummaryTab(QWidget):
     def _build_period_row(self):
         w = QWidget(); w.setObjectName("periodRowContainer")
         layout = QHBoxLayout(w); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(8)
+
+        self.stat_total_info = QLabel("всего 0 сотрудников")
+        self.stat_total_info.setObjectName("statTotalInfo")
+        layout.addWidget(self.stat_total_info)
+
+        layout.addSpacing(16)
 
         self.period_cb = QCheckBox("Обучение по программам В (№6-29) — 1 раз в 3 года")
         self.period_cb.setObjectName("periodCheckBox")
@@ -963,6 +969,9 @@ class EmployeeSummaryTab(QWidget):
         self.stat_trained.setText(str(trained))
         self.stat_untrained.setText(str(not_trained))
         self.stat_expired.setText(str(expired))
+
+        total_all = len(emp_list)
+        self.stat_total_info.setText(f"всего {total_all} сотрудников")
 
         last_sync = ""
         rows = DatabaseManager.get_instance().fetchone(
@@ -1765,9 +1774,9 @@ class EmployeeSummaryTab(QWidget):
             t = sum(1 for x in plan_data if x['reason'] == 'Истекает срок действия')
             log_audit("EXPORT_PLAN", f"employees={len(plan_data)}, not_trained={n}, expired={e}, trained={t}")
 
-        plan_data.sort(key=lambda x: (
-            {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3), x['last_name']))
-        dialog.accept()
+            plan_data.sort(key=lambda x: (
+                {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3), x['last_name']))
+            dialog.accept()
 
         generate_btn.clicked.connect(do_generate)
         btn_layout.addWidget(generate_btn); btn_layout.addStretch(); btn_layout.addWidget(cancel_btn)

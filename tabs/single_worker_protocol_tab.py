@@ -97,21 +97,29 @@ class SingleWorkerProtocolTab(QWidget):
         return w
 
     def _build_commission_bar(self):
-        bar = QHBoxLayout()
-        bar.setSpacing(8)
+        bar = QVBoxLayout()
+        bar.setSpacing(4)
 
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
         lbl = QLabel("Данные комиссии:")
         lbl.setStyleSheet("font-weight: bold;")
-        bar.addWidget(lbl)
+        row1.addWidget(lbl)
 
         self.commission_label = QLabel("не загружены")
         self.commission_label.setStyleSheet("color: #888;")
-        bar.addWidget(self.commission_label, 1)
+        row1.addWidget(self.commission_label, 1)
 
         load_btn = QPushButton("Загрузить комиссию")
         load_btn.setObjectName("loadCommissionBtn")
         load_btn.clicked.connect(self._load_commission)
-        bar.addWidget(load_btn)
+        row1.addWidget(load_btn)
+        bar.addLayout(row1)
+
+        self.org_details_label = QLabel()
+        self.org_details_label.setStyleSheet("color: #555; font-size: 11px;")
+        self.org_details_label.setWordWrap(True)
+        bar.addWidget(self.org_details_label)
 
         container = QWidget()
         container.setLayout(bar)
@@ -140,6 +148,18 @@ class SingleWorkerProtocolTab(QWidget):
         else:
             self.commission_label.setText("загружена (пустые поля)")
             self.commission_label.setStyleSheet("color: #888;")
+
+        details = []
+        if org:
+            details.append(f"Организация: {org}")
+        if self.commission_data.get("order_number"):
+            details.append(f"Приказ №{self.commission_data['order_number']}")
+        if self.commission_data.get("chairman_fio"):
+            details.append(f"Председатель: {self.commission_data['chairman_fio']}")
+        self.org_details_label.setText(" | ".join(details) if details else "")
+
+        if self.commission_data.get("exam_date"):
+            self.exam_date_input.setText(self.commission_data["exam_date"])
 
     def _show_programs_help(self):
         from PySide6.QtWidgets import QDialog, QListWidget, QListWidgetItem, QVBoxLayout, QHBoxLayout

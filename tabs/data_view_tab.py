@@ -148,6 +148,8 @@ class DataViewTab(QWidget):
             snils = self._model.get_row_data(self._proxy.mapToSource(index).row()).get('snils', '').strip()
             if snils and snils.replace('-', '').replace(' ', '').isdigit():
                 from PySide6.QtWidgets import QApplication
+                from utils.clipboard_guard import ClipboardGuard
+                ClipboardGuard.mark_own_copy()
                 QApplication.clipboard().setText(snils)
                 from utils.toast import Toast
                 Toast.info(self, f"СНИЛС скопирован: {snils}")
@@ -288,7 +290,7 @@ class DataViewTab(QWidget):
             self._update_status()
 
     def _fill_org_data(self):
-        """Заполнить пустые поля УЦ и Заказчика из настроек вкладки Ввод данных."""
+        """Заполнить поля УЦ и Заказчика из настроек вкладки Ввод данных (с заменой существующих)."""
         from utils.app_paths import get_app_data_dir
         data_dir = get_app_data_dir()
         settings_file = os.path.join(data_dir, "org_settings.json")
@@ -326,27 +328,13 @@ class DataViewTab(QWidget):
             record_id = data.get('id')
             if not record_id:
                 continue
-            changed = {}
-            if tc_inn and not data.get('tc_inn', '').strip():
-                changed['tc_inn'] = tc_inn
-            if tc_title and not data.get('tc_title', '').strip():
-                changed['tc_title'] = tc_title
-            if employer_inn and not data.get('employer_inn', '').strip():
-                changed['employer_inn'] = employer_inn
-            if employer_title and not data.get('employer_title', '').strip():
-                changed['employer_title'] = employer_title
-            if changed:
-                WorkersDataRepo.update(record_id, changed)
-                updated += 1
+            WorkersDataRepo.update_org_fields(record_id, tc_inn, tc_title, employer_inn, employer_title)
+            updated += 1
 
-        if updated > 0:
-            self._load_all_data()
-            QMessageBox.information(self, "Готово",
-                f"Обновлено записей: {updated}\n"
-                f"Пустые поля УЦ и Заказчика заполнены из настроек.")
-        else:
-            QMessageBox.information(self, "Готово",
-                "Все записи уже содержат данные УЦ и Заказчика.")
+        self._load_all_data()
+        QMessageBox.information(self, "Готово",
+            f"Обновлено записей: {updated}\n"
+            f"Поля УЦ и Заказчика заполнены из настроек.")
 
     def convert_to_xml(self):
         if self._model.rowCount() == 0:

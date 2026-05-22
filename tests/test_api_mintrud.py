@@ -210,192 +210,36 @@ class TestApiKeyManagement:
 
 
 class TestValidateApiKeyRemote:
-    """Tests validate_api_key_remote with mocked HTTP."""
+    """Tests validate_api_key_remote (local length-only check)."""
 
     def _call_validate(self, api_key="abcdef1234567890abcdef1234567890", proxy_settings=None):
         from api.mintrud_api import validate_api_key_remote
         return validate_api_key_remote(api_key, proxy_settings)
 
-    def test_remote_valid_key_response_tag(self):
-        """200 + <Response> → key valid."""
-        with patch('requests.post') as mock_post:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.content = b'<?xml version="1.0"?><Response><Message>OK</Message></Response>'
-            mock_post.return_value = mock_resp
-            ok, msg = self._call_validate()
+    def test_remote_valid_key(self):
+        """32-char key → valid."""
+        ok, msg = self._call_validate("a" * 32)
         assert ok
 
-    def test_remote_valid_key_educated_persons_tag(self):
-        """200 + <EducatedPersons> → key valid."""
-        with patch('requests.post') as mock_post:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.content = b'<?xml version="1.0"?><EducatedPersons/>'
-            mock_post.return_value = mock_resp
-            ok, msg = self._call_validate()
-        assert ok
-
-    def test_remote_invalid_key_error_tag(self):
-        """<Error> in response → key invalid."""
-        with patch('requests.post') as mock_post:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.content = b'<?xml version="1.0"?><Error><StatusCode>400</StatusCode><Message>Invalid API key</Message></Error>'
-            mock_post.return_value = mock_resp
-            ok, msg = self._call_validate()
+    def test_remote_empty_key(self):
+        """Empty key → invalid."""
+        ok, msg = self._call_validate("")
         assert not ok
 
-    def test_remote_http_401(self):
-        """HTTP 401 → key invalid."""
-        with patch('requests.post') as mock_post:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 401
-            mock_post.return_value = mock_resp
-            ok, msg = self._call_validate()
+    def test_remote_short_key(self):
+        """Short key → invalid."""
+        ok, msg = self._call_validate("short")
         assert not ok
 
-    def test_remote_http_500(self):
-        """HTTP 500 → server error."""
-        with patch('requests.post') as mock_post:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 500
-            mock_post.return_value = mock_resp
-            ok, msg = self._call_validate()
+    def test_remote_long_key(self):
+        """33-char key → invalid."""
+        ok, msg = self._call_validate("a" * 33)
         assert not ok
 
-    def test_remote_connection_error(self):
-        """Connection error → error message."""
-        import requests
-        with patch('requests.post') as mock_post:
-            mock_post.side_effect = requests.ConnectionError("DNS failure")
-            ok, msg = self._call_validate()
-        assert not ok
-
-    def test_remote_proxy_settings_none(self):
-        """proxy_settings=None must not crash (no proxy, verify=True)."""
-        with patch('requests.post') as mock_post:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.content = b'<?xml version="1.0"?><Response/>'
-            mock_post.return_value = mock_resp
-            ok, msg = self._call_validate(proxy_settings=None)
+    def test_remote_proxy_settings_ignored(self):
+        """proxy_settings parameter is accepted but ignored."""
+        ok, msg = self._call_validate("a" * 32, proxy_settings={'mode': 'auto'})
         assert ok
-        _, kwargs = mock_post.call_args
-        assert kwargs.get('proxies') is None
-        assert kwargs.get('verify') is True
-
-    def test_remote_proxy_settings_auto(self):
-        """proxy_settings mode=auto must call detect_windows_proxy."""
-        with patch('requests.post') as mock_post, \
-             patch('utils.proxy_manager.detect_windows_proxy', return_value='http://proxy:8080') as mock_detect:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.content = b'<?xml version="1.0"?><Response/>'
-            mock_post.return_value = mock_resp
-            ok, msg = self._call_validate(proxy_settings={'mode': 'auto'})
-        assert ok
-        assert mock_detect.called
-
-    def test_remote_tls_disabled_logs_audit(self):
-        """TLS verify=False must log TLS_WARNING."""
-        with patch('requests.post') as mock_post, \
-             patch('api.mintrud_api.log_audit') as mock_audit:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.content = b'<?xml version="1.0"?><Response/>'
-            mock_post.return_value = mock_resp
-            ok, msg = self._call_validate(proxy_settings={'mode': 'off', 'tls_verify': False})
-        assert ok
-        mock_audit.assert_called_once_with("TLS_WARNING", ANY)
-
-
-class TestConnectionWorkerFlow:
-    """Tests _ConnectionWorker two-stage flow with mocked dependencies."""
-
-    def test_worker_ping_fails(self):
-        """If ping fails, worker emits (False, error_msg)."""
-        from tabs.data_transfer_tab import _ConnectionWorker
-        from unittest.mock import MagicMock
-        from network.client import NetworkStatus
-        worker = _ConnectionWorker("https://example.com", 5, True, "", {'mode': 'off'})
-        worker.finished = MagicMock()
-        with patch('tabs.data_transfer_tab.test_external_access',
-                   return_value=(NetworkStatus.TIMEOUT, "timeout")):
-            worker.run()
-        worker.finished.emit.assert_called_once_with(False, "timeout")
-
-    def test_worker_ping_ok_no_key(self):
-        """Ping OK but no API key → emits (True, connected)."""
-        from tabs.data_transfer_tab import _ConnectionWorker
-        from unittest.mock import MagicMock
-        from network.client import NetworkStatus
-        worker = _ConnectionWorker("https://example.com", 5, True, "", {'mode': 'off'})
-        worker.finished = MagicMock()
-        with patch('tabs.data_transfer_tab.test_external_access',
-                   return_value=(NetworkStatus.SUCCESS, "HTTP 200")):
-            worker.run()
-        worker.finished.emit.assert_called_once_with(True, "Подключено к серверу")
-
-    def test_worker_ping_ok_key_short(self):
-        """Ping OK but key length != 32 → emits (True, connected)."""
-        from tabs.data_transfer_tab import _ConnectionWorker
-        from unittest.mock import MagicMock
-        from network.client import NetworkStatus
-        worker = _ConnectionWorker("https://example.com", 5, True, "shortkey", {'mode': 'off'})
-        worker.finished = MagicMock()
-        with patch('tabs.data_transfer_tab.test_external_access',
-                   return_value=(NetworkStatus.SUCCESS, "HTTP 200")):
-            worker.run()
-        worker.finished.emit.assert_called_once_with(True, "Подключено к серверу")
-
-    def test_worker_ping_ok_key_valid(self):
-        """Ping OK + key valid → emits (True, key valid message)."""
-        from tabs.data_transfer_tab import _ConnectionWorker
-        from unittest.mock import MagicMock
-        from network.client import NetworkStatus
-        worker = _ConnectionWorker("https://example.com", 5, True, "a" * 32, {'mode': 'off'})
-        worker.finished = MagicMock()
-        with patch('tabs.data_transfer_tab.test_external_access',
-                   return_value=(NetworkStatus.SUCCESS, "HTTP 200")), \
-             patch('api.mintrud_api.validate_api_key_remote',
-                   return_value=(True, "Ключ действителен")):
-            worker.run()
-        worker.finished.emit.assert_called_once()
-        args, _ = worker.finished.emit.call_args
-        assert args[0] is True
-        assert 'действителен' in args[1]
-
-    def test_worker_ping_ok_key_invalid(self):
-        """Ping OK + key invalid → emits (True, key invalid message)."""
-        from tabs.data_transfer_tab import _ConnectionWorker
-        from unittest.mock import MagicMock
-        from network.client import NetworkStatus
-        worker = _ConnectionWorker("https://example.com", 5, True, "b" * 32, {'mode': 'off'})
-        worker.finished = MagicMock()
-        with patch('tabs.data_transfer_tab.test_external_access',
-                   return_value=(NetworkStatus.SUCCESS, "HTTP 200")), \
-             patch('api.mintrud_api.validate_api_key_remote',
-                   return_value=(False, "Ключ недействителен: bad key")):
-            worker.run()
-        worker.finished.emit.assert_called_once()
-        args, _ = worker.finished.emit.call_args
-        assert args[0] is True  # ping succeeded, partial success
-        assert 'не прошёл проверку' in args[1]
-
-    def test_worker_with_proxy_settings_none(self):
-        """proxy_settings=None must not crash (key validation skipped)."""
-        from tabs.data_transfer_tab import _ConnectionWorker
-        from unittest.mock import MagicMock
-        from network.client import NetworkStatus
-        worker = _ConnectionWorker("https://example.com", 5, True, "a" * 32, None)
-        worker.finished = MagicMock()
-        with patch('tabs.data_transfer_tab.test_external_access',
-                   return_value=(NetworkStatus.SUCCESS, "HTTP 200")):
-            worker.run()
-        worker.finished.emit.assert_called_once()
-        args, _ = worker.finished.emit.call_args
-        assert args[0] is True
 
 
 class TestBackendRegistry:

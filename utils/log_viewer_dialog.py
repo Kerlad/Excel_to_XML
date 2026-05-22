@@ -373,6 +373,8 @@ class LogViewerDialog(QDialog):
     def _copy_all(self):
         text = self._text_edit.toPlainText()
         if text:
+            from utils.clipboard_guard import ClipboardGuard
+            ClipboardGuard.mark_own_copy()
             QApplication.clipboard().setText(text)
             self._copy_btn.setText("Скопировано ✓")
             QTimer.singleShot(2000, lambda: self._copy_btn.setText("Копировать всё"))

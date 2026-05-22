@@ -13,47 +13,17 @@ from lxml import etree
 from api.mintrud_api import (
     load_api_key, save_api_key, push_xml, push_xml_signed,
     get_by_set_id, get_by_snils, export_records_to_xlsx,
-    validate_api_key_remote
 )
 from utils.error_utils import safe_message_box
 from utils.proxy_manager import (
     load_proxy_settings, save_proxy_settings, detect_windows_proxy
 )
+from utils.audit import log_audit
 from network.client import (
     get_network_diagnostics, test_external_access, NetworkStatus
 )
-from utils.audit import log_audit
 
 logger = logging.getLogger(__name__)
-
-
-class _ConnectionWorker(QObject):
-    finished = Signal(bool, str)
-
-    def __init__(self, url, timeout, tls_verify, api_key="", proxy_settings=None):
-        super().__init__()
-        self.url = url
-        self.timeout = timeout
-        self.tls_verify = tls_verify
-        self.api_key = api_key
-        self.proxy_settings = proxy_settings
-
-    def run(self):
-        status, msg = test_external_access(
-            url=self.url, timeout=self.timeout, tls_verify=self.tls_verify
-        )
-        if status != NetworkStatus.SUCCESS:
-            self.finished.emit(False, msg)
-            return
-        if len(self.api_key) == 32:
-            from api.mintrud_api import validate_api_key_remote
-            ok, err = validate_api_key_remote(self.api_key, self.proxy_settings)
-            if ok:
-                self.finished.emit(True, "Подключено к серверу. Ключ действителен.")
-            else:
-                self.finished.emit(True, f"Сервер доступен, но ключ не прошёл проверку: {err}")
-        else:
-            self.finished.emit(True, "Подключено к серверу")
 
 
 class _ProxyTestWorker(QObject):
@@ -154,7 +124,6 @@ class DataTransferTab(QWidget):
         main_layout.addWidget(scroll)
 
     def _connect_signals(self):
-        self.check_conn_btn.clicked.connect(self._check_api_connection)
         self.proxy_mode_group.buttonClicked.connect(self._on_proxy_mode_changed)
         self.proxy_save_btn.clicked.connect(self.save_proxy_settings_ui)
         self.proxy_test_btn.clicked.connect(self.test_proxy)
@@ -202,30 +171,7 @@ class DataTransferTab(QWidget):
         row.addStretch()
         layout.addLayout(row)
 
-        status_row = QHBoxLayout()
-        self.conn_status_dot = QLabel()
-        self.conn_status_dot.setFixedSize(12, 12)
-        self.conn_status_dot.setStyleSheet(
-            "background-color: #888; border-radius: 6px;"
-        )
-        self.conn_status_text = QLabel("Проверка не выполнялась")
-
-        self.check_conn_btn = QPushButton("Проверить подключение")
-        self.check_conn_btn.setStyleSheet("""
-            QPushButton { color: white; background-color: #27AE60;
-                border: none; padding: 7px 18px;
-                border-radius: 5px; font-weight: bold}
-            QPushButton:hover { background-color: #219A52}
-            QPushButton:disabled { background-color: #95A5A6}
-        """)
-
-        status_row.addWidget(self.conn_status_dot)
-        status_row.addSpacing(6)
-        status_row.addWidget(self.conn_status_text)
-        status_row.addSpacing(12)
-        status_row.addWidget(self.check_conn_btn)
-        status_row.addStretch()
-        layout.addLayout(status_row)
+        layout.addStretch()
 
         return group
 
@@ -547,73 +493,9 @@ class DataTransferTab(QWidget):
             return
         ok, msg = save_api_key(api_key, self.data_dir)
         if ok:
-            self._set_connection_status(True, "Ключ сохранён, проверка...")
-            QCoreApplication.processEvents()
-            try:
-                proxy_settings = self._get_proxy_settings()
-                valid, vmsg = validate_api_key_remote(api_key, proxy_settings)
-                if valid:
-                    self._set_connection_status(True, f"Ключ действителен")
-                    safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"API ключ сохранён и проверен: {vmsg}")
-                else:
-                    self._set_connection_status(False, vmsg)
-                    safe_message_box(self, QMessageBox.Icon.Warning, "Предупреждение", f"Ключ сохранён, но проверка не пройдена: {vmsg}")
-            except Exception as e:
-                logger.exception("Remote key validation failed")
-                self._set_connection_status(True, "Ключ сохранён (проверка не выполнена)")
-                QMessageBox.information(self, "Успех", "API ключ сохранён (удалённая проверка недоступна)")
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех", "API ключ сохранён")
         else:
             safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
-
-    def _set_connection_status(self, ok: bool, text: str):
-        if ok:
-            self.conn_status_dot.setStyleSheet(
-                "background-color: #27AE60; border-radius: 6px;"
-            )
-            self.conn_status_text.setStyleSheet("color: #27AE60;")
-        else:
-            self.conn_status_dot.setStyleSheet(
-                "background-color: #E74C3C; border-radius: 6px;"
-            )
-            self.conn_status_text.setStyleSheet("color: #E74C3C;")
-        self.conn_status_text.setText(text)
-
-    def _check_api_connection(self):
-        api_key = self.api_key_input.text().strip()
-        if len(api_key) != 32:
-            self._set_connection_status(False, "Неверный API ключ (нужно 32 символа)")
-            return
-
-        self.check_conn_btn.setEnabled(False)
-        self.check_conn_btn.setText("Проверка...")
-        self.conn_status_dot.setStyleSheet(
-            "background-color: #F1C40F; border-radius: 6px;"
-        )
-        self.conn_status_text.setText("Проверка подключения...")
-
-        self._conn_thread = QThread()
-        self._conn_worker = _ConnectionWorker(
-            url="https://edu.rosmintrud.ru",
-            timeout=15,
-            tls_verify=self.tls_checkbox.isChecked(),
-            api_key=api_key,
-            proxy_settings=self._get_proxy_settings(),
-        )
-        self._conn_worker.moveToThread(self._conn_thread)
-        self._conn_thread.started.connect(self._conn_worker.run)
-        self._conn_worker.finished.connect(self._on_connection_result)
-        self._conn_worker.finished.connect(self._conn_thread.quit)
-        self._conn_thread.finished.connect(self._conn_worker.deleteLater)
-        self._conn_thread.finished.connect(self._conn_thread.deleteLater)
-        self._conn_thread.start()
-
-    def _on_connection_result(self, ok, msg):
-        if ok:
-            self._set_connection_status(True, msg)
-        else:
-            self._set_connection_status(False, f"Ошибка: {msg}")
-        self.check_conn_btn.setEnabled(True)
-        self.check_conn_btn.setText("Проверить подключение")
 
     # ============================================================
     # Proxy Logic

@@ -89,26 +89,39 @@ class WorkersDataRepo:
     @staticmethod
     def update(rid: int, record: dict):
         db = DatabaseManager.get_instance()
+        fields = {
+            'last_name_enc': encrypt_value(record.get('last_name', '')),
+            'first_name_enc': encrypt_value(record.get('first_name', '')),
+            'middle_name_enc': encrypt_value(record.get('middle_name', '')),
+            'snils_enc': encrypt_value(record.get('snils', '')),
+            'snils_hash': hash_for_search(record.get('snils', '')),
+            'position': record.get('position', ''),
+            'employer_inn': record.get('employer_inn', ''),
+            'employer_title': record.get('employer_title', ''),
+            'tc_inn': record.get('tc_inn', ''),
+            'tc_title': record.get('tc_title', ''),
+            'result': record.get('result', ''),
+            'program': int(record.get('program', 0)),
+            'date': record.get('date', ''),
+            'protocol': record.get('protocol', ''),
+        }
         with db.transaction() as conn:
             conn.execute(f"""
                 UPDATE {WorkersDataRepo.TABLE}
-                SET last_name_enc=?, first_name_enc=?, middle_name_enc=?,
-                    snils_enc=?, snils_hash=?, position=?, employer_inn=?,
-                    employer_title=?, tc_inn=?, tc_title=?, result=?,
-                    program=?, date=?, protocol=?, updated_at=datetime('now')
+                SET {', '.join(f'{k}=?' for k in fields)}, updated_at=datetime('now')
                 WHERE id=?
-            """, (
-                encrypt_value(record.get('last_name','')),
-                encrypt_value(record.get('first_name','')),
-                encrypt_value(record.get('middle_name','')),
-                encrypt_value(record.get('snils','')),
-                hash_for_search(record.get('snils','')),
-                record.get('position',''), record.get('employer_inn',''),
-                record.get('employer_title',''), record.get('tc_inn',''),
-                record.get('tc_title',''), record.get('result',''),
-                int(record.get('program',0)), record.get('date',''),
-                record.get('protocol',''), rid,
-            ))
+            """, (*fields.values(), rid))
+
+    @staticmethod
+    def update_org_fields(rid: int, tc_inn: str, tc_title: str, employer_inn: str, employer_title: str):
+        db = DatabaseManager.get_instance()
+        with db.transaction() as conn:
+            conn.execute(f"""
+                UPDATE {WorkersDataRepo.TABLE}
+                SET tc_inn=?, tc_title=?, employer_inn=?, employer_title=?,
+                    updated_at=datetime('now')
+                WHERE id=?
+            """, (tc_inn, tc_title, employer_inn, employer_title, rid))
 
     @staticmethod
     def delete(rid: int):

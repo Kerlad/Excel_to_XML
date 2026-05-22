@@ -51,8 +51,7 @@ def load_xml(file_path, xsd_path=None):
             )
             schema_doc = etree.parse(xsd_path, parser)
             schema = etree.XMLSchema(schema_doc)
-            xml_bytes = etree.tostring(root)
-            xml_doc = etree.parse(io.BytesIO(xml_bytes), parser)
+            xml_doc = etree.parse(file_path, parser)
             schema.assertValid(xml_doc)
             from utils.audit import log_audit
             log_audit("XML_VALIDATION_ERROR", "XSD validation passed")

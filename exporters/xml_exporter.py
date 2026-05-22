@@ -145,7 +145,10 @@ def build_xml(records, org_settings=None):
         # Дата в формате xs:date
         date_elem = SubElement(test, "Date")
         formatted_date = format_date_xsd(rec.get('date', ''))
-        date_elem.text = formatted_date if formatted_date else rec.get('date', '')
+        if formatted_date:
+            date_elem.text = formatted_date
+        else:
+            date_elem.text = ''
 
         protocol = SubElement(test, "ProtocolNumber")
         protocol.text = str(rec.get('protocol', ''))
@@ -222,9 +225,15 @@ def export_to_xml(records, file_path, org_settings=None):
         if len(records) > 5000:
             return False, "Превышен лимит: max 5000 записей (RegistryRecord)"
 
+        for i, rec in enumerate(records):
+            if not format_date_xsd(rec.get('date', '')):
+                return False, f"Запись {i+1}: невалидная дата '{rec.get('date', '')}' (требуется ДД.ММ.ГГГГ)"
+            if not str(rec.get('program', '')).strip():
+                return False, f"Запись {i+1}: не указан номер программы"
+
         xml_content = build_xml(records, org_settings)
 
-        xsd_path = os.path.join(os.path.dirname(__file__), '..', 'schemas', 'educated_person_import_v1.0.9.xsd')
+        xsd_path = os.path.join(os.path.dirname(__file__), '..', 'schema', 'educated_person_import_v1.0.9.xsd')
         if os.path.exists(xsd_path):
             try:
                 from lxml import etree

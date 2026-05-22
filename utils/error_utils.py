@@ -8,6 +8,7 @@ from typing import Optional
 from PySide6.QtWidgets import QWidget, QMessageBox, QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QApplication
 from PySide6.QtCore import Qt
 
+from utils.clipboard_guard import ClipboardGuard
 from utils.logger import filter_sensitive_text
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ class DetailsDialog(QDialog):
 
         copy_btn = QPushButton("Копировать")
         def _copy():
+            ClipboardGuard.mark_own_copy()
             QApplication.clipboard().setText(filter_sensitive_text(text))
             copy_btn.setText("Скопировано ✓")
         copy_btn.clicked.connect(_copy)

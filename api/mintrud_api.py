@@ -123,74 +123,14 @@ def validate_api_key(api_key: str) -> tuple[bool, str]:
 
 
 def validate_api_key_remote(api_key: str, proxy_settings: dict = None) -> tuple[bool, str]:
-    """Проверяет API-ключ через тестовый запрос к серверу Минтруда.
-    Отправляет GetEducatedPersonXML с PageSize=1 для проверки валидности ключа."""
-    try:
-        url = f"{GET_URL}?PageSize=1"
-        from xml.sax.saxutils import escape
-        xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
-<EducatedPersonFilter>
-    <ApiKey>{escape(api_key)}</ApiKey>
-    <PageNo>1</PageNo>
-    <PageSize>1</PageSize>
-</EducatedPersonFilter>'''
-        files = {'file': ('request.xml', xml_content.encode('utf-8'), 'text/xml')}
-        try:
-            import requests as req
-            proxies = None
-            verify = True
-            if proxy_settings:
-                mode = proxy_settings.get('mode', 'off')
-                if mode == 'auto':
-                    import utils.proxy_manager as pm
-                    proxy_url = pm.detect_windows_proxy()
-                    if proxy_url:
-                        proxies = {'http': proxy_url, 'https': proxy_url}
-                elif mode == 'manual':
-                    url_str = proxy_settings.get('url', '').strip()
-                    if url_str:
-                        proxies = {'http': url_str, 'https': url_str}
-                verify = proxy_settings.get('tls_verify', True)
-            if not verify:
-                log_audit("TLS_WARNING", "TLS verification disabled in remote key validation")
-            resp = req.post(url, files=files, proxies=proxies, verify=verify, timeout=15)
-            if resp.status_code == 200:
-                from defusedxml.ElementTree import fromstring as _fromstring
-                root = _fromstring(resp.content)
-                if root.tag in ('Response', 'EducatedPersons'):
-                    return True, 'Ключ действителен'
-                elif root.tag == 'Error':
-                    msg_elem = root.find('Message')
-                    msg = msg_elem.text if msg_elem is not None else 'Ошибка сервера'
-                    return False, f'Ключ недействителен: {msg}'
-                return True, 'Ключ действителен'
-            elif resp.status_code == 401:
-                return False, 'Ключ недействителен (HTTP 401)'
-            else:
-                return False, f'Ошибка сервера (HTTP {resp.status_code})'
-        except ImportError:
-            return False, 'Библиотека requests не установлена'
-        except req.RequestException as e:
-            logger.error("Remote validation connection error: %s", e)
-            return False, f'Ошибка подключения: {e}'
-    except (ValueError, KeyError) as e:
-        logger.error("Remote validation config error: %s", e)
-        return False, f'Ошибка конфигурации: {e}'
-    except req.RequestException as e:
-        # Requests errors that may occur outside the inner try (e.g. proxy detection)
-        logger.error("Remote validation request error: %s", e)
-        return False, f'Ошибка подключения: {e}'
-    except (ValueError, KeyError) as e:
-        logger.error("Remote validation config error: %s", e)
-        return False, f'Ошибка конфигурации: {e}'
-    except requests.RequestException as e:
-        # Requests errors that may occur outside the inner try (e.g. proxy detection)
-        logger.error("Remote validation request error: %s", e)
-        return False, f'Ошибка подключения: {e}'
-    except Exception as e:
-        # Safety net for any unexpected errors (import, proxy detection, XML parse, etc.)
-        logger.exception("Remote validation unexpected error")
-        return False, f'Внутренняя ошибка: {e}'
+    """Проверяет API-ключ по длине (сервер Минтруда блокирует тестовые запросы)."""
+    from utils.audit import log_audit
+    if not api_key:
+        return False, "API ключ не введён"
+    if len(api_key) != 32:
+        return False, f"Длина ключа: {len(api_key)} (требуется 32 символа)"
+    log_audit("LOGIN", "API key validated successfully")
+    return True, "Ключ действителен (проверка только по длине)"
 
 
 # ============ Unified Transport Client ============
@@ -535,6 +475,13 @@ class MintrudClient:
         if not set_id:
             return {"success": False, "records": [], "error": "SetId не введён"}
         
+        # Извлекаем только числовую часть SetId (сервер ожидает unsignedLong)
+        import re as _re
+        digits = _re.sub(r'\D', '', set_id)
+        if not digits:
+            return {"success": False, "records": [], "error": f"SetId не содержит цифр: {set_id}"}
+        numeric_set_id = digits
+        
         all_records = []
         page_no = 1
         
@@ -544,7 +491,7 @@ class MintrudClient:
     <ApiKey>{escape(api_key)}</ApiKey>
     <PageNo>{page_no}</PageNo>
     <PageSize>{page_size}</PageSize>
-    <SetId>{escape(set_id)}</SetId>
+    <SetId>{numeric_set_id}</SetId>
 </EducatedPersonFilter>'''
             
             logger.info("Querying SetId page %d", page_no)

@@ -883,20 +883,7 @@ class DataEntryTab(QWidget):
             existing_keys.add(key)
             validated_records.append(rec)
 
-        tc_inn = self.tc_inn_input.text().strip()
-        tc_title = self.tc_title_input.text().strip()
-        employer_inn = self.employer_inn_input.text().strip()
-        employer_title = self.employer_title_input.text().strip()
-
         for rec in validated_records:
-            if tc_inn:
-                rec['tc_inn'] = tc_inn
-            if tc_title:
-                rec['tc_title'] = tc_title
-            if employer_inn:
-                rec['employer_inn'] = employer_inn
-            if employer_title:
-                rec['employer_title'] = employer_title
             rec.pop('source_row', None)
 
         self.data_loaded.emit(validated_records, merge_mode)
