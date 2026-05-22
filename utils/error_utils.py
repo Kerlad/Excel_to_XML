@@ -89,7 +89,7 @@ class DetailsDialog(QDialog):
         copy_btn = QPushButton("Копировать")
         def _copy():
             QApplication.clipboard().setText(filter_sensitive_text(text))
-            close_btn.setText("Скопировано ✓")
+            copy_btn.setText("Скопировано ✓")
         copy_btn.clicked.connect(_copy)
 
         btn_layout.addWidget(copy_btn)

@@ -44,10 +44,17 @@ class DataViewTab(QWidget):
         toolbar.addStretch()
 
         self.refresh_btn = QPushButton("Обновить")
+        self.fill_org_btn = QPushButton("Заполнить УЦ и Заказчика")
         self.convert_btn = QPushButton("Конвертировать в XML")
         self.clear_btn = QPushButton("Очистить")
         self.export_btn = QPushButton("Экспорт XLSX")
 
+        self.fill_org_btn.setStyleSheet("""
+            QPushButton { color: white; background-color: #2E86C1;
+                border: none; padding: 8px 16px;
+                border-radius: 5px; font-weight: bold}
+            QPushButton:hover { background-color: #2471A3}
+        """)
         self.convert_btn.setStyleSheet("""
             QPushButton { color: white; background-color: #27AE60;
                 border: none; padding: 8px 16px;
@@ -62,6 +69,7 @@ class DataViewTab(QWidget):
         """)
 
         toolbar.addWidget(self.refresh_btn)
+        toolbar.addWidget(self.fill_org_btn)
         toolbar.addWidget(self.convert_btn)
         toolbar.addWidget(self.clear_btn)
         toolbar.addWidget(self.export_btn)
@@ -95,6 +103,7 @@ class DataViewTab(QWidget):
         self.table.horizontalHeader().customContextMenuRequested.connect(self._show_header_menu)
         self.search_edit.textChanged.connect(self._filter_table)
         self.refresh_btn.clicked.connect(self._load_all_data)
+        self.fill_org_btn.clicked.connect(self._fill_org_data)
         self.convert_btn.clicked.connect(self.convert_to_xml)
         self.clear_btn.clicked.connect(self.clear_all_data)
         self.export_btn.clicked.connect(self._export_xlsx)
@@ -278,6 +287,67 @@ class DataViewTab(QWidget):
             self._model.load_records([])
             self._update_status()
 
+    def _fill_org_data(self):
+        """Заполнить пустые поля УЦ и Заказчика из настроек вкладки Ввод данных."""
+        from utils.app_paths import get_app_data_dir
+        data_dir = get_app_data_dir()
+        settings_file = os.path.join(data_dir, "org_settings.json")
+        org_settings = {}
+        if os.path.exists(settings_file):
+            try:
+                import json
+                with open(settings_file, 'r', encoding='utf-8') as f:
+                    wrapper = json.load(f)
+                if not verify_org_settings_hmac(wrapper):
+                    logger.warning("org_settings.json HMAC mismatch — file may be tampered")
+                    raise ValueError("org_settings integrity check failed")
+                encrypted = wrapper.get('data', '')
+                if encrypted:
+                    org_settings = decrypt_data(encrypted)
+                else:
+                    org_settings = wrapper
+            except (OSError, json.JSONDecodeError, ValueError) as e:
+                logger.debug("Could not load org settings: %s", e)
+
+        tc_inn = org_settings.get('tc_inn', '').strip()
+        tc_title = org_settings.get('tc_title', '').strip()
+        employer_inn = org_settings.get('employer_inn', '').strip()
+        employer_title = org_settings.get('employer_title', '').strip()
+
+        if not tc_inn and not tc_title and not employer_inn and not employer_title:
+            QMessageBox.warning(self, "Предупреждение",
+                "Данные УЦ и Заказчика не заполнены на вкладке «Внесение данных». "
+                "Сначала сохраните их там.")
+            return
+
+        updated = 0
+        for row in range(self._model.rowCount()):
+            data = self._model.get_row_data(row)
+            record_id = data.get('id')
+            if not record_id:
+                continue
+            changed = {}
+            if tc_inn and not data.get('tc_inn', '').strip():
+                changed['tc_inn'] = tc_inn
+            if tc_title and not data.get('tc_title', '').strip():
+                changed['tc_title'] = tc_title
+            if employer_inn and not data.get('employer_inn', '').strip():
+                changed['employer_inn'] = employer_inn
+            if employer_title and not data.get('employer_title', '').strip():
+                changed['employer_title'] = employer_title
+            if changed:
+                WorkersDataRepo.update(record_id, changed)
+                updated += 1
+
+        if updated > 0:
+            self._load_all_data()
+            QMessageBox.information(self, "Готово",
+                f"Обновлено записей: {updated}\n"
+                f"Пустые поля УЦ и Заказчика заполнены из настроек.")
+        else:
+            QMessageBox.information(self, "Готово",
+                "Все записи уже содержат данные УЦ и Заказчика.")
+
     def convert_to_xml(self):
         if self._model.rowCount() == 0:
             QMessageBox.warning(self, "Предупреждение", "Нет данных для конвертации")
@@ -311,6 +381,28 @@ class DataViewTab(QWidget):
                     org_settings = wrapper
             except (OSError, json.JSONDecodeError, ValueError) as e:
                 logger.debug("Could not load org settings: %s", e)
+
+        # Проверка: у всех записей должны быть заполнены УЦ и Заказчик
+        missing = 0
+        for row in range(self._model.rowCount()):
+            data = self._model.get_row_data(row)
+            if not data.get('tc_inn', '').strip() or not data.get('tc_title', '').strip() \
+               or not data.get('employer_inn', '').strip() or not data.get('employer_title', '').strip():
+                missing += 1
+
+        if missing > 0:
+            reply = QMessageBox.question(
+                self, "Отсутствуют данные УЦ/Заказчика",
+                f"У {missing} записей не заполнены поля УЦ или Заказчика.\n\n"
+                f"Нажмите «Заполнить» чтобы подставить данные из вкладки «Внесение данных»,\n"
+                f"или «Пропустить» чтобы создать XML без этих данных.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._fill_org_data()
+                return
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return
 
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить XML", "", "XML Files (*.xml)"

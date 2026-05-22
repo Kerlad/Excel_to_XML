@@ -11,13 +11,16 @@ logger = logging.getLogger(__name__)
 
 def _secure_delete_record(conn, table, id_field, id_value):
     encrypted_fields = ['last_name_enc', 'first_name_enc', 'middle_name_enc', 'snils_enc']
-    for field in encrypted_fields:
-        if id_value is not None:
+    if id_value is not None:
+        for field in encrypted_fields:
             conn.execute(f"UPDATE {table} SET {field} = ? WHERE {id_field} = ?",
                         (os.urandom(64), id_value))
-        else:
-            conn.execute(f"UPDATE {table} SET {field} = ?",
-                        (os.urandom(64),))
+    else:
+        ids = conn.execute(f"SELECT {id_field} FROM {table}").fetchall()
+        for (rid,) in ids:
+            for field in encrypted_fields:
+                conn.execute(f"UPDATE {table} SET {field} = ? WHERE {id_field} = ?",
+                            (os.urandom(64), rid))
 
 
 def _decrypt_emp(r: dict) -> dict:

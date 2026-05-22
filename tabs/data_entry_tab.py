@@ -93,6 +93,8 @@ class DataEntryTab(QWidget):
         event.ignore()
 
     def dropEvent(self, event: QDropEvent):
+        if self._is_xlsx_importing:
+            return
         urls = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
         for path in urls:
             self.file_path_input.setText(path)
@@ -653,6 +655,10 @@ class DataEntryTab(QWidget):
             self.file_path_input.setText(file_path)
 
     def upload_file(self):
+        if self._is_xlsx_importing:
+            QMessageBox.warning(self, "Ошибка", "Импорт уже выполняется")
+            return
+
         file_path = self.file_path_input.text()
         if not file_path or not os.path.exists(file_path):
             QMessageBox.warning(self, "Ошибка", "Файл не выбран")
@@ -752,18 +758,28 @@ class DataEntryTab(QWidget):
         self._import_worker.finished.connect(self._on_import_finished)
         self._import_worker.error.connect(self._on_import_error)
         self._import_worker.finished.connect(self._import_thread.quit)
+        self._import_worker.error.connect(self._import_thread.quit)
         self._import_worker.finished.connect(self._import_worker.deleteLater)
         self._import_thread.finished.connect(self._import_thread.deleteLater)
+        self._import_thread.finished.connect(self._on_thread_finished)
 
         self._import_thread.start()
 
     def _cancel_import(self):
         """Отмена текущего импорта."""
+        if not self._is_xlsx_importing:
+            return
         if self._import_worker:
             logger.info("Cancel requested by user")
             self._import_worker.cancel()
             self._import_status_label.setText("Отмена импорта...")
             self._cancel_import_btn.setEnabled(False)
+        if self._import_thread:
+            self._import_thread.quit()
+            if not self._import_thread.wait(5000):
+                self._import_thread.terminate()
+                self._import_thread.wait()
+        self._cleanup_import()
 
     def _on_import_progress(self, current, total):
         """Обновление прогресс-бара."""
@@ -803,10 +819,8 @@ class DataEntryTab(QWidget):
         safe_message_box(self, QMessageBox.Icon.Critical, "Ошибка импорта", error_message)
 
     def _cleanup_import(self):
-        """Сброс UI и очистка после импорта (успех/отмена/ошибка)."""
+        """Сброс UI после импорта. Ресурсы потока очищаются в _on_thread_finished."""
         self._is_xlsx_importing = False
-        self._import_thread = None
-        self._import_worker = None
 
         self.progress_bar.setVisible(False)
         self._import_status_label.setVisible(False)
@@ -815,6 +829,13 @@ class DataEntryTab(QWidget):
         self.upload_file_btn.setEnabled(True)
         self.select_file_btn.setEnabled(True)
         self.file_path_input.setStyleSheet("")
+
+    def _on_thread_finished(self):
+        """Поток полностью остановлен — очистка ссылок на ресурсы."""
+        if self.sender() is not self._import_thread:
+            return
+        self._import_thread = None
+        self._import_worker = None
 
     def _finalize_import(self, records, merge_mode, existing_keys, error_details, error_rows_set):
         """Общая финализация импорта: дедупликация, перезапись полей, эмит данных, диалог результата."""

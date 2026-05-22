@@ -74,12 +74,20 @@ class ApiQueryThread(QThread):
         self.employees = employees
         self.api_key = api_key
         self.proxy_settings = proxy_settings or {}
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
 
     def run(self):
         total = len(self.employees)
         updated = 0
         errors = 0
         for idx, emp in enumerate(self.employees):
+            if self._cancelled:
+                self.finished.emit(updated, errors)
+                DatabaseManager.close_thread_connection()
+                return
             try:
                 snils_clean = emp['snils'].replace('-', '').replace(' ', '')
                 result = get_by_snils(self.api_key, snils_clean, proxy_settings=self.proxy_settings)
@@ -96,7 +104,7 @@ class ApiQueryThread(QThread):
                 errors += 1
                 logger.exception("Registry API exception")
             self.progress.emit(idx + 1, total)
-            if idx < total - 1:
+            if idx < total - 1 and not self._cancelled:
                 time.sleep(0.5)
         DatabaseManager.close_thread_connection()
         self.finished.emit(updated, errors)
@@ -419,6 +427,80 @@ class EmployeeEditDialog(BaseDialog):
         bl.addLayout(btn_row)
 
 
+# ──────── QueryProgressDialog ────────
+
+class QueryProgressDialog(QDialog):
+    cancelled = Signal()
+
+    def __init__(self, total: int, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Обновление данных работников")
+        self.setMinimumSize(480, 260)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(14)
+
+        title = QLabel("Обновление данных работников")
+        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(title)
+
+        self._info_label = QLabel(f"Происходит запрос данных по {total} работникам.")
+        self._info_label.setWordWrap(True)
+        layout.addWidget(self._info_label)
+
+        est = total * 0.5
+        self._est_label = QLabel(
+            f"Примерное время ожидания: {est:.0f} секунд"
+            if est >= 1.0 else "Примерное время ожидания: менее 1 секунды"
+        )
+        self._est_label.setStyleSheet("color: #666;")
+        layout.addWidget(self._est_label)
+
+        self._progress_label = QLabel("Получено данных по 0 из 0 работников.")
+        self._progress_label.setWordWrap(True)
+        layout.addWidget(self._progress_label)
+
+        self._timer_label = QLabel("Прошло 0 секунд.")
+        self._timer_label.setStyleSheet("color: #666;")
+        layout.addWidget(self._timer_label)
+
+        layout.addStretch()
+
+        cancel_btn = QPushButton("Отмена операции")
+        cancel_btn.setObjectName("dialogDangerBtn")
+        cancel_btn.clicked.connect(self._on_cancel)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        self._total = total
+        self._elapsed = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._timer.start(1000)
+
+    def _tick(self):
+        self._elapsed += 1
+        self._timer_label.setText(f"Прошло {self._elapsed} секунд.")
+
+    def update_progress(self, current: int, total: int):
+        self._progress_label.setText(f"Получено данных по {current} из {total} работников.")
+
+    def _on_cancel(self):
+        self._timer.stop()
+        self.cancelled.emit()
+
+    def closeEvent(self, event):
+        self._timer.stop()
+        super().closeEvent(event)
+
+
 # ──────── EmployeeSummaryTab ────────
 
 class EmployeeSummaryTab(QWidget):
@@ -666,16 +748,17 @@ class EmployeeSummaryTab(QWidget):
         return self.table
 
     def refresh_table(self):
-        employees = EmployeesRepo.get_all()
-        self._build_table(employees)
-        self._update_stats()
+        data_map = EmployeesRepo.get_all_with_programs()
+        employees = [v['emp'] for v in data_map.values()]
+        self._build_table(employees, data_map)
+        self._update_stats(employees, data_map)
 
-    def _build_table(self, employees: List[dict]):
+    def _build_table(self, employees: List[dict], progs_by_employee: dict = None):
         self.table.setSortingEnabled(False)
         self.table.clear()
         self.table.setRowCount(0)
 
-        programs = self._selected_programs[:6]
+        programs = self._selected_programs
         num_prog_cols = len(programs) * SUB_COLUMNS
         num_cols = BASE_COLUMNS + num_prog_cols + 1
 
@@ -748,7 +831,9 @@ class EmployeeSummaryTab(QWidget):
                 if pos_filter not in emp_pos:
                     continue
 
-            progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
+            eid = emp['id']
+            progs = progs_by_employee[eid]['programs'] if progs_by_employee and eid in progs_by_employee else \
+                    EmployeeProgramsRepo.get_by_employee(eid)
             if prog_filter != "all":
                 has_prog = any(str(p['program_id']) == prog_filter and p.get('need_training') == 1 for p in progs)
                 if not has_prog:
@@ -832,7 +917,7 @@ class EmployeeSummaryTab(QWidget):
 
         self.table.setSortingEnabled(True)
 
-    def _get_employee_status(self, emp_id: int, programs) -> str:
+    def _get_employee_status(self, programs) -> str:
         has_trained = False
         has_expired = False
         for p in programs:
@@ -855,16 +940,19 @@ class EmployeeSummaryTab(QWidget):
             return 'trained'
         return 'not_trained'
 
-    def _update_stats(self):
+    def _update_stats(self, employees: List[dict] = None, progs_by_employee: dict = None):
         trained = not_trained = expired = 0
         emp_count = 0
-        for emp in EmployeesRepo.get_all():
-            progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
+        emp_list = employees if employees is not None else EmployeesRepo.get_all()
+        for emp in emp_list:
+            eid = emp['id']
+            progs = progs_by_employee[eid]['programs'] if progs_by_employee and eid in progs_by_employee else \
+                    EmployeeProgramsRepo.get_by_employee(eid)
             need_progs = [p for p in progs if p.get('need_training') == 1]
             if not need_progs:
                 continue
             emp_count += 1
-            status = self._get_employee_status(emp['id'], progs)
+            status = self._get_employee_status(progs)
             if status == 'trained':
                 trained += 1
             elif status == 'expired':
@@ -935,7 +1023,7 @@ class EmployeeSummaryTab(QWidget):
         col = item.column()
         hidden_idx = self.table.columnCount() - 1
 
-        programs = self._selected_programs[:6]
+        programs = self._selected_programs
         for pi, p in enumerate(programs):
             col_start = BASE_COLUMNS + pi * SUB_COLUMNS
             if col == col_start:
@@ -1038,7 +1126,7 @@ class EmployeeSummaryTab(QWidget):
             lw.addItem(item)
 
         layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Отметьте программы для отображения (макс. 6):"))
+        layout.addWidget(QLabel("Отметьте программы для отображения:"))
         layout.addWidget(lw)
 
         btn_row = QHBoxLayout()
@@ -1051,9 +1139,6 @@ class EmployeeSummaryTab(QWidget):
                     checked.append(item.data(Qt.ItemDataRole.UserRole))
             if not checked:
                 QMessageBox.warning(self, "Ошибка", "Выберите хотя бы одну программу")
-                return
-            if len(checked) > 6:
-                QMessageBox.warning(self, "Ошибка", "Максимум 6 программ одновременно")
                 return
             self._selected_programs = checked
             self._save_settings(self.data_dir, checked, self._b_period_3years)
@@ -1203,7 +1288,7 @@ class EmployeeSummaryTab(QWidget):
             ws = wb.active
             ws.title = "Сводка"
 
-            programs = self._selected_programs[:6] if filtered else VALID_PROGRAMS
+            programs = self._selected_programs if filtered else VALID_PROGRAMS
 
             headers = ["ФИО", "СНИЛС", "Должность"]
             for p in programs:
@@ -1257,19 +1342,29 @@ class EmployeeSummaryTab(QWidget):
         self.query_btn.setEnabled(False)
         self.query_btn.setText("Запрос...")
 
+        dialog = QueryProgressDialog(len(employees), self)
+
         self._api_thread = ApiQueryThread(employees, api_key, proxy_settings)
         self._api_thread.finished.connect(self._on_query_finished)
+        self._api_thread.finished.connect(dialog.accept)
         self._api_thread.error_signal.connect(lambda msg: logger.error("%s", filter_sensitive_text(str(msg))))
-        self._api_thread.progress.connect(lambda c, t: self.query_btn.setText(f"Запрос... {c}/{t}"))
+        self._api_thread.progress.connect(dialog.update_progress)
+        dialog.cancelled.connect(self._api_thread.cancel)
+        dialog.cancelled.connect(dialog.reject)
+        dialog.rejected.connect(self._api_thread.cancel)
         self._api_thread.start()
+
+        dialog.exec()
 
     def _on_query_finished(self, updated, errors):
         self.query_btn.setEnabled(True)
         self.query_btn.setText("Запросить из реестра")
         if errors > 0:
-            safe_message_box(self, QMessageBox.Icon.Warning, "Результат", f"Обновлено: {updated}\nОшибок: {errors}")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Результат",
+                             f"Обновлено: {updated}\nОшибок: {errors}")
         else:
-            safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Обновлено: {updated} сотрудников")
+            safe_message_box(self, QMessageBox.Icon.Information, "Успех",
+                             f"Обновлено: {updated} сотрудников")
         self.refresh_table()
 
     def _query_single(self, emp_id):
@@ -1387,7 +1482,7 @@ class EmployeeSummaryTab(QWidget):
             if not need_progs:
                 continue
 
-            status = self._get_employee_status(emp['id'], progs)
+            status = self._get_employee_status(progs)
             prog_data = self._get_program_data_for_status(emp, progs, status, today)
 
             if prog_data:
@@ -1458,9 +1553,12 @@ class EmployeeSummaryTab(QWidget):
                     continue
             report_data[cat_name] = (count_liable, count_trained)
 
+        def _pct(trained, liable):
+            return round(trained / liable * 100, 1) if liable else 0.0
+
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Отчет по обученным за {year} год")
-        dialog.setMinimumSize(700, 350)
+        dialog.setMinimumSize(750, 400)
 
         layout = QVBoxLayout(dialog)
         total_trained = sum(c[1] for c in report_data.values())
@@ -1471,31 +1569,92 @@ class EmployeeSummaryTab(QWidget):
         layout.addWidget(title)
 
         table = QTableWidget()
-        table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(["Программа", "Подлежат обучению\nв текущем году", "Обучено\nв текущем году"])
+        table.setColumnCount(4)
+        table.setHorizontalHeaderLabels(["Программа", "Подлежат обучению\nв текущем году", "Обучено\nв текущем году", "% выполнения"])
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setDefaultSectionSize(200)
+        table.horizontalHeader().setDefaultSectionSize(180)
         table.verticalHeader().setVisible(False)
 
         for cat_name, (count_liable, count_trained) in report_data.items():
             row = table.rowCount()
             table.insertRow(row)
-            for c, v in enumerate([cat_name, str(count_liable), str(count_trained)]):
+            pct = _pct(count_trained, count_liable)
+            for c, v in enumerate([cat_name, str(count_liable), str(count_trained), f"{pct:.1f}%"]):
                 item = QTableWidgetItem(v)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(row, c, item)
 
+        total_liable = sum(c[0] for c in report_data.values())
+        total_trained_val = sum(c[1] for c in report_data.values())
+        total_pct = _pct(total_trained_val, total_liable)
+        row = table.rowCount()
+        table.insertRow(row)
+        total_font = QFont()
+        total_font.setBold(True)
+        for c, v in enumerate(["ИТОГО", str(total_liable), str(total_trained_val), f"{total_pct:.1f}%"]):
+            item = QTableWidgetItem(v)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item.setFont(total_font)
+            table.setItem(row, c, item)
+
         layout.addWidget(table)
 
         btn_layout = QHBoxLayout()
+        export_btn = QPushButton("Экспорт в Excel")
+        export_btn.setObjectName("dialogPrimaryBtn")
+        export_btn.clicked.connect(lambda: self._export_trained_report_xlsx(report_data, _pct, year, dialog))
+        btn_layout.addWidget(export_btn)
         close_btn = QPushButton("Закрыть"); close_btn.setObjectName("dialogDangerBtn")
         close_btn.clicked.connect(dialog.close)
         btn_layout.addStretch(); btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
         dialog.exec()
+
+    def _export_trained_report_xlsx(self, report_data: dict, pct_func, year: int, parent: QDialog):
+        file_path, _ = QFileDialog.getSaveFileName(
+            parent, "Сохранить XLSX", f"Отчет_по_обученным_{year}.xlsx", "Excel Files (*.xlsx)"
+        )
+        if not file_path:
+            return
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Отчет"
+            headers = ["Программа", "Подлежат обучению\nв текущем году",
+                        "Обучено\nв текущем году", "% выполнения"]
+            ws.append(headers)
+            hf = Font(bold=True, color="FFFFFF")
+            hfill = PatternFill(start_color="4169E1", end_color="4169E1", fill_type="solid")
+            for cell in ws[1]:
+                cell.font = hf; cell.fill = hfill; cell.alignment = Alignment(horizontal="center")
+
+            total_liable = 0
+            total_trained = 0
+            for cat_name, (count_liable, count_trained) in report_data.items():
+                pct = pct_func(count_trained, count_liable)
+                ws.append([cat_name, count_liable, count_trained, f"{pct:.1f}%"])
+                total_liable += count_liable
+                total_trained += count_trained
+
+            total_pct = pct_func(total_trained, total_liable)
+            ws.append(["ИТОГО", total_liable, total_trained, f"{total_pct:.1f}%"])
+
+            for col in ws.columns:
+                mx = max((len(str(c.value or "")) for c in col), default=0)
+                ws.column_dimensions[col[0].column_letter].width = min(mx + 3, 50)
+
+            wb.save(file_path)
+            from utils.toast import Toast
+            Toast.success(parent, f"Файл сохранён:\n{file_path}")
+        except Exception as e:
+            logger.exception("Export trained report error")
+            from utils.error_utils import show_error_dialog
+            show_error_dialog(parent, "Ошибка экспорта", str(e), critical=False)
 
     def _generate_plan(self, current_year=True):
         year = datetime.now().year if current_year else datetime.now().year + 1
@@ -1530,7 +1689,7 @@ class EmployeeSummaryTab(QWidget):
             employees = EmployeesRepo.get_all()
             for emp in employees:
                 progs = EmployeeProgramsRepo.get_by_employee(emp['id'])
-                status = self._get_employee_status(emp['id'], progs)
+                status = self._get_employee_status(progs)
 
                 include = False
                 reason = None
