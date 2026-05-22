@@ -103,7 +103,7 @@ Windows DPAPI (user + machine + entropy)
 
 ## Logging Security (`utils/logger.py`)
 
-### SensitiveDataFilter (23+ patterns)
+### SensitiveDataFilter (27+ patterns)
 - SNILS, passports, phones, emails, API keys, tokens, JWT
 - Full Russian names (ФИО), initials
 - Passwords, proxies, cookies, session IDs
@@ -126,7 +126,7 @@ Windows DPAPI (user + machine + entropy)
 
 ## Audit System (`utils/audit.py`)
 
-### 32 Security Events
+### 34 Security Events
 `SEND_XML`, `SEND_XML_SIGNED`, `QUERY_SETID`, `QUERY_SNILS`,
 `IMPORT_XLSX`, `IMPORT_XML`, `EXPORT_XML`, `EXPORT_XLSX`,
 `LOGIN`, `BACKUP`, `KEY_ACCESS`, `KEY_ROTATION`,
@@ -233,8 +233,8 @@ parser = etree.XMLParser(
 - `api/mintrud_api.py` — MintrudClient class
 - `api/backends/` — transport backends (Requests, WinINET)
 - `utils/crypto.py` — Fernet + DPAPI encryption + production mode enforcement
-- `utils/audit.py` — 32 security events with HMAC integrity
-- `utils/logger.py` — SensitiveDataFilter (23+ patterns, recursive)
+- `utils/audit.py` — 34 security events with HMAC integrity
+- `utils/logger.py` — SensitiveDataFilter (27+ patterns, recursive)
 - `utils/xml_safe.py` — defusedxml wrapper with element/depth limits
 - `utils/secure_temp.py` — isolated temp directory, secure deletion
 - `utils/error_utils.py` — safe exception display (no PII)

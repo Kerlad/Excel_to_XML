@@ -168,9 +168,16 @@ def validate_api_key_remote(api_key: str, proxy_settings: dict = None) -> tuple[
                 return False, f'Ошибка сервера (HTTP {resp.status_code})'
         except ImportError:
             return False, 'Библиотека requests не установлена'
-        except requests.RequestException as e:
-            logger.error(f"Remote validation connection error: {e}")
+        except req.RequestException as e:
+            logger.error("Remote validation connection error: %s", e)
             return False, f'Ошибка подключения: {e}'
+    except (ValueError, KeyError) as e:
+        logger.error("Remote validation config error: %s", e)
+        return False, f'Ошибка конфигурации: {e}'
+    except req.RequestException as e:
+        # Requests errors that may occur outside the inner try (e.g. proxy detection)
+        logger.error("Remote validation request error: %s", e)
+        return False, f'Ошибка подключения: {e}'
     except (ValueError, KeyError) as e:
         logger.error("Remote validation config error: %s", e)
         return False, f'Ошибка конфигурации: {e}'

@@ -21,23 +21,19 @@ logger = logging.getLogger(__name__)
 _MAX_XML_SIZE_BYTES = 100 * 1024 * 1024
 
 
-class LimitedXMLParser(XMLParser):
-    """XML parser with strict limits on element count, depth, and entity expansion.
-    Uses defusedxml as base for XXE/Billion Laughs protection.
-    DefusedXMLParser inherently prohibits XXE, entity expansion, and DTD retrieval.
+class CountingTarget:
+    """TreeBuilder target that limits element count and depth.
+    Used as the `target` parameter of defusedxml XMLParser.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self):
         self._element_count = 0
-        self._max_depth = 0
         self._current_depth = 0
+        self._builder = etree.TreeBuilder()
 
-    def start(self, tag, attrib):
+    def start(self, tag, attrs):
         self._element_count += 1
         self._current_depth += 1
-        if self._current_depth > self._max_depth:
-            self._max_depth = self._current_depth
         if self._element_count > MAX_XML_ELEMENTS:
             log_audit("XML_SECURITY_ERROR", f"Element limit exceeded: {MAX_XML_ELEMENTS}")
             raise XmlSecurityError(
@@ -48,14 +44,17 @@ class LimitedXMLParser(XMLParser):
             raise XmlSecurityError(
                 f"Превышена максимальная глубина XML: {MAX_XML_DEPTH}"
             )
-        return super().start(tag, attrib)
+        return self._builder.start(tag, attrs)
 
     def end(self, tag):
         self._current_depth -= 1
-        return super().end(tag)
+        return self._builder.end(tag)
+
+    def data(self, data):
+        return self._builder.data(data)
 
     def close(self):
-        return super().close()
+        return self._builder.close()
 
 
 def safe_parse_xml(file_path: str) -> object:
@@ -74,7 +73,7 @@ def safe_parse_xml(file_path: str) -> object:
             _MAX_XML_SIZE_BYTES // (1024 * 1024)
         )
     try:
-        parser = LimitedXMLParser()
+        parser = XMLParser(target=CountingTarget(), forbid_dtd=True)
         tree = parse(file_path, parser=parser)
         return tree
     except (DefusedXmlException, XmlSecurityError):
@@ -96,7 +95,7 @@ def safe_fromstring_xml(data: str) -> object:
         log_audit("XML_SECURITY_ERROR", "XML data size limit exceeded")
         raise XmlSecurityError("Размер XML превышает допустимый лимит")
     try:
-        return fromstring(data)
+        return fromstring(data, forbid_dtd=True)
     except (DefusedXmlException, XmlSecurityError):
         log_audit("XML_SECURITY_ERROR", "defusedxml/security exception during fromstring")
         raise

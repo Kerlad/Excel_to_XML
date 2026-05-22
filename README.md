@@ -62,7 +62,7 @@
 
 Готовая сборка EXE без необходимости установки Python:
 
-[⬇️ **Скачать ExcelXML-Mintrud.zip**](https://github.com/Kerlad/Excel_to_XML/blob/main/dist/ExcelXML-Mintrud.zip)
+[⬇️ **Скачать ExcelXML-Mintrud.zip**](https://github.com/Kerlad/Excel_to_XML/blob/main/dist/ExcelXML-Mintrud-v3.0.0-win64.zip)
 
 Portable-версия не требует установки Python и зависимостей.
 
@@ -176,12 +176,14 @@ Excel_to_XML/
 │   ├── error_utils.py         ├── proxy_manager.py      ├── app_paths.py
 │   └── ... (dialog_base, about_dialog, help_dialog, passphrase_dialog и др.)
 ├── schema/                    # XSD-схемы
-├── tests/                     # 306 тестов
+├── tests/                     # 389 тестов
 ├── docs/                      # Документация
 │   ├── SECURITY.md            # Архитектура безопасности
 │   ├── HARDENING.md           # Hardening ОС
 │   ├── OPSEC_GUIDE.md         # Эксплуатация, IR, ключи
 │   ├── API_MINTTRUD.md        # API Минтруда
+│   ├── MOK.md                 # Mock-тесты (спецификация)
+│   ├── ROL_API_Registry_Section.md  # API реестра РОЛ
 │   └── Техническое_задание.md # ТЗ
 ├── Reports/                   # Отчёты аудита
 │   ├── compliance_audit.md    ├── threat_model.md

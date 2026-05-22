@@ -29,17 +29,30 @@ logger = logging.getLogger(__name__)
 class _ConnectionWorker(QObject):
     finished = Signal(bool, str)
 
-    def __init__(self, url, timeout, tls_verify):
+    def __init__(self, url, timeout, tls_verify, api_key="", proxy_settings=None):
         super().__init__()
         self.url = url
         self.timeout = timeout
         self.tls_verify = tls_verify
+        self.api_key = api_key
+        self.proxy_settings = proxy_settings
 
     def run(self):
         status, msg = test_external_access(
             url=self.url, timeout=self.timeout, tls_verify=self.tls_verify
         )
-        self.finished.emit(status == NetworkStatus.SUCCESS, msg)
+        if status != NetworkStatus.SUCCESS:
+            self.finished.emit(False, msg)
+            return
+        if len(self.api_key) == 32:
+            from api.mintrud_api import validate_api_key_remote
+            ok, err = validate_api_key_remote(self.api_key, self.proxy_settings)
+            if ok:
+                self.finished.emit(True, "Подключено к серверу. Ключ действителен.")
+            else:
+                self.finished.emit(True, f"Сервер доступен, но ключ не прошёл проверку: {err}")
+        else:
+            self.finished.emit(True, "Подключено к серверу")
 
 
 class _ProxyTestWorker(QObject):
@@ -564,6 +577,8 @@ class DataTransferTab(QWidget):
             url="https://edu.rosmintrud.ru",
             timeout=15,
             tls_verify=self.tls_checkbox.isChecked(),
+            api_key=api_key,
+            proxy_settings=self._get_proxy_settings(),
         )
         self._conn_worker.moveToThread(self._conn_thread)
         self._conn_thread.started.connect(self._conn_worker.run)
@@ -575,7 +590,7 @@ class DataTransferTab(QWidget):
 
     def _on_connection_result(self, ok, msg):
         if ok:
-            self._set_connection_status(True, "Подключено к серверу")
+            self._set_connection_status(True, msg)
         else:
             self._set_connection_status(False, f"Ошибка: {msg}")
         self.check_conn_btn.setEnabled(True)

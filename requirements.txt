@@ -1,0 +1,30 @@
+# Core GUI
+PySide6>=6.6.0
+
+# Data processing
+openpyxl>=3.1.2
+xlrd>=2.0.1
+
+# Networking
+requests>=2.31.0
+urllib3>=2.2.0
+
+# XML processing (SECURITY: use defusedxml for all external XML)
+lxml>=5.1.0
+defusedxml>=0.7.1
+
+# Cryptography (SECURITY: minimum version with current best practices)
+cryptography>=42.0.0
+
+# Image processing
+Pillow>=10.2.0
+
+# Windows API
+pywin32>=306
+
+# Utility
+python-dateutil>=2.8.2
+python-docx>=1.1.0
+
+# Build
+pyinstaller>=6.3.0

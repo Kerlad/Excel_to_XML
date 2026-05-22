@@ -13,6 +13,8 @@ build/
 dist/*
 !dist/*.zip
 *.exe
+*.spec
+version_info.txt
 
 # IDE
 .vscode/
@@ -26,7 +28,6 @@ dist/*
 .coverage
 htmlcov/
 *.manifest
-*.spec
 
 # Runtime data
 data/*.json
@@ -42,28 +43,23 @@ log/
 # Project specific
 .opencode/
 
-# Test files
+# Test generated data
 test_*.xlsx
 test_*.xml
-test_*.py
 generate_test_data.py
-tests/
-tests/*.py
-tests/test_*.py
+mock_payloads/
+generated/
+*.generated.xml
+*.mock.*
 
-
-# Docs (optional) — moved to docs/
+# Docs (optional)
 docs/hide_*.md
 Техническое_задание*.pdf
-*.txt
-Reports/
-QR.jpg
 
 # Runtime artifacts
 backups/
 temp/
 tmp/
-generated/
 exports/
 *.bak
 *.tmp
@@ -82,7 +78,4 @@ org_settings.json
 # OS
 .DS_Store
 Thumbs.db
-.o
-.opencode
-tests/test_database.py
-tests/test_crypto.py
+QR.jpg
