@@ -287,21 +287,43 @@ class DataTransferTab(QWidget):
 
         return group
 
-    def _on_tls_verify_toggled(self, checked):
+    def _save_tls_setting(self, checked: bool):
+        from utils.proxy_manager import save_proxy_settings
+        settings = self._get_proxy_settings_from_ui()
+        settings['tls_verify'] = checked
+        save_proxy_settings(self.data_dir, settings)
+
+    def _get_proxy_settings_from_ui(self):
+        mode_id = self.proxy_mode_group.checkedId()
+        mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
+        mode = mode_map.get(mode_id, 'off')
+        return {
+            'mode': mode,
+            'url': self.proxy_url_input.text().strip(),
+            'username': self.proxy_user_input.text().strip(),
+            'password': self.proxy_pass_input.text().strip(),
+        }
+
+    def _on_tls_verify_toggled(self, checked: bool):
         if not checked:
             from PySide6.QtWidgets import QMessageBox
             reply = QMessageBox.warning(
-                self, "Отключение TLS",
-                "⚠️ ВНИМАНИЕ! Отключение проверки TLS-сертификата делает соединение\n"
-                "незащищённым от атак Man-in-the-Middle.\n\n"
-                "Вы подтверждаете отключение?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                self,
+                "Предупреждение безопасности",
+                "Отключение проверки TLS-сертификата создаёт риск перехвата "
+                "персональных данных (атака MITM).\n\n"
+                "Это действие будет зафиксировано в журнале аудита.\n\n"
+                "Вы уверены, что хотите отключить проверку TLS?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
             )
-            if reply != QMessageBox.StandardButton.Yes:
+            if reply != QMessageBox.Yes:
                 self.tls_checkbox.setChecked(True)
                 return
-        from utils.audit import log_audit
-        log_audit("TLS_WARNING", f"TLS verify set to {checked}")
+            self._save_tls_setting(False)
+            log_audit("TLS_WARNING", "TLS verification disabled by user")
+        else:
+            log_audit("TLS_WARNING", "TLS verification enabled by user")
 
     def _on_proxy_mode_changed(self, button):
         mode = self.proxy_mode_group.id(button)

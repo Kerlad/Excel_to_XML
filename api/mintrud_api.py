@@ -156,6 +156,12 @@ class MintrudClient:
         self.backend_name = backend
         self._backend = None
         self._init_backend()
+        if not self.proxy_settings.get("tls_verify", True):
+            logger.warning(
+                "SECURITY: TLS verification is DISABLED at client init - "
+                "PDn data is at risk of interception."
+            )
+            log_audit("TLS_WARNING", "TLS verification disabled at client initialization")
     
     def _init_backend(self):
         """Initialize transport backend."""
@@ -249,9 +255,7 @@ class MintrudClient:
                 "SECURITY: TLS verification is DISABLED - connection is insecure. "
                 "PDn data is at risk of interception."
             )
-            from utils.audit import log_audit
-            log_audit("TLS_WARNING", "TLS verification disabled by user")
-            # TODO: Organizational measure - require explicit written authorization to disable TLS
+            log_audit("TLS_WARNING", "TLS verification disabled for API request")
         return bool(verify)
     
     # ============ API Methods ============

@@ -33,8 +33,8 @@ _FERNET_INSTANCE: Optional[Fernet] = None
 _KEY_LOCK = threading.Lock()
 _crypto_lock = threading.RLock()
 
-_ENCRYPT_CACHE: Dict[str, str] = {}
-_MAX_CACHE_ITEMS: int = 2000
+_NON_PD_CACHE: Dict[str, str] = {}
+_MAX_NON_PD_CACHE_ITEMS: int = 2000
 
 _KEY_VERSION: int = 3
 _KEY_METADATA_FILE: str = "master.key.json"
@@ -236,10 +236,12 @@ def _restrict_file_access(filepath: Path) -> None:
 
 # ============ Key Metadata (signed with HMAC) ============
 
+_HMAC_TAG_LENGTH: int = 32
+_HMAC_TAG_LENGTH_LEGACY: int = 16
+
 def _compute_metadata_hmac_legacy(meta: dict) -> str:
-    """Legacy HMAC computation using DPAPI-encrypted file bytes.
-    Kept for migration: old metadata was signed against file bytes
-    which change on DPAPI re-encryption."""
+    """LEGACY: 64-bit HMAC for backward compat with pre-3.x metadata. DO NOT USE for new entries.
+    Uses DPAPI-encrypted file bytes (which change on DPAPI re-encryption)."""
     kd = _key_dir()
     kf = kd / 'master.key'
     raw = b""
@@ -267,7 +269,7 @@ def _compute_metadata_hmac(meta: dict) -> str:
         except OSError:
             pass
     serialized = json.dumps(meta, sort_keys=True, ensure_ascii=False).encode('utf-8')
-    return hmac.new(hmac_key, serialized, hashlib.sha256).hexdigest()[:16]
+    return hmac.new(hmac_key, serialized, hashlib.sha256).hexdigest()[:_HMAC_TAG_LENGTH]
 
 
 def _load_key_metadata() -> dict:
@@ -313,7 +315,7 @@ def verify_metadata_integrity() -> bool:
         return True
     legacy = _compute_metadata_hmac_legacy(meta)
     if hmac.compare_digest(stored_hmac, legacy):
-        logger.info("Metadata integrity: legacy HMAC matched — migrating to stable HMAC")
+        logger.info("Metadata integrity: legacy 64-bit HMAC — migrating to 128-bit HMAC")
         _save_key_metadata(meta)
         return True
     logger.critical("SECURITY: Key metadata integrity check FAILED!")
@@ -470,6 +472,19 @@ def _archive_corrupted_key(kf: Path) -> None:
         kf.unlink(missing_ok=True)
 
 
+def _has_any_encrypted_data() -> bool:
+    """Returns True if DB contains any PD records (snils_enc not empty)."""
+    try:
+        from db.database import DatabaseManager
+        db = DatabaseManager.get_instance()
+        row = db.fetchone(
+            "SELECT 1 FROM workers_data WHERE snils_enc != '' LIMIT 1"
+        )
+        return row is not None
+    except Exception:
+        return False
+
+
 def _load_existing_key(kf: Path, kd: Path) -> bytes:
     raw_bytes = kf.read_bytes()
     try:
@@ -478,8 +493,14 @@ def _load_existing_key(kf: Path, kd: Path) -> bytes:
             return raw
     except (CryptoUnavailableError, CryptoError):
         pass
-    # Legacy plaintext fallback: BLOCKED in production mode
+    # Legacy plaintext fallback: BLOCKED if PD data exists or in production mode
     if len(raw_bytes) == 32:
+        if _has_any_encrypted_data():
+            raise CryptoProductionModeError(
+                "SECURITY: Master key is plaintext but encrypted PD records exist in DB! "
+                "Migrate key to DPAPI protection before continuing. "
+                "Run key migration or set EXCEL_XML_PROD=1."
+            )
         if _is_production_mode():
             raise CryptoProductionModeError(
                 "PRODUCTION MODE: Master key is stored as plaintext! "
@@ -555,26 +576,24 @@ def encrypt_value(plain: str) -> str:
         return ''
     _unlock_with_passphrase_if_needed()
     f = _fernet()
-    result = f.encrypt(plain.encode('utf-8')).decode('utf-8')
-    with _crypto_lock:
-        if len(_ENCRYPT_CACHE) < _MAX_CACHE_ITEMS:
-            _ENCRYPT_CACHE[result] = plain
-    return result
+    return f.encrypt(plain.encode('utf-8')).decode('utf-8')
 
 
-def decrypt_value(enc: str) -> str:
+def decrypt_value(enc: str, cache_ok: bool = False) -> str:
     if not enc:
         return ''
-    with _crypto_lock:
-        if enc in _ENCRYPT_CACHE:
-            return _ENCRYPT_CACHE[enc]
+    if cache_ok:
+        with _crypto_lock:
+            if enc in _NON_PD_CACHE:
+                return _NON_PD_CACHE[enc]
     _unlock_with_passphrase_if_needed()
     try:
         f = _fernet()
         plain = f.decrypt(enc.encode('utf-8')).decode('utf-8')
-        with _crypto_lock:
-            if len(_ENCRYPT_CACHE) < _MAX_CACHE_ITEMS:
-                _ENCRYPT_CACHE[enc] = plain
+        if cache_ok:
+            with _crypto_lock:
+                if len(_NON_PD_CACHE) < _MAX_NON_PD_CACHE_ITEMS:
+                    _NON_PD_CACHE[enc] = plain
         return plain
     except CryptoError:
         raise
@@ -609,10 +628,10 @@ def decrypt_data(enc: str) -> Any:
 
 
 def clear_caches() -> None:
-    global _FERNET_INSTANCE, _ENCRYPT_CACHE, _CURRENT_PASSPHRASE_KEY
+    global _FERNET_INSTANCE, _NON_PD_CACHE, _CURRENT_PASSPHRASE_KEY
     with _crypto_lock:
         _FERNET_INSTANCE = None
-        _ENCRYPT_CACHE.clear()
+        _NON_PD_CACHE.clear()
         if _CURRENT_PASSPHRASE_KEY is not None:
             _zero_memory_bytes(_CURRENT_PASSPHRASE_KEY)
         _CURRENT_PASSPHRASE_KEY = None
@@ -632,56 +651,63 @@ def rotate_master_key(
 ) -> Tuple[bool, str]:
     logger.info("Master key rotation started")
     old_key = _get_or_create_master_key()
-    old_encoded = base64.urlsafe_b64encode(old_key)
-    old_fernet = Fernet(old_encoded)
+    old_encoded = bytearray(base64.urlsafe_b64encode(old_key))
+    old_fernet = Fernet(bytes(old_encoded))
 
-    new_raw = os.urandom(32)
-    kd = _key_dir()
-    kf = kd / 'master.key'
-    _write_key_file(kf, new_raw)
+    try:
+        new_raw = os.urandom(32)
+        kd = _key_dir()
+        kf = kd / 'master.key'
+        _write_key_file(kf, new_raw)
 
-    global _MASTER_KEY, _FERNET_INSTANCE
-    with _crypto_lock:
-        _MASTER_KEY = new_raw
-        _FERNET_INSTANCE = None
+        global _MASTER_KEY, _FERNET_INSTANCE
+        with _crypto_lock:
+            _MASTER_KEY = new_raw
+            _FERNET_INSTANCE = None
 
-    rotation_failed = False
-    if reencrypt_func is not None:
-        try:
-            reencrypt_func(old_fernet, _fernet())
-        except Exception as e:
-            logger.exception("Key rotation re-encryption failed, rolling back")
-            with _crypto_lock:
-                _MASTER_KEY = old_key
-            _write_key_file(kf, old_key)
-            with _crypto_lock:
-                _FERNET_INSTANCE = None
-            clear_caches()
-            rotation_failed = True
-            raise CryptoRotationError(f"Key rotation failed during re-encryption: {e}")
-
-    if not rotation_failed:
-        if new_passphrase:
+        rotation_failed = False
+        if reencrypt_func is not None:
             try:
-                set_passphrase(new_passphrase)
+                reencrypt_func(old_fernet, _fernet())
             except Exception as e:
-                logger.exception("Key rotated but passphrase update failed")
-                logger.warning("Key rotated but passphrase update failed: %s", e)
+                logger.exception("Key rotation re-encryption failed, rolling back")
+                with _crypto_lock:
+                    _MASTER_KEY = old_key
+                _write_key_file(kf, old_key)
+                with _crypto_lock:
+                    _FERNET_INSTANCE = None
+                clear_caches()
+                rotation_failed = True
+                raise CryptoRotationError(f"Key rotation failed during re-encryption: {e}")
 
-        old_fp = _compute_key_fingerprint(old_key)
-        new_fp = _compute_key_fingerprint(new_raw)
-        meta = _load_key_metadata()
-        meta[_KEY_VERSION_TAG] = _KEY_VERSION
-        meta[_KEY_ROTATED_TAG] = datetime.now().isoformat()
-        meta[_KEY_FINGERPRINT_TAG] = new_fp
-        _save_key_metadata(meta)
+        if not rotation_failed:
+            if new_passphrase:
+                try:
+                    set_passphrase(new_passphrase)
+                except Exception as e:
+                    logger.exception("Key rotated but passphrase update failed")
+                    logger.warning("Key rotated but passphrase update failed: %s", e)
 
-        clear_caches()
-        log_audit("KEY_ROTATION", f"old_fingerprint={old_fp}, new_fingerprint={new_fp}")
-        logger.info("Master key rotation completed successfully")
-        return True, "Master key rotated successfully"
+            old_fp = _compute_key_fingerprint(old_key)
+            new_fp = _compute_key_fingerprint(new_raw)
+            meta = _load_key_metadata()
+            meta[_KEY_VERSION_TAG] = _KEY_VERSION
+            meta[_KEY_ROTATED_TAG] = datetime.now().isoformat()
+            meta[_KEY_FINGERPRINT_TAG] = new_fp
+            _save_key_metadata(meta)
 
-    return False, "Key rotation failed"
+            clear_caches()
+            log_audit("KEY_ROTATION", f"old_fingerprint={old_fp}, new_fingerprint={new_fp}")
+            logger.info("Master key rotation completed successfully")
+            return True, "Master key rotated successfully"
+
+        return False, "Key rotation failed"
+
+    except CryptoRotationError:
+        raise
+    finally:
+        _zero_memory(old_encoded)
+        _zero_memory_bytes(old_key)
 
 
 # ============ Security Audit ============
@@ -752,15 +778,22 @@ def _secure_delete(filepath: Path, passes: int = 3) -> None:
 
 # ============ Backup Operations (using master key hash) ============
 
+_BACKUP_KEY_SALT: bytes = b'EXCEL_XML_BACKUP_V4_SALT_2024'
+_BACKUP_KEY_ITERATIONS: int = 600_000
+_BACKUP_KEY_LENGTH: int = 32
+
+
 def _get_backup_password() -> str:
-    """Derive backup password from current master key."""
+    """Derive backup encryption password from master key via PBKDF2.
+    Returns 64-char hex string (256-bit key material).
+    """
+    # NOTE: If master key is rotated, old backups will be unrecoverable.
+    # Always create a new backup immediately after key rotation.
     mk = _get_or_create_master_key()
-    return hashlib.pbkdf2_hmac(
-        'sha256',
-        mk,
-        b'EXCEL_XML_BACKUP_V3',
-        100000
-    ).hex()[:16]
+    derived = hashlib.pbkdf2_hmac(
+        'sha256', mk, _BACKUP_KEY_SALT, _BACKUP_KEY_ITERATIONS, dklen=_BACKUP_KEY_LENGTH
+    )
+    return derived.hex()
 
 
 def create_master_key_backup(backup_dir: Optional[str] = None) -> Tuple[bool, str]:

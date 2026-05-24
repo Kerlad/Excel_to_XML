@@ -192,6 +192,8 @@ class DatabaseManager:
             logger.warning("Database optimize failed: %s", e)
 
     def create_backup(self) -> str:
+        # NOTE: If master key is rotated, old backups will be unrecoverable.
+        # Always create a new backup immediately after key rotation.
         if not self.db_path or not os.path.exists(self.db_path):
             return ""
         backup_dir = os.path.join(os.path.dirname(self.db_path), "backups")

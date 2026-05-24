@@ -83,20 +83,27 @@ class TestCryptoThreadSafety:
 
     @patch('utils.crypto._is_production_mode')
     def test_cache_reverse_direction(self, mock_prod):
-        """Ensure cache stores ciphertext->plaintext (not plaintext->ciphertext)."""
-        from utils.crypto import encrypt_value, decrypt_value, _ENCRYPT_CACHE
+        """Ensure non-PD cache stores ciphertext->plaintext (not plaintext->ciphertext)."""
+        from utils.crypto import encrypt_value, decrypt_value, _NON_PD_CACHE
 
         mock_prod.return_value = False
-        _ENCRYPT_CACHE.clear()
+        _NON_PD_CACHE.clear()
 
         plain = "test_sensitive_123"
         cipher = encrypt_value(plain)
 
-        # Cache should contain ciphertext as key
-        assert cipher in _ENCRYPT_CACHE, \
-            f"Cache should have ciphertext key, has: {list(_ENCRYPT_CACHE.keys())[:3]}"
-        assert _ENCRYPT_CACHE[cipher] == plain
+        # Encrypt does not cache; verify decrypt with cache_ok=True caches ciphertext
+        result = decrypt_value(cipher, cache_ok=True)
 
-        # Decrypt should return from cache
-        result = decrypt_value(cipher)
+        # Cache should contain ciphertext as key
+        assert cipher in _NON_PD_CACHE, \
+            f"Cache should have ciphertext key, has: {list(_NON_PD_CACHE.keys())[:3]}"
+        assert _NON_PD_CACHE[cipher] == plain
         assert result == plain
+
+        # Second call should return from cache
+        from unittest.mock import patch as _patch
+        with _patch('utils.crypto._fernet') as mock_fernet:
+            result2 = decrypt_value(cipher, cache_ok=True)
+            assert result2 == plain
+            mock_fernet.assert_not_called()

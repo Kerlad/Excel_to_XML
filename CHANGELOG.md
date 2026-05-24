@@ -1,5 +1,41 @@
 # Changelog
 
+## v3.2.0 "Security Hardening"
+
+### Cryptographic Security (2026-05-24)
+
+1. **Removed in-memory PD decrypt cache** (`utils/crypto.py`)
+   - `_ENCRYPT_CACHE` (2000 entries of plaintext PDn in RAM) removed
+   - Replaced with `_NON_PD_CACHE` used only when `cache_ok=True` is explicitly passed
+   - `decrypt_value()` now defaults to `cache_ok=False` — always calls Fernet for PD fields
+   - Tests updated: verify Fernet is called on every `decrypt_value()` call without `cache_ok`
+
+2. **Extended metadata HMAC to 128-bit** (`utils/crypto.py`)
+   - `_compute_metadata_hmac()` now returns 32 hex chars (was 16) — NIST SP 800-107 compliant
+   - Added `_HMAC_TAG_LENGTH = 32` and `_HMAC_TAG_LENGTH_LEGACY = 16` constants
+   - Legacy 64-bit HMAC auto-migrates to 128-bit on first integrity check
+
+3. **Zero old key material after rotation** (`utils/crypto.py`)
+   - `rotate_master_key()` now wraps old key in `bytearray` for mutability
+   - `try/finally` block guarantees `_zero_memory()` / `_zero_memory_bytes()` always called
+   - Old key and old encoded key zeroed regardless of success or rollback
+
+4. **Strengthened backup password to 256-bit** (`utils/crypto.py`, `db/database.py`)
+   - PBKDF2 iterations increased from 100K to 600K (matching passphrase derivation)
+   - Key length increased from 16 bytes (64-bit) to 32 bytes (256-bit) → 64 hex chars
+   - Salt updated to `EXCEL_XML_BACKUP_V4_SALT_2024`
+   - Added NOTE about key rotation making old backups unrecoverable
+
+5. **Blocked plaintext master key when PD data exists** (`utils/crypto.py`)
+   - New `_has_any_encrypted_data()` checks `workers_data` for encrypted records
+   - `_load_existing_key()` now raises `CryptoProductionModeError` if plaintext key found AND PD records exist in DB — regardless of dev/prod mode
+
+6. **Required explicit confirmation before disabling TLS** (`api/mintrud_api.py`, `tabs/data_transfer_tab.py`)
+   - Confirmation dialog now defaults to "No" and explicitly warns about PD data interception risk
+   - TLS setting saved immediately after confirmation (not on batch save)
+   - `TLS_WARNING` audit event logged at `MintrudApiClient` initialization if TLS disabled
+   - Removed stale TODO comment
+
 ## v3.1.0 "Version Bump"
 
 ### Version Update (2026-05-22)

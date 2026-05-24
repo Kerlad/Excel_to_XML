@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import pytest
 from db.database import DatabaseManager
 from db.schema import create_schema
+from utils.crypto import _get_backup_password
 
 
 @pytest.fixture(autouse=True)
@@ -102,3 +103,7 @@ class TestDatabaseManager:
             "INSERT INTO employees (snils_enc, snils_hash) VALUES (?, ?)", data
         )
         assert db2.fetchone("SELECT COUNT(*) as cnt FROM employees")['cnt'] == 3
+
+    def test_backup_password_length(self):
+        pwd = _get_backup_password()
+        assert len(pwd) == 64
