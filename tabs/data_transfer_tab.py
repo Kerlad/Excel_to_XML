@@ -44,12 +44,16 @@ class _ProxyTestWorker(QObject):
             f"Диагностика сети:\n\n"
             f"Обнаруженный прокси: {diag.get('detected_proxy', 'Не обнаружен')}\n"
             f"Метод авторизации: {diag.get('auth_method', 'Нет')}\n"
-            f"Windows пользователь: {diag.get('windows_user', 'Не определен')}\n"
-            f"Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Нет'}\n\n"
+            f"Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Нет'}\n"
+            f"TLS доступен: {'Да' if diag.get('tls_ok') else 'Нет'}\n"
+            f"Авторизация прокси: {'Да' if diag.get('proxy_auth_ok') else 'Нет'}\n\n"
             f"Результат теста:\n"
             f"Статус: {status.value}\n"
             f"Сообщение: {msg}"
         )
+        rec = diag.get('recommendation', '')
+        if rec:
+            result_text += f"\n\nРекомендация:\n{rec}"
         self.finished.emit(result_text, status == NetworkStatus.SUCCESS)
 
 
@@ -252,6 +256,16 @@ class DataTransferTab(QWidget):
         cred_row.addStretch()
         manual_layout.addLayout(cred_row)
 
+        self.proxy_negotiate_cb = QCheckBox(
+            "Использовать Windows-авторизацию (Negotiate/Kerberos)"
+        )
+        self.proxy_negotiate_cb.setToolTip(
+            "Для корпоративных прокси с авторизацией через Active Directory.\n"
+            "Приложение автоматически передаст токен текущего пользователя Windows.\n"
+            "Ввод логина/пароля не требуется."
+        )
+        manual_layout.addWidget(self.proxy_negotiate_cb)
+
         self.proxy_manual_container.setVisible(False)
         layout.addWidget(self.proxy_manual_container)
 
@@ -302,6 +316,8 @@ class DataTransferTab(QWidget):
             'url': self.proxy_url_input.text().strip(),
             'username': self.proxy_user_input.text().strip(),
             'password': self.proxy_pass_input.text().strip(),
+            'use_negotiate': self.proxy_negotiate_cb.isChecked(),
+            'backend': self.backend_combo.currentData(),
         }
 
     def _on_tls_verify_toggled(self, checked: bool):
@@ -538,6 +554,11 @@ class DataTransferTab(QWidget):
         self.proxy_user_input.setText(settings.get('username', ''))
         self.proxy_pass_input.setText(settings.get('password', ''))
         self.tls_checkbox.setChecked(settings.get('tls_verify', True))
+        self.proxy_negotiate_cb.setChecked(settings.get('use_negotiate', False))
+        backend_val = settings.get('backend', 'auto')
+        idx = self.backend_combo.findData(backend_val)
+        if idx >= 0:
+            self.backend_combo.setCurrentIndex(idx)
 
         if mode == 'auto':
             self._on_proxy_mode_changed(self.proxy_auto_rb)
@@ -557,6 +578,8 @@ class DataTransferTab(QWidget):
             'username': self.proxy_user_input.text().strip(),
             'password': self.proxy_pass_input.text().strip(),
             'tls_verify': self.tls_checkbox.isChecked(),
+            'use_negotiate': self.proxy_negotiate_cb.isChecked(),
+            'backend': self.backend_combo.currentData(),
         }
 
         ok, msg = save_proxy_settings(self.data_dir, settings)

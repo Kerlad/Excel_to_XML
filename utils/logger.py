@@ -116,14 +116,22 @@ class SensitiveDataFilter(logging.Filter):
 
 
 def mask_sensitive(text: str) -> str:
-    """Mask middle portion of sensitive string, keep first 2 + last 2 chars."""
-    if not text:
-        return ''
-    if len(text) < 6:
-        return text
-    if len(text) < 10:
-        return text[:2] + '*' * (len(text) - 4) + text[-2:]
-    return text[:2] + '*' * (len(text) - 4) + text[-2:]
+    """Mask credentials in URLs, preserve error message readability."""
+    if not isinstance(text, str):
+        return str(text)
+    text = re.sub(
+        r'(https?://)[^@\s]*:[^@\s]*@',
+        r'\1***:***@',
+        text
+    )
+    text = re.sub(
+        r'(Proxy-Authorization:\s*\w+\s+)[A-Za-z0-9+/=]{20,}',
+        r'\1[TOKEN]',
+        text
+    )
+    if len(text) > 300:
+        text = text[:300] + '...[truncated]'
+    return text
 
 
 def filter_sensitive_text(text: str) -> str:

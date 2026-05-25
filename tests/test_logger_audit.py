@@ -51,17 +51,21 @@ class TestSensitiveDataFilter:
 
 
 class TestMaskSensitive:
-    def test_mask_long_text(self):
-        result = mask_sensitive("abcdefghijklmnop")
-        assert len(result) == len("abcdefghijklmnop")
-        assert result.startswith("ab")
-        assert result.endswith("op")
-        assert "****" in result
+    def test_mask_credentials_in_url(self):
+        result = mask_sensitive("http://user:pass@proxy:3128")
+        assert "***:***@" in result
+        assert "user" not in result or "user" not in result.split("***")[0]
 
-    def test_mask_short_text(self):
-        assert mask_sensitive("12345") == "12345"
-        assert mask_sensitive("") == ""
-        assert mask_sensitive(None) == ''
+    def test_mask_proxy_auth_token(self):
+        result = mask_sensitive("Proxy-Authorization: Negotiate AQAAABBBCCCDDDEEEFFFGGGHHHIIIJJJKKKLLLMMM")
+        assert "[TOKEN]" in result
+
+    def test_mask_truncates_long(self):
+        result = mask_sensitive("a" * 500)
+        assert len(result) == 300 + len("...[truncated]")
+
+    def test_mask_none_returns_str(self):
+        assert mask_sensitive(None) == 'None'
 
 
 class TestAudit:

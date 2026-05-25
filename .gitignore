@@ -11,7 +11,6 @@ venv/
 # Build
 build/
 dist/*
-!dist/*.zip
 *.exe
 *.spec
 version_info.txt
@@ -54,6 +53,7 @@ generated/
 
 # Docs (optional)
 docs/hide_*.md
+docs/proxy_fix_prompt.md
 Техническое_задание*.pdf
 
 # Runtime artifacts

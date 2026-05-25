@@ -14,7 +14,7 @@ PROXY_SETTINGS_FILE = "proxy_settings.json"
 
 def load_proxy_settings(data_dir: str) -> dict:
     settings_file = os.path.join(data_dir, PROXY_SETTINGS_FILE)
-    defaults = {"mode": "off", "url": "", "username": "", "password": "", "tls_verify": True}
+    defaults = {"mode": "off", "url": "", "username": "", "password": "", "tls_verify": True, "use_negotiate": False, "backend": "auto"}
     if not os.path.exists(settings_file):
         return defaults
     try:
@@ -55,6 +55,8 @@ def save_proxy_settings(data_dir: str, settings: dict) -> tuple[bool, str]:
             "username": "",
             "password": "",
             "tls_verify": settings.get("tls_verify", True),
+            "use_negotiate": settings.get("use_negotiate", False),
+            "backend": settings.get("backend", "auto"),
         }
         with open(settings_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)

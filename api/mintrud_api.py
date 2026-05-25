@@ -58,7 +58,7 @@ API_URL = "https://edu.rosmintrud.ru/api/set/push"
 GET_URL = "https://edu.rosmintrud.ru/api/GetEducatedPersonXML"
 
 # Default backend order for auto selection
-DEFAULT_BACKEND_ORDER = ["requests", "wininet"]
+DEFAULT_BACKEND_ORDER = ["wininet", "urllib", "requests"]
 
 # SSL/TLS error markers for automatic fallback detection
 SSL_ERROR_MARKERS = [
@@ -66,6 +66,11 @@ SSL_ERROR_MARKERS = [
     "certificate verify failed", "certificate_verify_failed",
     "ssl_error", "sslerror", "ssl alert",
     "illegal_message", "unable to get local issuer certificate",
+    "SEC_E_ILLEGAL_MESSAGE",
+    "0x80090326",
+    "tunnel connection failed",
+    "407",
+    "proxy authentication",
 ]
 
 
@@ -166,6 +171,13 @@ class MintrudClient:
     def _init_backend(self):
         """Initialize transport backend."""
         import utils.proxy_manager as pm
+
+        if self.proxy_settings.get("use_negotiate") and os.name == 'nt':
+            backend_class = BackendRegistry.get_backend("wininet")
+            if backend_class:
+                self._backend = backend_class()
+                logger.info("Using wininet backend (Negotiate/Kerberos mode)")
+                return
         
         if self.backend_name == "auto":
             self._backend = self._create_auto_backend()

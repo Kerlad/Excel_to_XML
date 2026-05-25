@@ -65,7 +65,7 @@
 
 Готовая сборка EXE без необходимости установки Python:
 
-[⬇️ **Скачать ExcelXML-Mintrud.zip**](https://github.com/Kerlad/Excel_to_XML/blob/main/dist/ExcelXML-Mintrud-v3.0.0-win64.zip)
+[⬇️ **Скачать ExcelXML-Mintrud.zip**](https://github.com/Kerlad/Excel_to_XML/raw/main/dist/ExcelXML-Mintrud.zip)
 
 Portable-версия не требует установки Python и зависимостей.
 

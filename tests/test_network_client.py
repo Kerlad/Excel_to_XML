@@ -75,4 +75,7 @@ class TestNetworkClient:
         assert 'negotiate_available' in diag
         assert 'detected_proxy' in diag
         assert 'auth_method' in diag
-        assert diag['negotiate_available'] is False
+        assert 'tls_ok' in diag
+        assert 'proxy_auth_ok' in diag
+        assert 'recommendation' in diag
+        assert isinstance(diag['negotiate_available'], bool)

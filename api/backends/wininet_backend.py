@@ -23,6 +23,20 @@ WINHTTP_ACCESS_TYPE_DEFAULT_PROXY = 0
 WINHTTP_ACCESS_TYPE_NO_PROXY = 1
 WINHTTP_ACCESS_TYPE_NAMED_PROXY = 3
 
+WINHTTP_AUTOLOGON_POLICY_ALWAYS = 0
+WINHTTP_AUTOLOGON_POLICY_ONLY_IF_CHALLENGED = 1
+WINHTTP_AUTOLOGON_POLICY_NEVER = 2
+
+WINHTTP_OPTION_SECURITY_FLAGS = 31
+SECURITY_FLAG_IGNORE_UNKNOWN_CA = 0x00000100
+SECURITY_FLAG_IGNORE_CERT_CN_INVALID = 0x00001000
+SECURITY_FLAG_IGNORE_CERT_DATE_INVALID = 0x00002000
+SECURITY_FLAG_IGNORE_ALL_CERT_ERRORS = (
+    SECURITY_FLAG_IGNORE_UNKNOWN_CA |
+    SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
+    SECURITY_FLAG_IGNORE_CERT_DATE_INVALID
+)
+
 
 def _make_request(
     method: str,
@@ -39,10 +53,23 @@ def _make_request(
         http.SetTimeouts(timeout * 1000, timeout * 1000, timeout * 1000, timeout * 1000)
         http.Open(method, url, False)
 
+        http.SetAutoLogonPolicy(WINHTTP_AUTOLOGON_POLICY_ALWAYS)
+
+        if not verify:
+            try:
+                http.Option[WINHTTP_OPTION_SECURITY_FLAGS] = SECURITY_FLAG_IGNORE_ALL_CERT_ERRORS
+                logger.warning(
+                    "WinINET: TLS certificate verification disabled "
+                    "(corporate SSL inspection mode)"
+                )
+            except AttributeError:
+                logger.debug("WinINET: cannot set SECURITY_FLAGS (COM limitation)")
+
         if proxies:
             proxy_url = proxies.get('https') or proxies.get('http')
             if proxy_url:
                 http.SetProxy(WINHTTP_ACCESS_TYPE_NAMED_PROXY, proxy_url, "")
+                logger.debug("WinINET: using proxy %s", proxy_url)
         else:
             http.SetProxy(WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, "", "")
 
