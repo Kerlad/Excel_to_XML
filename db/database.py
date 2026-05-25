@@ -191,6 +191,20 @@ class DatabaseManager:
         except sqlite3.Error as e:
             logger.warning("Database optimize failed: %s", e)
 
+    def secure_vacuum(self) -> None:
+        try:
+            with self.get_conn() as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            import sqlite3 as _sqlite3
+            vacuum_conn = _sqlite3.connect(self.db_path, timeout=30.0)
+            vacuum_conn.execute("VACUUM")
+            vacuum_conn.close()
+            logger.info("Database VACUUM completed after PD deletion")
+            log_audit("SECURITY_WARNING",
+                      "VACUUM executed — freed pages overwritten after PD deletion")
+        except Exception as e:
+            logger.error("VACUUM failed: %s", e)
+
     def create_backup(self) -> str:
         # NOTE: If master key is rotated, old backups will be unrecoverable.
         # Always create a new backup immediately after key rotation.
@@ -213,13 +227,12 @@ class DatabaseManager:
             zip_password = get_key_fingerprint()
         except (OSError, ValueError) as e:
             logger.warning("Cannot derive backup password from master key: %s", e)
-            from utils.crypto import _get_or_create_master_key
+            from utils.crypto import _get_backup_password
             try:
-                mk = _get_or_create_master_key()
-                zip_password = hashlib.sha256(mk).hexdigest()[:16]
+                zip_password = _get_backup_password()
             except Exception:
                 import secrets
-                zip_password = secrets.token_hex(16)
+                zip_password = secrets.token_hex(32)
                 logger.warning(
                     "Cannot derive backup password from master key. "
                     "Using random password. This backup cannot be restored without the original master key."

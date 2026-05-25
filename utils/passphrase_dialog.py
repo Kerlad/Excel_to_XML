@@ -3,11 +3,12 @@ import logging
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QDialog, QMessageBox
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QIcon
 from utils.crypto import verify_passphrase, CryptoPassphraseRequiredError
 from utils.app_paths import get_resource_dir
 from utils.about_dialog import VERSION
+from utils.audit import log_audit
 
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,11 @@ class PassphraseDialog(QDialog):
 
         layout.addLayout(btn_row)
 
+        self._wrong_attempts: int = 0
+        self._MAX_ATTEMPTS: int = 5
+        self._BASE_DELAY_MS: int = 1000
+        self.ok_btn = ok_btn
+
         self.pwd_input.setFocus()
 
     def _on_accept(self):
@@ -125,18 +131,40 @@ class PassphraseDialog(QDialog):
             self._show_wrong()
 
     def _show_wrong(self):
+        self._wrong_attempts += 1
+        log_audit("SESSION_LOCK",
+                  f"Wrong passphrase attempt {self._wrong_attempts}/{self._MAX_ATTEMPTS}")
+        if self._wrong_attempts >= self._MAX_ATTEMPTS:
+            log_audit("SECURITY_WARNING",
+                      f"Max passphrase attempts ({self._MAX_ATTEMPTS}) reached — forcing exit")
+            QMessageBox.critical(
+                self, "Превышено число попыток",
+                f"Введено {self._MAX_ATTEMPTS} неверных парольных фраз.\n"
+                "Приложение будет закрыто в целях безопасности."
+            )
+            self.reject()
+            from PySide6.QtWidgets import QApplication
+            QApplication.instance().quit()
+            return
+        delay_ms = self._BASE_DELAY_MS * (2 ** (self._wrong_attempts - 1))
+        delay_ms = min(delay_ms, 30_000)
+        self.ok_btn.setEnabled(False)
+        self.pwd_input.setEnabled(False)
         self.pwd_input.setStyleSheet(
             "font-size: 14px; padding: 4px 10px; "
             "border: 2px solid #E74C3C; background-color: #FFF0F0;"
         )
-        self.pwd_input.clear()
-        self.pwd_input.setPlaceholderText("Неверная парольная фраза. Попробуйте снова.")
-        QMessageBox.warning(
-            self, "Неверная парольная фраза",
-            "Введённая парольная фраза не подходит.\n\n"
-            "Попробуйте ещё раз. При утере парольной фразы "
-            "восстановить данные невозможно."
+        self.pwd_input.setPlaceholderText(
+            f"Неверно. Подождите {delay_ms // 1000} сек..."
         )
+        QTimer.singleShot(delay_ms, self._restore_after_delay)
+
+    def _restore_after_delay(self):
+        self.pwd_input.setEnabled(True)
+        self.ok_btn.setEnabled(True)
+        self.pwd_input.setStyleSheet("font-size: 14px; padding: 4px 10px;")
+        self.pwd_input.clear()
+        self.pwd_input.setPlaceholderText("Введите парольную фразу")
         self.pwd_input.setFocus()
 
     def _on_cancel(self):

@@ -16,13 +16,14 @@ class JournalManager:
     def add_records(self, records_data: List[Dict], set_id: str, xml_file: str) -> int:
         send_date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
         records = []
+        xml_file_basename = os.path.basename(xml_file) if xml_file else ''
         for rec in records_data:
             program_id = str(rec.get('program', ''))
             record = JournalRecord(
                 uuid=str(uuid.uuid4()),
                 send_date=send_date,
                 set_id=set_id,
-                xml_file=xml_file,
+                xml_file=xml_file_basename,
                 last_name=rec.get('last_name', ''),
                 first_name=rec.get('first_name', ''),
                 middle_name=rec.get('middle_name', ''),

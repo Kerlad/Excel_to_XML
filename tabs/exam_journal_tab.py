@@ -648,6 +648,8 @@ class ExamJournalTab(QWidget):
             if rec:
                 uuids.append(rec.uuid)
         self.journal.delete_by_uuid(uuids)
+        from db.database import DatabaseManager
+        DatabaseManager.get_instance().secure_vacuum()
         self.refresh_journal()
         QMessageBox.information(self, "Успех", "Записи удалены")
 

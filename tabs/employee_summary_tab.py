@@ -99,10 +99,13 @@ class ApiQueryThread(QThread):
                     EmployeesRepo.update_sync(emp['id'], now)
                 else:
                     errors += 1
-                    logger.warning("API error: %s", filter_sensitive_text(str(result.get('error'))))
+                    err_msg = result.get('error', 'Неизвестная ошибка API')
+                    logger.warning("API error: %s", filter_sensitive_text(str(err_msg)))
+                    self.error_signal.emit(f"{emp.get('last_name','')} {emp.get('first_name','')}: {err_msg}")
             except Exception as e:
                 errors += 1
                 logger.exception("Registry API exception")
+                self.error_signal.emit(f"{emp.get('last_name','')} {emp.get('first_name','')}: {e}")
             self.progress.emit(idx + 1, total)
             if idx < total - 1 and not self._cancelled:
                 time.sleep(0.5)
@@ -1351,12 +1354,14 @@ class EmployeeSummaryTab(QWidget):
         self.query_btn.setEnabled(False)
         self.query_btn.setText("Запрос...")
 
+        self._query_errors = []
+
         dialog = QueryProgressDialog(len(employees), self)
 
         self._api_thread = ApiQueryThread(employees, api_key, proxy_settings)
         self._api_thread.finished.connect(self._on_query_finished)
         self._api_thread.finished.connect(dialog.accept)
-        self._api_thread.error_signal.connect(lambda msg: logger.error("%s", filter_sensitive_text(str(msg))))
+        self._api_thread.error_signal.connect(self._on_query_error)
         self._api_thread.progress.connect(dialog.update_progress)
         dialog.cancelled.connect(self._api_thread.cancel)
         dialog.cancelled.connect(dialog.reject)
@@ -1365,12 +1370,19 @@ class EmployeeSummaryTab(QWidget):
 
         dialog.exec()
 
+    def _on_query_error(self, msg):
+        logger.error("%s", filter_sensitive_text(str(msg)))
+        self._query_errors.append(msg)
+
     def _on_query_finished(self, updated, errors):
         self.query_btn.setEnabled(True)
         self.query_btn.setText("Запросить из реестра")
         if errors > 0:
+            detail = "\n".join(self._query_errors[:20])
+            if len(self._query_errors) > 20:
+                detail += f"\n... и ещё {len(self._query_errors) - 20} ошибок"
             safe_message_box(self, QMessageBox.Icon.Warning, "Результат",
-                             f"Обновлено: {updated}\nОшибок: {errors}")
+                             f"Обновлено: {updated}\nОшибок: {errors}\n\nПодробности:\n{detail}")
         else:
             safe_message_box(self, QMessageBox.Icon.Information, "Успех",
                              f"Обновлено: {updated} сотрудников")

@@ -528,7 +528,7 @@ def _create_new_key(kf: Path, kd: Path) -> bytes:
 
 
 def _compute_key_fingerprint(key_material: bytes) -> str:
-    return hashlib.sha256(key_material).hexdigest()[:16]
+    return hashlib.sha256(key_material).hexdigest()[:_HMAC_TAG_LENGTH]
 
 
 def _unlock_with_passphrase_if_needed() -> None:
@@ -910,7 +910,7 @@ def get_key_version() -> int:
 def compute_org_settings_hmac(data: dict) -> str:
     serialized = json.dumps(data, sort_keys=True, ensure_ascii=False).encode('utf-8')
     hmac_key = _get_or_create_master_key()[:16]
-    return hmac.new(hmac_key, serialized, hashlib.sha256).hexdigest()[:16]
+    return hmac.new(hmac_key, serialized, hashlib.sha256).hexdigest()[:_HMAC_TAG_LENGTH]
 
 
 def verify_org_settings_hmac(wrapper: dict) -> bool:

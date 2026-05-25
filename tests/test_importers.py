@@ -31,7 +31,7 @@ class TestFormatSnils:
 
 class TestFieldValidator:
     def test_validate_snils_valid(self):
-        assert FieldValidator.validate_snils("12345678900", 1) is None
+        assert FieldValidator.validate_snils("12345678964", 1) is None
 
     def test_validate_snils_invalid(self):
         err = FieldValidator.validate_snils("123", 5)
@@ -110,7 +110,7 @@ class TestValidateRow:
     def test_valid_row_single_program(self):
         row = {
             'Фамилия': 'Иванов', 'Имя': 'Иван', 'Отчество': 'Иванович',
-            'СНИЛС': '12345678900', 'Должность': 'Инженер',
+            'СНИЛС': '12345678964', 'Должность': 'Инженер',
             'ИНН Заказчика': '7701123456', 'Наименование ЮЛ Заказчика': 'ООО Тест',
             'ИНН УЦ': '7701123456', 'Наименование УЦ': 'УЦ Тест',
             'Результат': 'Удовлетворительно', '№ программы': '1',
@@ -125,7 +125,7 @@ class TestValidateRow:
     def test_valid_row_multiple_programs(self):
         row = {
             'Фамилия': 'Петров', 'Имя': 'Петр', 'Отчество': 'Петрович',
-            'СНИЛС': '11122233344', 'Должность': 'Инженер',
+            'СНИЛС': '11122233372', 'Должность': 'Инженер',
             'ИНН Заказчика': '7701', 'Наименование ЮЛ Заказчика': 'ООО',
             'ИНН УЦ': '7702', 'Наименование УЦ': 'УЦ',
             'Результат': 'Удовлетворительно', '№ программы': '1,2,3',

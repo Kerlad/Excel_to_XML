@@ -16,9 +16,11 @@ from PySide6.QtCore import Qt, QTimer, QEvent, QObject, QPoint, QRect
 from PySide6.QtGui import QPixmap, QPainter, QImage, QColor, QRegion
 from PySide6.QtGui import QPixmap, QPainter, QImage, QColor
 from utils.crypto import verify_passphrase, is_passphrase_protected, CryptoPassphraseRequiredError
+from utils.crypto import compute_org_settings_hmac, verify_org_settings_hmac
 from utils.audit import log_audit
 from utils.app_paths import get_resource_dir, get_app_data_dir
 from utils.error_utils import safe_message_box
+from utils.security_dialog import SecurityDialog
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,9 @@ class LockDialog(QDialog):
     def __init__(self, parent: QWidget):
         super().__init__(parent)
         self._unlocked = False
+        self._wrong_attempts: int = 0
+        self._MAX_ATTEMPTS: int = 5
+        self._BASE_DELAY_MS: int = 1000
         self._bg_pixmap = None
         self._capture_and_blur(parent)
         self._build_ui(parent)
@@ -186,12 +191,33 @@ class LockDialog(QDialog):
             self._on_wrong()
 
     def _on_wrong(self):
-        self._shake_input("Неверная парольная фраза")
-        safe_message_box(
-            self, "Неверная парольная фраза",
-            "Введённая парольная фраза не подходит.\n\nПопробуйте ещё раз.",
-            QMessageBox.Warning
+        self._wrong_attempts += 1
+        log_audit("SESSION_LOCK",
+                  f"Wrong passphrase attempt {self._wrong_attempts}/{self._MAX_ATTEMPTS}")
+        if self._wrong_attempts >= self._MAX_ATTEMPTS:
+            log_audit("SECURITY_WARNING",
+                      f"Max passphrase attempts ({self._MAX_ATTEMPTS}) reached — forcing exit")
+            QMessageBox.critical(
+                self, "Превышено число попыток",
+                f"Введено {self._MAX_ATTEMPTS} неверных парольных фраз.\n"
+                "Приложение будет закрыто в целях безопасности."
+            )
+            self.done(EXIT_CODE_QUIT)
+            return
+        delay_ms = self._BASE_DELAY_MS * (2 ** (self._wrong_attempts - 1))
+        delay_ms = min(delay_ms, 30_000)
+        self.lock_btn.setEnabled(False)
+        self.pwd_input.setEnabled(False)
+        self.pwd_input.setPlaceholderText(
+            f"Неверно. Подождите {delay_ms // 1000} сек..."
         )
+        QTimer.singleShot(delay_ms, self._restore_after_delay)
+
+    def _restore_after_delay(self):
+        self.pwd_input.setEnabled(True)
+        self.lock_btn.setEnabled(True)
+        self.pwd_input.clear()
+        self.pwd_input.setPlaceholderText("Введите парольную фразу")
         self.pwd_input.setFocus()
 
     def _exit_app(self):
@@ -300,7 +326,11 @@ class AutoLockManager(QObject):
             if os.path.exists(path):
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    return max(1, min(int(data.get("timeout_minutes", DEFAULT_TIMEOUT_MINUTES)), 120))
+                if not verify_org_settings_hmac(dict(data)):
+                    logger.warning("AutoLock: timeout settings HMAC mismatch — using default")
+                    log_audit("SECURITY_WARNING", "Auto-lock timeout file tampered — reset to default")
+                    return DEFAULT_TIMEOUT_MINUTES
+                return max(1, min(int(data.get("timeout_minutes", DEFAULT_TIMEOUT_MINUTES)), 120))
         except Exception as e:
             logger.debug("AutoLock: failed to load timeout setting: %s", e)
         return DEFAULT_TIMEOUT_MINUTES
@@ -309,8 +339,10 @@ class AutoLockManager(QObject):
         path = self._settings_path()
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
+            data = {"timeout_minutes": self._timeout_minutes}
+            data["hmac"] = compute_org_settings_hmac(data)
             with open(path, "w", encoding="utf-8") as f:
-                json.dump({"timeout_minutes": self._timeout_minutes}, f)
+                json.dump(data, f)
         except Exception as e:
             logger.debug("AutoLock: failed to save timeout setting: %s", e)
 
@@ -399,8 +431,13 @@ class AutoLockManager(QObject):
         self._check_passphrase_state()
         if not self._enabled:
             self._locked = False
-            logger.info("AutoLock skipped: passphrase no longer available")
-            return
+            logger.info("AutoLock: opening Security dialog for passphrase setup")
+            parent = self.parent() if isinstance(self.parent(), QWidget) else None
+            dialog = SecurityDialog(parent)
+            dialog.exec()
+            self._check_passphrase_state()
+            if not self._enabled:
+                return
 
         self._locked = True
         logger.info("Session locked after %d min inactivity", self._timeout_minutes)
@@ -434,14 +471,11 @@ class AutoLockManager(QObject):
     def force_lock(self):
         self._check_passphrase_state()
         if not self._enabled:
-            safe_message_box(
-                self.parent() if isinstance(self.parent(), QWidget) else None,
-                "Блокировка недоступна",
-                "Автоматическая блокировка сессии требует установки "
-                "парольной фразы.\n\n"
-                "Установите парольную фразу в диалоге 'О программе' "
-                "(меню Справка → О программе, раздел Безопасность).",
-                QMessageBox.Information
-            )
-            return
+            logger.info("Manual lock: opening Security dialog for passphrase setup")
+            parent = self.parent() if isinstance(self.parent(), QWidget) else None
+            dialog = SecurityDialog(parent)
+            dialog.exec()
+            self._check_passphrase_state()
+            if not self._enabled:
+                return
         self._do_lock()

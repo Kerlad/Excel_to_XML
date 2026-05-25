@@ -48,6 +48,9 @@ AUDIT_EVENTS = {
     "AUDIT_INTEGRITY_CHECK": "Audit log integrity check",
     "SESSION_LOCK": "Session locked due to inactivity",
     "SESSION_UNLOCK": "Session unlocked via passphrase",
+    "VIEW_PD": "PD records viewed",
+    "EXPORT_PD": "PD records exported to file",
+    "DELETE_PD": "PD records deleted",
 }
 
 _AUDIT_HMAC_KEY: Optional[bytes] = None

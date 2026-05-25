@@ -47,6 +47,23 @@ class ValidatedLineEdit(QLineEdit):
         self.setToolTip("")
 
 
+def _snils_checksum_valid(clean_digits: str) -> bool:
+    if len(clean_digits) != 11 or not clean_digits.isdigit():
+        return False
+    digits = [int(c) for c in clean_digits[:9]]
+    check = int(clean_digits[9:])
+    total = sum(d * (9 - i) for i, d in enumerate(digits))
+    if total < 100:
+        control = total
+    elif total in (100, 101):
+        control = 0
+    else:
+        control = total % 101
+        if control in (100, 101):
+            control = 0
+    return control == check
+
+
 def validate_snils(snils: str) -> Optional[str]:
     """Проверяет СНИЛС. Возвращает ошибку или None."""
     clean = snils.replace("-", "").replace(" ", "").replace("\xa0", "")
@@ -54,6 +71,8 @@ def validate_snils(snils: str) -> Optional[str]:
         return None
     if not clean.isdigit() or len(clean) != 11:
         return "СНИЛС должен содержать 11 цифр"
+    if not _snils_checksum_valid(clean):
+        return "Неверная контрольная сумма СНИЛС"
     return None
 
 

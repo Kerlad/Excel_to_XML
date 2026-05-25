@@ -9,8 +9,8 @@ from utils.field_validators import (
 
 class TestFieldValidators:
     def test_validate_snils_valid(self):
-        assert validate_snils("123-456-789 00") is None
-        assert validate_snils("12345678900") is None
+        assert validate_snils("123-456-789 64") is None
+        assert validate_snils("12345678964") is None
 
     def test_validate_snils_empty(self):
         assert validate_snils("") is None

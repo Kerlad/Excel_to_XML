@@ -330,21 +330,25 @@ class DataEntryTab(QWidget):
         self._last_name_input = QLineEdit()
         self._last_name_input.setPlaceholderText("Иванов")
         self._last_name_input.setToolTip("Фамилия работника (только буквы)")
+        self._last_name_input.setMaxLength(100)
         col1.addRow("Фамилия:", self._last_name_input)
 
         self._first_name_input = QLineEdit()
         self._first_name_input.setPlaceholderText("Иван")
         self._first_name_input.setToolTip("Имя работника (только буквы)")
+        self._first_name_input.setMaxLength(100)
         col1.addRow("Имя:", self._first_name_input)
 
         self._middle_name_input = QLineEdit()
         self._middle_name_input.setPlaceholderText("Иванович")
         self._middle_name_input.setToolTip("Отчество работника (только буквы)")
+        self._middle_name_input.setMaxLength(100)
         col1.addRow("Отчество:", self._middle_name_input)
 
         self._position_input = QLineEdit()
         self._position_input.setPlaceholderText("Главный специалист")
         self._position_input.setToolTip("Должность работника (только буквы, пробелы, дефис)")
+        self._position_input.setMaxLength(255)
         col1.addRow("Должность:", self._position_input)
 
         self._snils_input = QLineEdit()

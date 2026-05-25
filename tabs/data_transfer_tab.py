@@ -232,7 +232,7 @@ class DataTransferTab(QWidget):
 
         url_row = QHBoxLayout()
         self.proxy_url_input = QLineEdit()
-        self.proxy_url_input.setPlaceholderText("http://proxy.example.com:3128")
+        self.proxy_url_input.setPlaceholderText("http://proxy.example.invalid:3128")
         url_row.addWidget(QLabel("Адрес прокси:"))
         url_row.addWidget(self.proxy_url_input)
         url_row.addStretch()

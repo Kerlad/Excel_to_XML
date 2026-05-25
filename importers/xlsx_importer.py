@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from utils.constants import VALID_PROGRAMS_SET as VALID_PROGRAMS
 from utils.constants import MAX_XLSX_FILE_SIZE_MB, MAX_XLSX_ROWS
 from utils.exceptions import FileTooLargeError, ImportLimitExceededError, ImportCancelledError
+from utils.field_validators import validate_snils as _validate_snils_util
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,15 @@ class FieldValidator:
                 'field': 'СНИЛС',
                 'message': f"СНИЛС должен содержать 11 цифр (введено: {masked})"
             }
+        error = _validate_snils_util(formatted)
+        if error is not None:
+            masked = str(value)[:3] + '***' + str(value)[-2:] if len(str(value)) > 5 else '***'
+            return {
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': 'СНИЛС',
+                'message': f"{error}: {masked}"
+            }
         return None
 
     @staticmethod
@@ -84,7 +94,16 @@ class FieldValidator:
     @staticmethod
     def validate_name(field_name: str, value, row_num: int):
         val = str(value).strip() if value is not None else ''
-        if val and not val.replace(' ', '').replace('-', '').replace("'", '').isalpha():
+        if not val:
+            return None
+        if len(val) > 100:
+            return {
+                'row': row_num,
+                'type': 'Ошибка',
+                'field': field_name,
+                'message': f"Значение слишком длинное: {len(val)} символов (максимум 100)"
+            }
+        if not val.replace(' ', '').replace('-', '').replace("'", '').isalpha():
             return {
                 'row': row_num,
                 'type': 'Ошибка',

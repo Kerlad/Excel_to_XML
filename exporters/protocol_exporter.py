@@ -7,6 +7,7 @@ import logging
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from utils.export_safe import sanitize_cell_value
 
 logger = logging.getLogger(__name__)
 
@@ -474,9 +475,9 @@ class ProtocolExporter:
             # A = порядковый номер
             row_cells[0].text = str(idx + 1)
             # B = ФИО полностью
-            row_cells[1].text = worker['full_name']
+            row_cells[1].text = sanitize_cell_value(worker['full_name'])
             # C = должность
-            row_cells[2].text = worker.get('position', '')
+            row_cells[2].text = sanitize_cell_value(worker.get('position', ''))
             # D = Место работы (оставляем пустым, т.к. это отдельное поле в шаблоне)
             row_cells[3].text = ''
             # E = причина проверки знаний
@@ -487,7 +488,7 @@ class ProtocolExporter:
             base_nos_str = worker.get('base_nos_str', '')
             if base_nos_str:
                 base_nos_str = base_nos_str.replace(';', ';\n')
-            row_cells[6].text = base_nos_str
+            row_cells[6].text = sanitize_cell_value(base_nos_str)
             # H = пустое
             row_cells[7].text = ''
 

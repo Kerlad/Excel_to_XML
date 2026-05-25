@@ -16,6 +16,7 @@ from db.workers_data_repo import WorkersDataRepo
 from utils.crypto import decrypt_data, hash_for_search, verify_org_settings_hmac, CryptoPassphraseRequiredError
 from utils.table_models import DataViewTableModel, MultiColumnFilterProxyModel, FIELD_KEYS, COLUMN_LABELS
 from utils.error_utils import safe_message_box
+from utils.audit import log_audit
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,8 @@ class DataViewTab(QWidget):
         self._model.load_records(records)
         self._model.set_cell_color(9, QColor("#FFF0F0"))
         self._update_status()
+        if records:
+            log_audit("VIEW_PD", f"records_count={len(records)}")
 
     def get_existing_keys(self):
         return WorkersDataRepo.get_existing_keys()
@@ -262,10 +265,13 @@ class DataViewTab(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
+            log_audit("DELETE_PD", f"records_count={count}")
             for row in reversed(rows):
                 record_id = self._model.get_record_id(row)
                 if record_id:
                     WorkersDataRepo.delete(record_id)
+            from db.database import DatabaseManager
+            DatabaseManager.get_instance().secure_vacuum()
             self._load_all_data()
 
     def _duplicate_selected_rows(self):
@@ -285,7 +291,11 @@ class DataViewTab(QWidget):
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
         )
         if reply == QMessageBox.StandardButton.Ok:
+            count = WorkersDataRepo.count()
+            log_audit("DELETE_PD", f"records_count={count}")
             WorkersDataRepo.clear()
+            from db.database import DatabaseManager
+            DatabaseManager.get_instance().secure_vacuum()
             self._model.load_records([])
             self._update_status()
 
@@ -403,6 +413,7 @@ class DataViewTab(QWidget):
 
             success, message = export_to_xml(records, file_path, org_settings)
             if success:
+                log_audit("EXPORT_PD", f"format=xml, records={len(records)}")
                 safe_message_box(self, QMessageBox.Icon.Information, "Успех", message)
             else:
                 safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", message)
@@ -441,12 +452,14 @@ class DataViewTab(QWidget):
             cell.alignment = header_align
             cell.border = thin_border
 
+        from utils.export_safe import sanitize_cell_value
+
         row_num = 2
         for src_row in range(total_count):
             rec = self._model.get_row_data(src_row)
             for col in range(len(COLUMN_LABELS)):
                 key = FIELD_KEYS[col] if col < len(FIELD_KEYS) else ''
-                value = rec.get(key, '')
+                value = sanitize_cell_value(str(rec.get(key, '')))
                 cell = ws.cell(row=row_num, column=col + 1, value=value)
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 cell.border = thin_border
@@ -462,6 +475,7 @@ class DataViewTab(QWidget):
             ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = min(max_len + 3, 50)
 
         wb.save(file_path)
+        log_audit("EXPORT_PD", f"format=xlsx, records={exported}")
         QMessageBox.information(self, "Успех", f"Экспортировано записей: {exported}")
 
 
