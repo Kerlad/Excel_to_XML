@@ -11,6 +11,7 @@ venv/
 # Build
 build/
 dist/*
+!dist/*.zip
 *.exe
 *.spec
 version_info.txt

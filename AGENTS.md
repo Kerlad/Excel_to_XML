@@ -7,9 +7,14 @@
 
 ## Build & Test
 - Tests: `py -m pytest tests -v`
-- Build EXE: Remove `dist\ExcelXML-Mintrud`, then `py -m PyInstaller ExcelXML-Mintrud.spec`
-- EXE output: `dist\ExcelXML-Mintrud\`
 - Production mode: `set EXCEL_XML_PROD=1` before running (blocks plaintext keys)
+
+### EXE Build & Release
+1. Remove old build: `Remove-Item -Path "dist\ExcelXML-Mintrud" -Recurse -Force`
+2. Build EXE: `py -m PyInstaller ExcelXML-Mintrud.spec`
+3. Create zip: `Compress-Archive -Path "dist\ExcelXML-Mintrud\*" -DestinationPath "dist\ExcelXML-Mintrud.zip" -Force`
+4. Update README.md download link to point to the new zip (raw URL: `https://github.com/Kerlad/Excel_to_XML/raw/main/dist/ExcelXML-Mintrud.zip`)
+5. Commit all changes including the new zip, README link, and any deleted old zips
 
 ## SECURITY: Critical Rules
 1. **ALL XML from external sources** MUST use `defusedxml.ElementTree` (not stdlib `xml.etree`)
