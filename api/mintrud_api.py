@@ -144,6 +144,7 @@ class MintrudClient:
     """
     Unified client for Mintrud API operations.
     Supports multiple transport backends with automatic fallback.
+    Auto-detects corporate proxy environments (RZD, etc.).
     """
     
     def __init__(self, backend: str = "auto", proxy_settings: Optional[Dict] = None):
@@ -155,9 +156,30 @@ class MintrudClient:
             proxy_settings: Proxy configuration dict
         """
         self.proxy_settings = proxy_settings or {}
+        self._is_corporate = False
+
+        # Auto-detect corporate environment
+        try:
+            from utils.proxy_manager import detect_proxy_and_env, is_corporate_proxy
+            env = detect_proxy_and_env()
+            if env["is_corporate"]:
+                self._is_corporate = True
+                logger.info("Corporate proxy detected: %s", env.get("proxy_url", ""))
+        except Exception:
+            pass
+
         # Read backend from proxy_settings if not explicitly set
         if backend == "auto" and "backend" in self.proxy_settings:
             backend = self.proxy_settings["backend"]
+        
+        # In corporate environment, prefer wininet (better Negotiate/Kerberos)
+        if backend == "auto" and self._is_corporate:
+            wininet_class = BackendRegistry.get_backend("wininet")
+            if wininet_class and wininet_class().is_available():
+                backend = "wininet"
+                logger.info("Corporate env detected: forcing wininet backend")
+                log_audit("BACKEND_CHANGE", "Corporate env: wininet forced")
+        
         self.backend_name = backend
         self._backend = None
         self._init_backend()
@@ -301,6 +323,7 @@ class MintrudClient:
         # Try backends with SSL fallback
         backends_to_try = self._get_backend_fallback_list()
         last_error = ""
+        ssl_errors_detected = False
         
         for backend_instance, backend_name in backends_to_try:
             try:
@@ -317,7 +340,7 @@ class MintrudClient:
                 if success:
                     result = parse_send_response(response_bytes, status_code)
                     set_id = result.get("set_id", "")
-                    log_audit("SEND_XML", f"set_id={set_id}")
+                    log_audit("SEND_XML", "set_id=%s" % set_id)
                     return result
                 
                 last_error = error_msg
@@ -325,23 +348,36 @@ class MintrudClient:
                 if response_bytes:
                     _save_error_response(response_bytes, status_code)
 
-                if not _is_ssl_error(error_msg):
+                if _is_ssl_error(error_msg):
+                    ssl_errors_detected = True
+                    logger.info("SSL error detected, trying next backend...")
+                else:
                     return {"success": False, "error": error_msg}
-                    
-                logger.info(f"SSL error detected, trying next backend...")
                 
             except requests.RequestException as e:
                 last_error = str(e)
                 logger.warning("Backend %s request exception: %s", backend_name, mask_sensitive(str(e)))
-                if not _is_ssl_error(str(e)):
+                if _is_ssl_error(str(e)):
+                    ssl_errors_detected = True
+                else:
                     return {"success": False, "error": str(e)}
             except RuntimeError as e:
                 last_error = str(e)
-                logger.error(f"Backend {backend_name} runtime error: {e}")
-                if not _is_ssl_error(str(e)):
+                logger.error("Backend %s runtime error: %s", backend_name, str(e))
+                if _is_ssl_error(str(e)):
+                    ssl_errors_detected = True
+                else:
                     return {"success": False, "error": str(e)}
         
-        return {"success": False, "error": last_error or "All backends failed"}
+        result = {"success": False, "error": last_error or "All backends failed"}
+        if ssl_errors_detected and verify:
+            result["ssl_error_detected"] = True
+            result["ssl_recommendation"] = (
+                "Обнаружена SSL-инспекция корпоративного прокси.\n"
+                "Попробуйте отключить проверку TLS-сертификата "
+                "в настройках прокси."
+            )
+        return result
     
     def send_xml_signed(self, api_key: str, xml_file_path: str, sig_file_path: str) -> Dict[str, Any]:
         """
@@ -374,6 +410,7 @@ class MintrudClient:
         
         backends_to_try = self._get_backend_fallback_list()
         last_error = ""
+        ssl_errors_detected = False
         
         for backend_instance, backend_name in backends_to_try:
             try:
@@ -390,7 +427,7 @@ class MintrudClient:
                 if success:
                     result = parse_send_response(response_bytes, status_code)
                     set_id = result.get("set_id", "")
-                    log_audit("SEND_XML_SIGNED", f"set_id={set_id}")
+                    log_audit("SEND_XML_SIGNED", "set_id=%s" % set_id)
                     return result
                 
                 last_error = error_msg
@@ -398,26 +435,43 @@ class MintrudClient:
                 if response_bytes:
                     _save_error_response(response_bytes, status_code)
 
-                if not _is_ssl_error(error_msg):
+                if _is_ssl_error(error_msg):
+                    ssl_errors_detected = True
+                    logger.info("SSL error detected, trying next backend...")
+                else:
                     return {"success": False, "error": error_msg}
-                    
-                logger.info(f"SSL error detected, trying next backend...")
                 
             except requests.RequestException as e:
                 last_error = str(e)
                 logger.warning("Backend %s request exception: %s", backend_name, mask_sensitive(str(e)))
-                if not _is_ssl_error(str(e)):
+                if _is_ssl_error(str(e)):
+                    ssl_errors_detected = True
+                else:
                     return {"success": False, "error": str(e)}
             except RuntimeError as e:
                 last_error = str(e)
-                logger.error(f"Backend {backend_name} runtime error: {e}")
-                if not _is_ssl_error(str(e)):
+                logger.error("Backend %s runtime error: %s", backend_name, str(e))
+                if _is_ssl_error(str(e)):
+                    ssl_errors_detected = True
+                else:
                     return {"success": False, "error": str(e)}
         
-        return {"success": False, "error": last_error or "All backends failed"}
+        result = {"success": False, "error": last_error or "All backends failed"}
+        if ssl_errors_detected and verify:
+            result["ssl_error_detected"] = True
+            result["ssl_recommendation"] = (
+                "Обнаружена SSL-инспекция корпоративного прокси.\n"
+                "Попробуйте отключить проверку TLS-сертификата "
+                "в настройках прокси."
+            )
+        return result
     
     def _try_backends(self, api_key: str, xml_content: str, url: str) -> Dict[str, Any]:
-        """Try sending request through backends with SSL fallback."""
+        """Try sending request through backends with SSL fallback.
+        
+        If ALL backends fail with SSL/TLS errors and verify=True, 
+        returns ssl_error_detected=True so the UI can offer retry with verify=False.
+        """
         files = {'file': ('request.xml', xml_content.encode('utf-8'), 'text/xml')}
         proxies = self._get_proxies()
         verify = self._get_verify()
@@ -426,6 +480,7 @@ class MintrudClient:
         last_error = ""
         response_bytes = b""
         status_code = 0
+        ssl_errors_detected = False
         
         for backend_instance, backend_name in backends_to_try:
             try:
@@ -449,28 +504,41 @@ class MintrudClient:
                 if response_bytes:
                     _save_error_response(response_bytes, status_code)
 
-                if not _is_ssl_error(error_msg):
+                if _is_ssl_error(error_msg):
+                    ssl_errors_detected = True
+                    logger.info("SSL error, trying next backend...")
+                    log_audit("TLS_ERROR", "SSL connection failed: %s" % str(error_msg)[:100])
+                else:
                     return {"success": False, "error": error_msg}
-
-                logger.info(f"SSL error, trying next backend...")
-                log_audit("TLS_ERROR", f"SSL connection failed: {str(error_msg)[:100]}")
 
             except requests.RequestException as e:
                 last_error = str(e)
                 logger.warning("Backend %s request exception: %s", backend_name, mask_sensitive(str(e)))
                 if _is_ssl_error(str(e)):
-                    log_audit("TLS_ERROR", f"SSL connection failed: {str(e)[:100]}")
-                if not _is_ssl_error(str(e)):
+                    ssl_errors_detected = True
+                    log_audit("TLS_ERROR", "SSL connection failed: %s" % str(e)[:100])
+                else:
                     return {"success": False, "error": str(e)}
             except RuntimeError as e:
                 last_error = str(e)
-                logger.error(f"Backend {backend_name} runtime error: {e}")
-                if not _is_ssl_error(str(e)):
+                logger.error("Backend %s runtime error: %s", backend_name, str(e))
+                if _is_ssl_error(str(e)):
+                    ssl_errors_detected = True
+                else:
                     return {"success": False, "error": str(e)}
 
         if response_bytes:
             _save_error_response(response_bytes, status_code)
-        return {"success": False, "error": last_error or "All backends failed"}
+
+        result = {"success": False, "error": last_error or "All backends failed"}
+        if ssl_errors_detected and verify:
+            result["ssl_error_detected"] = True
+            result["ssl_recommendation"] = (
+                "Обнаружена SSL-инспекция корпоративного прокси.\n"
+                "Попробуйте отключить проверку TLS-сертификата "
+                "в настройках прокси."
+            )
+        return result
 
     def query_by_setid(self, api_key: str, set_id: str, page_size: int = 5000) -> Dict[str, Any]:
         """

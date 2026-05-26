@@ -95,6 +95,46 @@ def detect_windows_proxy() -> Optional[str]:
         return None
 
 
+CORPORATE_PROXY_DOMAINS = [
+    ".rzd", ".oao", ".corp", ".company", ".local",
+    ".internal", ".lan", ".ad", ".domain", ".group",
+    ".office", ".enterprise", ".bank", ".gov",
+]
+
+
+def is_corporate_proxy(proxy_url: Optional[str]) -> bool:
+    if not proxy_url:
+        return False
+    proxy_lower = proxy_url.lower()
+    for domain in CORPORATE_PROXY_DOMAINS:
+        if domain in proxy_lower:
+            return True
+    return False
+
+
+def detect_proxy_and_env() -> dict:
+    result = {
+        "proxy_url": None,
+        "proxy_mode": "off",
+        "is_corporate": False,
+        "negotiate_available": False,
+    }
+    try:
+        import win32security
+        import sspi
+        result["negotiate_available"] = True
+    except ImportError:
+        pass
+
+    proxy_url = detect_windows_proxy()
+    if proxy_url:
+        result["proxy_url"] = proxy_url
+        result["proxy_mode"] = "auto"
+        result["is_corporate"] = is_corporate_proxy(proxy_url)
+
+    return result
+
+
 def build_proxies_for_requests(settings: dict) -> Optional[Dict[str, str]]:
     mode = settings.get("mode", "off")
     if mode == "off":

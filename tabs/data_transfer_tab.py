@@ -40,20 +40,34 @@ class _ProxyTestWorker(QObject):
             timeout=30,
             tls_verify=self.tls_verify,
         )
+        corp_label = "Да" if diag.get('is_corporate_env') else "Нет"
+        ssl_insp = "Да" if diag.get('ssl_inspection_detected') else "Нет"
         result_text = (
-            f"Диагностика сети:\n\n"
-            f"Обнаруженный прокси: {diag.get('detected_proxy', 'Не обнаружен')}\n"
-            f"Метод авторизации: {diag.get('auth_method', 'Нет')}\n"
-            f"Negotiate доступен: {'Да' if diag.get('negotiate_available') else 'Нет'}\n"
-            f"TLS доступен: {'Да' if diag.get('tls_ok') else 'Нет'}\n"
-            f"Авторизация прокси: {'Да' if diag.get('proxy_auth_ok') else 'Нет'}\n\n"
-            f"Результат теста:\n"
-            f"Статус: {status.value}\n"
-            f"Сообщение: {msg}"
+            "Диагностика сети:\n\n"
+            "Обнаруженный прокси: %s\n"
+            "Корпоративная среда: %s\n"
+            "SSL-инспекция: %s\n"
+            "Метод авторизации: %s\n"
+            "Negotiate доступен: %s\n"
+            "TLS доступен: %s\n"
+            "Авторизация прокси: %s\n\n"
+            "Результат теста:\n"
+            "Статус: %s\n"
+            "Сообщение: %s"
+        ) % (
+            diag.get('detected_proxy', 'Не обнаружен'),
+            corp_label,
+            ssl_insp,
+            diag.get('auth_method', 'Нет'),
+            'Да' if diag.get('negotiate_available') else 'Нет',
+            'Да' if diag.get('tls_ok') else 'Нет',
+            'Да' if diag.get('proxy_auth_ok') else 'Нет',
+            status.value,
+            msg,
         )
         rec = diag.get('recommendation', '')
         if rec:
-            result_text += f"\n\nРекомендация:\n{rec}"
+            result_text += "\n\nРекомендация:\n%s" % rec
         self.finished.emit(result_text, status == NetworkStatus.SUCCESS)
 
 
@@ -584,7 +598,7 @@ class DataTransferTab(QWidget):
 
         ok, msg = save_proxy_settings(self.data_dir, settings)
         if ok:
-            log_audit("PROXY_CHANGE", f"mode={mode}, tls_verify={settings['tls_verify']}")
+            log_audit("PROXY_CHANGE", "mode=%s, tls_verify=%s" % (mode, settings.get('tls_verify', True)))
             mode_text = {'off': 'Без прокси', 'auto': 'Авто (системный)', 'manual': 'Ручной'}
             safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Режим: {mode_text.get(mode, mode)}\n{msg}")
         else:
@@ -726,11 +740,29 @@ class DataTransferTab(QWidget):
                 msg.setWindowTitle("Успех")
                 msg.setText("Данные загружены на сервер")
                 msg.setInformativeText(
-                    f'<span style="color:red; font-weight:bold; font-size:14px;">'
-                    f'Запишите номер набора: {set_id}</span>'
+                    '<span style="color:red; font-weight:bold; font-size:14px;">'
+                    'Запишите номер набора: %s</span>' % set_id
                 )
                 msg.setTextFormat(Qt.TextFormat.RichText)
                 msg.exec()
+            elif result.get("ssl_error_detected"):
+                retry = QMessageBox.question(
+                    self,
+                    "SSL ошибка",
+                    "Сервер недоступен из-за SSL-инспекции корпоративного прокси.\n\n"
+                    "%s\n\n"
+                    "Попробовать с отключенной проверкой TLS?" % result.get("ssl_recommendation", ""),
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if retry == QMessageBox.Yes:
+                    log_audit("TLS_WARNING", "Retry with TLS disabled after SSL error")
+                    self.tls_checkbox.setChecked(False)
+                    QCoreApplication.processEvents()
+                    self.send_xml()
+                    return
+                else:
+                    safe_message_box(self, QMessageBox.Icon.Critical, "SSL ошибка", result.get("error", "SSL handshake failed"))
             else:
                 error_msg = result.get("error", "Неизвестная ошибка")
                 raw_response = result.get("raw_response", "")
@@ -739,7 +771,7 @@ class DataTransferTab(QWidget):
                 msg.setIcon(QMessageBox.Icon.Critical)
                 msg.setText(error_msg)
                 if raw_response:
-                    msg.setDetailedText(f"Ответ сервера:\n{raw_response[:500]}")
+                    msg.setDetailedText("Ответ сервера:\n%s" % raw_response[:500])
                 msg.exec()
         except Exception as e:
             logger.exception("Ошибка отправки XML")
@@ -798,11 +830,29 @@ class DataTransferTab(QWidget):
                 msg.setWindowTitle("Успех")
                 msg.setText("Подписанные данные отправлены в РОЛ")
                 msg.setInformativeText(
-                    f'<span style="color:red; font-weight:bold; font-size:14px;">'
-                    f'Запишите номер набора: {set_id}</span>'
+                    '<span style="color:red; font-weight:bold; font-size:14px;">'
+                    'Запишите номер набора: %s</span>' % set_id
                 )
                 msg.setTextFormat(Qt.TextFormat.RichText)
                 msg.exec()
+            elif result.get("ssl_error_detected"):
+                retry = QMessageBox.question(
+                    self,
+                    "SSL ошибка",
+                    "Сервер недоступен из-за SSL-инспекции корпоративного прокси.\n\n"
+                    "%s\n\n"
+                    "Попробовать с отключенной проверкой TLS?" % result.get("ssl_recommendation", ""),
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if retry == QMessageBox.Yes:
+                    log_audit("TLS_WARNING", "Retry with TLS disabled after SSL error (signed)")
+                    self.tls_checkbox.setChecked(False)
+                    QCoreApplication.processEvents()
+                    self.send_xml_signed()
+                    return
+                else:
+                    safe_message_box(self, QMessageBox.Icon.Critical, "SSL ошибка", result.get("error", "SSL handshake failed"))
             else:
                 error_msg = result.get("error", "Неизвестная ошибка")
                 raw_response = result.get("raw_response", "")
@@ -811,7 +861,7 @@ class DataTransferTab(QWidget):
                 msg.setIcon(QMessageBox.Icon.Critical)
                 msg.setText(error_msg)
                 if raw_response:
-                    msg.setDetailedText(f"Ответ сервера:\n{raw_response[:500]}")
+                    msg.setDetailedText("Ответ сервера:\n%s" % raw_response[:500])
                 msg.exec()
         except Exception as e:
             logger.exception("Ошибка отправки подписанного XML")

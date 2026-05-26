@@ -8,13 +8,20 @@
 
 ## Transport Backends
 
-Приложение поддерживает несколько HTTP-транспортов:
+Приложение поддерживает несколько HTTP-транспортов с автоматическим fallback:
 
 | Backend | Описание | Преимущества |
 |---------|----------|--------------|
-| Auto | Автоматический выбор лучшего | Fallback между requests и WinINET |
-| Requests | Библиотека requests | Windows Integrated Authentication (Negotiate/Kerberos) |
-| WinINET | Windows Internet API | Лучшая поддержка корпоративных прокси |
+| Auto | Автоматический выбор | В корп. среде → WinINET, иначе по доступности |
+| WinINET | WinHTTP COM (Windows Internet) | Negotiate/Kerberos, SSL-инспекция, корп. прокси |
+| urllib | Стандартная библиотека Python | Встроенный SSL context, fallback |
+| Requests | Библиотека requests | Полный контроль verify, таймауты, retry |
+
+**Выбор backend:**
+1. Если включён `use_negotiate` → WinINET
+2. Если обнаружена корп. среда (прокси .rzd/.oao/.corp) → WinINET
+3. Если выбран "Auto" → проверка доступности: WinINET → urllib → requests
+4. При SSL-ошибке (Schannel 10013) → UI предлагает отключить TLS с аудитом
 
 ## Эндпоинты
 

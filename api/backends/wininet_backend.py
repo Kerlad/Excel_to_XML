@@ -38,6 +38,19 @@ SECURITY_FLAG_IGNORE_ALL_CERT_ERRORS = (
 )
 
 
+SCHANNEL_ERROR_MARKERS = [
+    "schannel", "10013", "0x80090326", "sec_e_illegal_message",
+    "tls", "ssl", "certificate",
+]
+
+
+def _is_schannel_error(error_message: str) -> bool:
+    if not error_message:
+        return False
+    msg = error_message.lower()
+    return any(marker in msg for marker in SCHANNEL_ERROR_MARKERS)
+
+
 def _make_request(
     method: str,
     url: str,
@@ -55,15 +68,18 @@ def _make_request(
 
         http.SetAutoLogonPolicy(WINHTTP_AUTOLOGON_POLICY_ALWAYS)
 
+        # SECURITY_FLAG must be set BEFORE Open() for some WinHTTP versions
+        # Set it both before and after Open() for reliability
         if not verify:
-            try:
-                http.Option[WINHTTP_OPTION_SECURITY_FLAGS] = SECURITY_FLAG_IGNORE_ALL_CERT_ERRORS
-                logger.warning(
-                    "WinINET: TLS certificate verification disabled "
-                    "(corporate SSL inspection mode)"
-                )
-            except AttributeError:
-                logger.debug("WinINET: cannot set SECURITY_FLAGS (COM limitation)")
+            for _attempt in range(2):
+                try:
+                    http.Option[WINHTTP_OPTION_SECURITY_FLAGS] = SECURITY_FLAG_IGNORE_ALL_CERT_ERRORS
+                except (AttributeError, TypeError):
+                    pass
+            logger.warning(
+                "WinINET: TLS certificate verification disabled "
+                "(corporate SSL inspection mode)"
+            )
 
         if proxies:
             proxy_url = proxies.get('https') or proxies.get('http')
@@ -83,27 +99,35 @@ def _make_request(
             http.Send()
 
         status_code = http.Status
-        response_bytes = bytes(http.ResponseBody)
+        raw_bytes = http.ResponseBody
+        response_bytes = bytes(raw_bytes) if raw_bytes is not None else b""
 
         if status_code >= 400:
-            err_text = f"HTTP {status_code}"
+            err_text = "HTTP %d" % status_code
             try:
-                err_text += f": {http.StatusText}"
-            except AttributeError:
+                status_text = str(http.StatusText)
+                if status_text:
+                    err_text += ": " + status_text
+            except (AttributeError, TypeError):
                 pass
             return False, status_code, response_bytes, err_text
 
         return True, status_code, response_bytes, ""
 
     except AttributeError as e:
-        logger.error(f"WinHTTP COM error: {e}")
+        logger.error("WinHTTP COM error: %s", str(e))
         return False, 0, b"", str(e)
     except OSError as e:
-        logger.error(f"WinHTTP network error: {e}")
-        return False, 0, b"", str(e)
+        err_msg = str(e)
+        logger.error("WinHTTP network error: %s", err_msg)
+        return False, 0, b"", err_msg
     except ValueError as e:
-        logger.error(f"WinHTTP value error: {e}")
+        logger.error("WinHTTP value error: %s", str(e))
         return False, 0, b"", str(e)
+    except Exception as e:
+        err_msg = str(e)
+        logger.error("WinHTTP unexpected error: %s", err_msg)
+        return False, 0, b"", err_msg
 
 
 class WinINETBackend(BaseBackend):
@@ -135,15 +159,21 @@ class WinINETBackend(BaseBackend):
         try:
             boundary = "----FormBoundary" + os.urandom(8).hex()
 
-            body = b''
+            body_parts = []
             for field_name, (filename, content, content_type) in files.items():
-                body += f'--{boundary}\r\n'.encode()
-                body += f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'.encode()
-                body += f'Content-Type: {content_type}\r\n\r\n'.encode()
-                body += content + b'\r\n'
-            body += f'--{boundary}--\r\n'.encode()
+                part = b''
+                part += b'--' + boundary.encode() + b'\r\n'
+                cd_header = 'Content-Disposition: form-data; name="%s"; filename="%s"\r\n' % (field_name, filename)
+                part += cd_header.encode()
+                part += ('Content-Type: %s\r\n\r\n' % content_type).encode()
+                part += content.encode() if isinstance(content, str) else content
+                part += b'\r\n'
+                body_parts.append(part)
 
-            req_headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+            body = b''.join(body_parts)
+            body += b'--' + boundary.encode() + b'--\r\n'
+
+            req_headers = {"Content-Type": "multipart/form-data; boundary=%s" % boundary}
             if headers:
                 for k, v in headers.items():
                     if k.lower() != 'content-type':
@@ -151,8 +181,8 @@ class WinINETBackend(BaseBackend):
 
             return _make_request("POST", url, body, req_headers, timeout, verify, proxies)
 
-        except (ValueError, OSError) as e:
-            logger.error(f"WinINET error: {e}")
+        except (ValueError, OSError, TypeError) as e:
+            logger.error("WinINET error: %s", str(e))
             return False, 0, b"", str(e)
 
     def get(
@@ -179,8 +209,8 @@ class WinINETBackend(BaseBackend):
 
         try:
             return _make_request("GET", url, None, headers, timeout, verify, proxies)
-        except (ValueError, OSError) as e:
-            logger.error(f"WinINET error: {e}")
+        except (ValueError, OSError, TypeError) as e:
+            logger.error("WinINET error: %s", str(e))
             return False, 0, b"", str(e)
 
 

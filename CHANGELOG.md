@@ -1,5 +1,42 @@
 # Changelog
 
+## v3.3.0 "Corporate Proxy Support"
+
+### Corporate Proxy & SSL Inspection (2026-05-26)
+
+1. **Auto-detection of corporate environment** (`utils/proxy_manager.py`)
+   - Detects proxies with `.rzd`, `.oao`, `.corp`, `.company` domains
+   - `is_corporate_proxy()` / `detect_proxy_and_env()` — used by all backends
+   - Automatically forces WinINET backend in corporate environments (best Negotiate/Kerberos)
+
+2. **SSL fallback with user confirmation** (`api/mintrud_api.py`)
+   - When ALL backends fail with Schannel 10013 / SSL handshake error → returns `ssl_error_detected=True`
+   - UI offers to disable TLS verification with explicit security warning
+   - Retry with `verify=False` is logged via `log_audit("TLS_WARNING", ...)`
+   - No silent TLS disable — user must confirm each time
+
+3. **WinINET backend hardened** (`api/backends/wininet_backend.py`)
+   - `SECURITY_FLAG_IGNORE_ALL_CERT_ERRORS` set both before and after `Open()`
+   - New `_is_schannel_error()` — detects Schannel 10013, 0x80090326
+   - Broad exception catching for COM edge cases
+   - Robust multipart boundary building (explicit bytes, type-safe)
+
+4. **Diagnostics improvement** (`network/client.py`)
+   - `is_schannel_10013_error()` — detects the error in Ru/En
+   - `get_schannel_recommendation()` — user-friendly instructions
+   - `get_network_diagnostics()` now reports: `is_corporate_env`, `schannel_10013_detected`, `ssl_inspection_detected`
+
+5. **UI improvements** (`tabs/data_transfer_tab.py`)
+   - When SSL error detected → dialog: "Обнаружена SSL-инспекция. Отключить TLS?"
+   - Test connection shows "Корпоративная среда: Да/Нет" and "SSL-инспекция: Да/Нет"
+   - Audit log fixes: `%s` formatting instead of f-strings in sensitive events
+
+6. **Documentation** (`docs/DEPLOYMENT.md`)
+   - New section §9 "Корпоративные прокси с SSL Inspection"
+   - 3 solutions: disable TLS / install corporate CA / WinHTTP proxy
+   - Transport backends comparison table
+   - Audit events reference (TLS_WARNING, TLS_ERROR, BACKEND_CHANGE, PROXY_CHANGE)
+
 ## v3.2.0 "Security Hardening"
 
 ### Cryptographic Security (2026-05-24)

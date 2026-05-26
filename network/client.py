@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 from enum import Enum
 
 try:
@@ -10,6 +10,13 @@ except ImportError:
     REQUESTS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+SCHANNEL_10013_MARKERS = [
+    "schannel", "10013", "0x80090326",
+    "не удалось создать защищенный канал",
+    "ssl/tls",
+    "ssl handshake",
+]
 
 
 class NetworkStatus(Enum):
@@ -44,6 +51,27 @@ def test_external_access(
         return NetworkStatus.UNKNOWN_ERROR, str(e)
 
 
+def is_schannel_10013_error(error_text: str) -> bool:
+    if not error_text:
+        return False
+    text = error_text.lower().replace("ё", "е")
+    return any(marker in text for marker in SCHANNEL_10013_MARKERS)
+
+
+def get_schannel_recommendation() -> str:
+    return (
+        "Обнаружена SSL-инспекция корпоративного прокси (Schannel 10013). "
+        "Сертификат edu.rosmintrud.ru подменяется корпоративным ЦС, "
+        "который не добавлен в доверенные корневые центры сертификации.\n\n"
+        "Рекомендации:\n"
+        "1. В настройках приложения включите 'Авто (системные)' прокси.\n"
+        "2. Отключите 'TLS верификацию' (с подтверждением).\n"
+        "3. Либо установите корпоративный CA-сертификат "
+        "в 'Доверенные корневые центры сертификации' Windows.\n\n"
+        "Внимание: отключение TLS-верификации снижает защиту ПДн."
+    )
+
+
 def get_network_diagnostics() -> dict:
     """
     Check proxy availability and TLS to edu.rosmintrud.ru.
@@ -57,6 +85,9 @@ def get_network_diagnostics() -> dict:
         "proxy_auth_ok": False,
         "error": None,
         "recommendation": None,
+        "is_corporate_env": False,
+        "schannel_10013_detected": False,
+        "ssl_inspection_detected": False,
     }
 
     try:
@@ -65,10 +96,11 @@ def get_network_diagnostics() -> dict:
         if proxy_url:
             from urllib.parse import urlparse
             parsed = urlparse(proxy_url)
-            result["detected_proxy"] = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+            result["detected_proxy"] = "%s://%s:%s" % (parsed.scheme, parsed.hostname, parsed.port)
             result["auth_method"] = "Negotiate/Kerberos (Squid)"
+            result["is_corporate_env"] = pm.is_corporate_proxy(proxy_url)
     except Exception as e:
-        result["error"] = f"Proxy detection error: {e}"
+        result["error"] = "Proxy detection error: %s" % str(e)[:200]
 
     try:
         import win32security
@@ -122,14 +154,20 @@ def get_network_diagnostics() -> dict:
                     )
                     break
             except ssl.SSLError as e:
+                err_text = str(e)
+                result["schannel_10013_detected"] = is_schannel_10013_error(err_text)
+                result["ssl_inspection_detected"] = True
                 if verify:
                     continue
-                result["error"] = f"TLS error: {e}"
-                result["recommendation"] = (
-                    "Корпоративный прокси подменяет TLS-сертификат. "
-                    "Включите 'Не проверять TLS' в настройках прокси или "
-                    "установите корпоративный CA-сертификат в Windows."
-                )
+                result["error"] = "TLS error: %s" % err_text[:200]
+                result["recommendation"] = get_schannel_recommendation()
+            except urllib.error.URLError as e:
+                err_text = str(e.reason) if hasattr(e, 'reason') else str(e)
+                result["schannel_10013_detected"] = is_schannel_10013_error(err_text)
+                result["ssl_inspection_detected"] = result["schannel_10013_detected"]
+                if verify:
+                    continue
+                result["error"] = "Connection error: %s" % err_text[:200]
             except Exception as e:
                 result["error"] = str(e)[:200]
     except Exception as e:

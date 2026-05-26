@@ -278,7 +278,85 @@ conn.execute("PRAGMA integrity_check").fetchall()
 
 ---
 
-## 9. Security disclaimers
+## 9. Корпоративные прокси с SSL Inspection
+
+### 9.1. Проблема
+
+В корпоративных сетях (РЖД, Сбер и др.) используется Deep SSL Inspection:
+прокси-сервер подменяет TLS-сертификат `edu.rosmintrud.ru` своим, что вызывает
+ошибку Schannel 10013 ("Не удалось создать защищенный канал SSL/TLS").
+
+### 9.2. Диагностика
+
+```powershell
+# Проверить прокси
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyServer
+
+# Проверить Schannel ошибки
+Get-EventLog -LogName System -Source Schannel -Newest 5 | Format-List TimeGenerated, Message
+
+# Тест через прокси (PowerShell)
+Invoke-WebRequest -Uri "https://edu.rosmintrud.ru" -Proxy "http://ваш-прокси:3128" -ProxyUseDefaultCredentials -UseBasicParsing
+```
+
+На вкладке "Передача данных" → **Тест подключения** выводит:
+- SSL-инспекция: Да/Нет
+- Корпоративная среда: Да/Нет
+- Рекомендации по настройке
+
+### 9.3. Решение A: Отключить проверку TLS (быстрое)
+
+1. Настройки прокси → **Авто (системные)**
+2. Снимите галочку **TLS верификация (рекомендуется)**
+3. Подтвердите предупреждение безопасности (аудит зафиксирует событие `TLS_WARNING`)
+4. Сохраните настройки
+
+Приложение автоматически предложит отключить TLS при обнаружении SSL-инспекции.
+
+### 9.4. Решение B: Установить корпоративный CA-сертификат (безопасное)
+
+Запросите у администратора корпоративный корневой сертификат
+(для РЖД — `RzdCA` или `AD-CA-01`) и установите в:
+
+```
+Доверенные корневые центры сертификации → Локальный компьютер
+```
+
+После этого TLS verify может оставаться включённым.
+
+### 9.5. Решение C: WinHTTP proxy (если авто не работает)
+
+```powershell
+netsh winhttp set proxy msk-proxy-03.msk.oao.rzd:3128
+```
+
+Приложение автоматически определяет корпоративную среду (.rzd, .corp, .oao)
+и предпочитает WinINET backend (лучшая поддержка Negotiate/Kerberos).
+
+### 9.6. Transport backends
+
+| Backend | Приоритет | Корп. среда | Особенности |
+|---------|-----------|-------------|-------------|
+| WinINET | 1 (в корп. среде) | Предпочтительный | Negotiate/Kerberos, системный прокси |
+| urllib | 2 | Запасной | Встроенный SSL context |
+| requests | 3 | Запасной | Полный контроль verify |
+
+При SSL-ошибке выполняется автоматический fallback между backends.
+Если все backends не работают с TLS verify=True — возвращается
+`ssl_error_detected=True` и UI предлагает отключить проверку.
+
+### 9.7. Аудит
+
+| Событие | Условие |
+|---------|---------|
+| `TLS_WARNING` | TLS verification выключена |
+| `TLS_ERROR` | SSL handshake ошибка |
+| `BACKEND_CHANGE` | Смена транспорта |
+| `PROXY_CHANGE` | Изменение настроек прокси |
+
+---
+
+## 10. Security disclaimers
 
 ### Приложение НЕ
 
@@ -297,5 +375,5 @@ conn.execute("PRAGMA integrity_check").fetchall()
 
 ---
 
-*Документ обновлён: 22.05.2026*
-*Версия приложения: 3.1.0*
+*Документ обновлён: 26.05.2026*
+*Версия приложения: 3.2.0*
