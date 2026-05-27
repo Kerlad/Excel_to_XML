@@ -100,7 +100,8 @@ class LockDialog(QDialog):
 
         card = QWidget()
         card.setObjectName("lockCard")
-        card.setFixedSize(440, 340)
+        card.setMinimumSize(380, 280)
+        card.setMaximumSize(520, 400)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(28, 24, 28, 20)
         card_layout.setSpacing(12)
@@ -262,7 +263,8 @@ class LockWarningDialog(QDialog):
     def __init__(self, remaining_sec: int, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Предупреждение")
-        self.setFixedSize(420, 140)
+        self.setMinimumSize(360, 120)
+        self.setMaximumSize(600, 200)
         self.setModal(False)
         self.setWindowFlags(
             Qt.Dialog | Qt.WindowTitleHint | Qt.WindowStaysOnTopHint

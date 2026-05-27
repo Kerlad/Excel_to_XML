@@ -233,7 +233,7 @@ HELP_SECTIONS = [
 
 class HelpDialog(BaseDialog):
     def __init__(self, parent=None):
-        super().__init__(parent, title="Справка по работе с программой", min_width=820, min_height=680)
+        super().__init__(parent, title="Справка по работе с программой", min_width=680, min_height=520)
 
         bl = self.body_layout()
         bl.setContentsMargins(0, 0, 0, 0)

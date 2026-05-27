@@ -42,8 +42,8 @@ class MainWindow(QMainWindow):
         self.app = app
         self.current_theme = load_theme(get_app_data_dir())
         self.setWindowTitle("Excel-XML для передачи данных в Минтруд")
-        self.setMinimumSize(1000, 700)
-        self.resize(1200, 800)
+        self.setMinimumSize(800, 600)
+        self.resize(1000, 700)
 
         icon_path = os.path.join(get_resource_dir(), "resources", "ico.ico")
         if os.path.exists(icon_path):

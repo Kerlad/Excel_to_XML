@@ -84,8 +84,8 @@ class LogViewerDialog(QDialog):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setWindowTitle("Просмотр логов")
-        self.setMinimumSize(900, 600)
-        self.resize(1100, 700)
+        self.setMinimumSize(700, 450)
+        self.resize(900, 600)
 
         self._log_dir = get_app_log_dir()
         self._buffer: deque[str] = deque(maxlen=MAX_BUFFER_LINES)

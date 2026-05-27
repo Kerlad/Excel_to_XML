@@ -18,7 +18,8 @@ class PassphraseDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Подтверждение парольной фразы")
-        self.setFixedSize(460, 320)
+        self.setMinimumSize(400, 280)
+        self.setMaximumSize(600, 450)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.setModal(True)
 

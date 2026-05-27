@@ -222,7 +222,9 @@ class AboutDialog(BaseDialog):
             )
             return
 
-        desktop = os.path.join(os.environ['USERPROFILE'], 'Desktop')
+        desktop = os.path.join(os.environ.get('USERPROFILE', os.path.expanduser('~')), 'Desktop')
+        if not os.path.isdir(desktop):
+            desktop = os.path.join(os.environ.get('TEMP', os.path.expanduser('~')))
         zip_name = f"error_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
         zip_path = os.path.join(desktop, zip_name)
         try:
@@ -231,7 +233,7 @@ class AboutDialog(BaseDialog):
                     if f.is_file():
                         zf.write(str(f), arcname=f.name)
         except Exception as e:
-            logging.getLogger(__name__).error(f"Failed to create log ZIP: {e}")
+            logging.getLogger(__name__).error("Failed to create log ZIP: %s", e)
             QMessageBox.warning(
                 self, "Ошибка",
                 f"Не удалось создать архив логов:\n{e}"
@@ -240,7 +242,7 @@ class AboutDialog(BaseDialog):
 
         body_dialog = QDialog(self)
         body_dialog.setWindowTitle("Описание ошибки")
-        body_dialog.setFixedSize(500, 350)
+        body_dialog.setMinimumSize(380, 300)
         body_dialog.setModal(True)
         layout = QVBoxLayout(body_dialog)
         layout.setContentsMargins(16, 16, 16, 16)
