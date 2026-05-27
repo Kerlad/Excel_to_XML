@@ -4,10 +4,11 @@ Security audit and safe initialization for ISPDn.
 """
 import sys
 import os
+import json
 import logging
 from datetime import datetime
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenu, QMessageBox, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QProgressBar
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QByteArray
 from PySide6.QtGui import QIcon
 from tabs.data_entry_tab import DataEntryTab
 from tabs.data_view_tab import DataViewTab
@@ -44,6 +45,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Excel-XML для передачи данных в Минтруд")
         self.setMinimumSize(800, 600)
         self.resize(1000, 700)
+        self._restore_window_geometry()
 
         icon_path = os.path.join(get_resource_dir(), "resources", "ico.ico")
         if os.path.exists(icon_path):
@@ -325,7 +327,34 @@ class MainWindow(QMainWindow):
             self.auto_lock.timeout_minutes = value
             logger.info("Auto-lock timeout set to %d min", value)
 
+    def _window_settings_path(self):
+        return os.path.join(get_app_data_dir(), "window_settings.json")
+
+    def _save_window_geometry(self):
+        geo = self.saveGeometry()
+        b64 = geo.toBase64().data().decode('ascii')
+        data = {"window_geometry": b64}
+        try:
+            with open(self._window_settings_path(), 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+        except OSError as e:
+            logger.debug("Failed to save window geometry: %s", e)
+
+    def _restore_window_geometry(self):
+        path = self._window_settings_path()
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            b64 = data.get("window_geometry", "")
+            if b64:
+                self.restoreGeometry(QByteArray.fromBase64(b64.encode('ascii')))
+        except (OSError, json.JSONDecodeError) as e:
+            logger.debug("Failed to restore window geometry: %s", e)
+
     def closeEvent(self, event):
+        self._save_window_geometry()
         log_audit("SHUTDOWN", "Application shutdown")
         super().closeEvent(event)
 

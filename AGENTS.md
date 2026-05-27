@@ -248,6 +248,31 @@ parser = etree.XMLParser(
 - `db/employee_programs_repo.py` — program data per employee
 - `db/employees_repo.py` — employee CRUD
 
+## UI Layout (employee_summary_tab.py)
+
+### Toolbar — two rows
+- **Row 1** (`_build_toolbar_row1()`): [+ Добавить сотрудника] [Импорт из xlsx] [Экспорт в xlsx] [Экспорт (все)] [Выбрать программы]
+- **Row 2** (`_build_toolbar_row2()`): [Запросить из реестра] [Обновить выбранные] [~2cm spacer] [Удалить выбранные] [Удалить все]
+- 2cm indent (75px fixed-width spacer) separates "Обновить выбранные" from "Удалить выбранные"
+- References: `employee_summary_tab.py:621-664`, `main.layout at line 575-576`
+
+### Row order (top to bottom)
+1. Stats cards (`_build_stats`)
+2. Period settings (`_build_period_row`)
+3. Report buttons (`_build_report_row`)
+4. Toolbar row 1 (`_build_toolbar_row1`)
+5. Toolbar row 2 (`_build_toolbar_row2`)
+6. Filters (`_build_filters`)
+7. Table (stretch)
+
+## Window Geometry Persistence
+- `main.py` — saves/restores window size+position via `saveGeometry()` / `restoreGeometry()` (QByteArray → base64)
+- File: `%APPDATA%\Excel_to_XML\window_settings.json` (plain JSON)
+- Save: `_save_window_geometry()` called in `closeEvent` (`main.py:356-359`)
+- Restore: `_restore_window_geometry()` called in `__init__` after `resize()` (`main.py:48`)
+- Fallbacks to default 1000×700 on first launch or on corrupt/missing file
+- AppUserModelID set via `SetCurrentProcessExplicitAppUserModelID("excelxml.mintrud.3.1")` for correct Windows taskbar icon (`main.py:444`)
+
 ## Audit Results (2026-05-22)
 - See `SECURITY_AUDIT_REPORT.md` for full report, `GAP_ANALYSIS.md` for gap matrix
 - **CRITICAL**: Audit HMAC is NEVER verified (security theater)

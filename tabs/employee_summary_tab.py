@@ -572,7 +572,8 @@ class EmployeeSummaryTab(QWidget):
         scroll_layout.addWidget(self._build_stats())
         scroll_layout.addWidget(_make_hscroll(self._build_period_row()))
         scroll_layout.addWidget(_make_hscroll(self._build_report_row()))
-        scroll_layout.addWidget(_make_hscroll(self._build_toolbar()))
+        scroll_layout.addWidget(_make_hscroll(self._build_toolbar_row1()))
+        scroll_layout.addWidget(_make_hscroll(self._build_toolbar_row2()))
         scroll_layout.addWidget(_make_hscroll(self._build_filters()))
         scroll_layout.addStretch()
 
@@ -618,7 +619,7 @@ class EmployeeSummaryTab(QWidget):
 
     # ── Toolbar ────────────────────────────────────────────
 
-    def _build_toolbar(self):
+    def _build_toolbar_row1(self):
         w = QWidget(); w.setObjectName("toolbarContainer")
         layout = QHBoxLayout(w); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(6)
 
@@ -638,19 +639,27 @@ class EmployeeSummaryTab(QWidget):
         export_all_btn.clicked.connect(lambda: self._export_xlsx(filtered=False))
         layout.addWidget(export_all_btn)
 
-        self.query_btn = QPushButton("Запросить из реестра"); self.query_btn.setObjectName("toolbarSuccessBtn")
-        self.query_btn.clicked.connect(self._query_reestr)
-        layout.addWidget(self.query_btn)
-
         prog_btn = QPushButton("Выбрать программы"); prog_btn.setObjectName("toolbarPurpleBtn")
         prog_btn.clicked.connect(self._show_program_selector)
         layout.addWidget(prog_btn)
+
+        layout.addStretch()
+        return w
+
+    def _build_toolbar_row2(self):
+        w = QWidget(); w.setObjectName("toolbarContainer")
+        layout = QHBoxLayout(w); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(6)
+
+        self.query_btn = QPushButton("Запросить из реестра"); self.query_btn.setObjectName("toolbarSuccessBtn")
+        self.query_btn.clicked.connect(self._query_reestr)
+        layout.addWidget(self.query_btn)
 
         self.query_selected_btn = QPushButton("Обновить выбранные"); self.query_selected_btn.setObjectName("toolbarSuccessBtn")
         self.query_selected_btn.clicked.connect(self._update_selected)
         layout.addWidget(self.query_selected_btn)
 
-        layout.addStretch()
+        spacer = QWidget(); spacer.setFixedWidth(75)
+        layout.addWidget(spacer)
 
         delete_selected_btn = QPushButton("Удалить выбранные"); delete_selected_btn.setObjectName("toolbarDangerBtn")
         delete_selected_btn.clicked.connect(self._delete_selected)
@@ -660,6 +669,7 @@ class EmployeeSummaryTab(QWidget):
         delete_all_btn.clicked.connect(self._delete_all_data)
         layout.addWidget(delete_all_btn)
 
+        layout.addStretch()
         return w
 
     # ── Period settings row ───────────────────────────────
