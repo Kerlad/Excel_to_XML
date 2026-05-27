@@ -438,6 +438,12 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("excelxml.mintrud.3.1")
+    except Exception:
+        pass
+
     icon_path = os.path.join(get_resource_dir(), "resources", "ico.ico")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))

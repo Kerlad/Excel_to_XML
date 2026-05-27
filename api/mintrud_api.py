@@ -23,18 +23,17 @@ from .backends import BackendRegistry
 import utils.proxy_manager as proxy_manager
 from utils.audit import log_audit
 from utils.logger import mask_sensitive, filter_sensitive_text
+from utils.app_paths import get_app_log_dir
 
 logger = logging.getLogger(__name__)
-
-_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "log")
 
 
 def _save_error_response(response_bytes: bytes, status_code: int = 0):
     """Сохраняет полный ответ сервера в /log/error_response.txt (UTF-8 BOM).
     Данные фильтруются через SensitiveDataFilter для маскировки PII (СНИЛС, ФИО, ключи)."""
     try:
-        os.makedirs(_LOG_DIR, exist_ok=True)
-        path = os.path.join(_LOG_DIR, "error_response.txt")
+        log_dir = get_app_log_dir()
+        path = os.path.join(log_dir, "error_response.txt")
         text = f"HTTP {status_code}\n"
         for enc in ("utf-8", "cp1251"):
             try:

@@ -201,32 +201,84 @@ class PlanGenerationWorker(QObject):
 
     def run(self):
         try:
-            from tabs.employee_summary_tab import _get_employee_status
+            from tabs.employee_summary_tab import EmployeeSummaryTab
+            from PySide6.QtWidgets import QApplication
+            from utils.training_rules import get_dynamic_status, compute_expiry_date
+            from datetime import datetime
+            from dateutil.relativedelta import relativedelta
+
             plan_data = []
             total = len(self.employees_data)
+            today = datetime.now()
             for idx, (emp_id, edata) in enumerate(self.employees_data.items()):
                 if self._cancelled:
                     return
                 emp = edata['emp']
                 progs = edata['programs']
-                status, reason, priority, last_exam_date, expiry_date, prog = \
-                    _get_employee_status(emp, progs, self.period_3years)
 
-                include = False
+                status = 'not_trained'
+                has_trained = False
+                has_expired = False
+                for p in progs:
+                    if p.get('need_training') != 1:
+                        continue
+                    s = get_dynamic_status(
+                        p.get('status', 'not_trained'), p.get('exam_date', ''),
+                        p.get('program_id', 0), self.period_3years
+                    )
+                    if s == 'not_trained':
+                        status = 'not_trained'
+                        break
+                    if s == 'expired':
+                        has_expired = True
+                    elif s == 'trained':
+                        has_trained = True
+                else:
+                    if has_expired:
+                        status = 'expired'
+                    elif has_trained:
+                        status = 'trained'
+
+                reason = None
+                priority = None
+                expiry = ""
+                prog = ""
+                last_exam_date = ""
+
                 if status == 'not_trained' and self.include_not_trained:
-                    include = True
+                    reason = "Не обучен"
+                    priority = "Высокий"
+                    expiry = (today + relativedelta(days=60)).strftime('%d.%m.%Y')
+                    need = [p for p in progs if p.get('need_training') == 1]
+                    if need:
+                        prog = str(need[0].get('program_id', ''))
+                        last_exam_date = need[0].get('exam_date', '')
                 elif status == 'expired' and self.include_expired:
-                    include = True
-                elif status == 'trained' and self.include_expiring and expiry_date:
-                    try:
-                        from datetime import datetime
-                        ey = int(expiry_date.split('.')[-1]) if expiry_date else 0
-                        if ey == self.year:
-                            include = True
-                    except (ValueError, IndexError):
-                        pass
+                    reason = "Просрочено"
+                    priority = "Высокий"
+                    expiry = (today + relativedelta(days=30)).strftime('%d.%m.%Y')
+                    need = [p for p in progs if p.get('need_training') == 1]
+                    if need:
+                        prog = str(need[0].get('program_id', ''))
+                        last_exam_date = need[0].get('exam_date', '')
+                elif status == 'trained' and self.include_expiring:
+                    need_progs = [p for p in progs if p.get('need_training') == 1 and p.get('exam_date', '')]
+                    for p in need_progs:
+                        pid = p.get('program_id', 0)
+                        ld = p.get('exam_date', '')
+                        try:
+                            ed = compute_expiry_date(ld, pid, self.period_3years)
+                            if ed.year == self.year:
+                                reason = "Истекает срок действия"
+                                priority = "Средний"
+                                expiry = ed.strftime('%d.%m.%Y')
+                                prog = str(pid)
+                                last_exam_date = ld
+                                break
+                        except (ValueError, IndexError):
+                            pass
 
-                if include:
+                if include := bool(reason):
                     plan_data.append({
                         'last_name': emp['last_name'],
                         'first_name': emp['first_name'],
@@ -235,7 +287,7 @@ class PlanGenerationWorker(QObject):
                         'position': emp['position'],
                         'program': prog,
                         'last_exam_date': last_exam_date,
-                        'expiry_date': expiry_date,
+                        'expiry_date': expiry,
                         'reason': reason,
                         'priority': priority,
                     })

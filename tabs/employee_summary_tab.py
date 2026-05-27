@@ -646,11 +646,19 @@ class EmployeeSummaryTab(QWidget):
         prog_btn.clicked.connect(self._show_program_selector)
         layout.addWidget(prog_btn)
 
+        self.query_selected_btn = QPushButton("Обновить выбранные"); self.query_selected_btn.setObjectName("toolbarSuccessBtn")
+        self.query_selected_btn.clicked.connect(self._update_selected)
+        layout.addWidget(self.query_selected_btn)
+
         layout.addStretch()
 
-        delete_btn = QPushButton("Удалить данные"); delete_btn.setObjectName("toolbarDangerBtn")
-        delete_btn.clicked.connect(self._delete_all_data)
-        layout.addWidget(delete_btn)
+        delete_selected_btn = QPushButton("Удалить выбранные"); delete_selected_btn.setObjectName("toolbarDangerBtn")
+        delete_selected_btn.clicked.connect(self._delete_selected)
+        layout.addWidget(delete_selected_btn)
+
+        delete_all_btn = QPushButton("Удалить все"); delete_all_btn.setObjectName("toolbarDangerBtn")
+        delete_all_btn.clicked.connect(self._delete_all_data)
+        layout.addWidget(delete_all_btn)
 
         return w
 
@@ -744,6 +752,7 @@ class EmployeeSummaryTab(QWidget):
         self.table.setObjectName("summaryTable")
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.verticalHeader().setDefaultSectionSize(28)
@@ -1001,9 +1010,15 @@ class EmployeeSummaryTab(QWidget):
         menu = QMenu(self)
         menu.setObjectName("summaryCtxMenu")
 
+        selected_rows = len(set(it.row() for it in self.table.selectedIndexes()))
+
         edit_action = menu.addAction("Редактировать")
         query_action = menu.addAction("Запросить из реестра")
         delete_action = menu.addAction("Удалить")
+        if selected_rows > 1:
+            menu.addSeparator()
+            menu.addAction("Удалить выбранные", self._delete_selected)
+            menu.addAction("Обновить выбранные", self._update_selected)
 
         action = menu.exec(self.table.mapToGlobal(position))
         hidden_col = self.table.columnCount() - 1
@@ -1388,6 +1403,75 @@ class EmployeeSummaryTab(QWidget):
                              f"Обновлено: {updated} сотрудников")
         self.refresh_table()
 
+    def _delete_selected(self):
+        rows = sorted(set(it.row() for it in self.table.selectedIndexes()))
+        rows = [r for r in rows if r >= 2]
+        if not rows:
+            QMessageBox.information(self, "Информация", "Выберите сотрудников для удаления")
+            return
+        hidden_col = self.table.columnCount() - 1
+        emp_ids = set()
+        for row in rows:
+            it = self.table.item(row, hidden_col)
+            if it:
+                eid = it.data(Qt.ItemDataRole.UserRole)
+                if eid:
+                    emp_ids.add(eid)
+        if not emp_ids:
+            QMessageBox.information(self, "Информация", "Не удалось определить выбранных сотрудников")
+            return
+        if QMessageBox.question(
+            self, "Подтверждение",
+            f"Удалить выбранных сотрудников ({len(emp_ids)} шт.)?\nДанные удалятся безвозвратно.",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+        ) != QMessageBox.StandardButton.Ok:
+            return
+        for eid in emp_ids:
+            EmployeesRepo.delete(eid)
+        DatabaseManager.get_instance().secure_vacuum()
+        self.refresh_table()
+        QMessageBox.information(self, "Успех", "Выбранные сотрудники удалены")
+
+    def _update_selected(self):
+        rows = sorted(set(it.row() for it in self.table.selectedIndexes()))
+        rows = [r for r in rows if r >= 2]
+        if not rows:
+            QMessageBox.information(self, "Информация", "Выберите сотрудников для обновления")
+            return
+        api_key = load_api_key(self.data_dir)
+        if not api_key:
+            QMessageBox.warning(self, "Ошибка", "API ключ не найден. Сохраните ключ на вкладке 'Передача данных'")
+            return
+        hidden_col = self.table.columnCount() - 1
+        emp_ids = set()
+        for row in rows:
+            it = self.table.item(row, hidden_col)
+            if it:
+                eid = it.data(Qt.ItemDataRole.UserRole)
+                if eid:
+                    emp_ids.add(eid)
+        if not emp_ids:
+            QMessageBox.information(self, "Информация", "Не удалось определить выбранных сотрудников")
+            return
+        employees = [e for e in EmployeesRepo.get_all() if e['id'] in emp_ids]
+        if not employees:
+            return
+        proxy_settings = load_proxy_settings(self.data_dir)
+        self.query_btn.setEnabled(False)
+        self.query_btn.setText("Обновление...")
+        self._query_errors = []
+        dialog = QueryProgressDialog(len(employees), self)
+        self._api_thread = ApiQueryThread(employees, api_key, proxy_settings)
+        self._api_thread.finished.connect(self._on_query_finished)
+        self._api_thread.finished.connect(dialog.accept)
+        self._api_thread.error_signal.connect(self._on_query_error)
+        self._api_thread.progress.connect(dialog.update_progress)
+        dialog.cancelled.connect(self._api_thread.cancel)
+        dialog.cancelled.connect(dialog.reject)
+        dialog.rejected.connect(self._api_thread.cancel)
+        self._api_thread.start()
+        dialog.exec()
+
     def _query_single(self, emp_id):
         api_key = load_api_key(self.data_dir)
         if not api_key:
@@ -1469,8 +1553,12 @@ class EmployeeSummaryTab(QWidget):
                     pass
             elif prog_status == 'not_trained':
                 exp = (today + relativedelta(days=60)).strftime('%d.%m.%Y')
-            elif prog_status == 'expired':
-                exp = (today + relativedelta(days=30)).strftime('%d.%m.%Y')
+            elif prog_status == 'expired' and last_exam:
+                try:
+                    ed = compute_expiry_date(last_exam, prog_id, self._b_period_3years)
+                    exp = ed.strftime('%d.%m.%Y')
+                except (ValueError, IndexError):
+                    pass
 
             if prog_status == status:
                 if best_prog is None:

@@ -9,6 +9,7 @@ from xml.etree.ElementTree import Element, SubElement, ElementTree
 import xml.etree.ElementTree as ET
 
 from utils.audit import log_audit
+from utils.app_paths import get_resource_dir
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +234,7 @@ def export_to_xml(records, file_path, org_settings=None):
 
         xml_content = build_xml(records, org_settings)
 
-        xsd_path = os.path.join(os.path.dirname(__file__), '..', 'schema', 'educated_person_import_v1.0.9.xsd')
+        xsd_path = os.path.join(get_resource_dir(), 'schema', 'educated_person_import_v1.0.9.xsd')
         if os.path.exists(xsd_path):
             try:
                 from lxml import etree
