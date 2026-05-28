@@ -90,6 +90,26 @@ class SecurityDialog(BaseDialog):
         backup_btn.clicked.connect(self._create_key_backup)
         bl.addWidget(backup_btn)
 
+        bl.addSpacing(16)
+
+        delete_label = QLabel(
+            '<b style="color:#E74C3C;">⚠ Сброс всех данных приложения</b><br><br>'
+            'Удаляет все файлы приложения: сотрудников, программы, журнал, '
+            'API-ключ, мастер-ключ, настройки и логи. '
+            'Приложение будет немедленно закрыто. <b>Действие необратимо.</b>'
+        )
+        delete_label.setWordWrap(True)
+        delete_label.setStyleSheet(
+            "padding: 10px; border: 1px solid #E74C3C; border-radius: 6px;"
+        )
+        bl.addWidget(delete_label)
+
+        delete_btn = QPushButton("Удалить все данные приложения")
+        delete_btn.setObjectName("dialogDangerBtn")
+        delete_btn.setMinimumHeight(36)
+        delete_btn.clicked.connect(self._delete_all_data)
+        bl.addWidget(delete_btn)
+
         bl.addStretch()
 
         self.add_close_button("Закрыть")
@@ -163,3 +183,50 @@ class SecurityDialog(BaseDialog):
             safe_message_box(self, QMessageBox.Icon.Information, "Успех", f"Бэкап создан:\n{result}")
         else:
             safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Не удалось создать бэкап:\n{result}")
+
+    def _delete_all_data(self):
+        from utils.app_paths import get_app_data_dir
+        import os, shutil, logging
+        logger = logging.getLogger(__name__)
+        parent = self.parent()
+        reply = QMessageBox.critical(
+            self, "Удаление всех данных",
+            "⚠️ Это удалит ВСЕ данные приложения:\n\n"
+            "• Всех сотрудников и программы обучения\n"
+            "• Журнал проверки знаний\n"
+            "• API ключ и настройки прокси\n"
+            "• Мастер-ключ шифрования\n"
+            "• Все настройки и логи\n\n"
+            "Приложение будет немедленно закрыто.\n"
+            "Данные будут удалены безвозвратно!\n\n"
+            "Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        confirm, ok = QInputDialog.getText(self, "Подтверждение", "Введите 'УДАЛИТЬ' для подтверждения:")
+        if not ok or confirm.strip() != 'УДАЛИТЬ':
+            QMessageBox.warning(self, "Отмена", "Удаление отменено")
+            return
+        try:
+            data_dir = get_app_data_dir()
+            logger.warning("Deleting all app data in %s", data_dir)
+            from utils.audit import log_audit
+            log_audit("FACTORY_RESET", "All application data deleted via Security dialog")
+            if os.path.exists(data_dir):
+                for entry in os.listdir(data_dir):
+                    entry_path = os.path.join(data_dir, entry)
+                    try:
+                        if os.path.isfile(entry_path) or os.path.islink(entry_path):
+                            os.remove(entry_path)
+                        elif os.path.isdir(entry_path):
+                            shutil.rmtree(entry_path)
+                    except Exception as e:
+                        logger.error("Failed to delete %s: %s", entry, e)
+            self.close()
+            if parent and hasattr(parent, 'close'):
+                parent.close()
+        except Exception as e:
+            logger.exception("Delete all data failed")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка",
+                           f"Не удалось удалить данные: {e}")

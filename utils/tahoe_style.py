@@ -622,7 +622,6 @@ def get_global_stylesheet(theme: str = "light") -> str:
         }}
         #summaryTable::item {{
             padding: 4px 6px;
-            background-color: transparent;
             color: {c.TEXT_PRIMARY};
         }}
         #summaryTable::item:selected {{

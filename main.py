@@ -289,6 +289,9 @@ class MainWindow(QMainWindow):
         tools_menu = menubar.addMenu("Инструменты")
         logs_action = tools_menu.addAction("Просмотр логов")
         logs_action.triggered.connect(self.show_log_viewer)
+        tools_menu.addSeparator()
+        delete_data_action = tools_menu.addAction("Удалить все данные приложения")
+        delete_data_action.triggered.connect(self._delete_all_app_data)
 
     def _toggle_theme(self):
         new_theme = "light" if self.current_theme == "dark" else "dark"
@@ -311,6 +314,56 @@ class MainWindow(QMainWindow):
     def show_log_viewer(self):
         dialog = LogViewerDialog(self)
         dialog.exec()
+
+    def _delete_all_app_data(self):
+        reply = QMessageBox.critical(
+            self, "Удаление всех данных",
+            "⚠️ Это удалит ВСЕ данные приложения:\n\n"
+            "• Всех сотрудников и программы обучения\n"
+            "• Журнал проверки знаний\n"
+            "• API ключ и настройки прокси\n"
+            "• Мастер-ключ шифрования\n"
+            "• Все настройки и логи\n\n"
+            "Приложение будет немедленно закрыто.\n"
+            "Данные будут удалены безвозвратно!\n\n"
+            "Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        reply2 = QMessageBox.critical(
+            self, "Подтверждение",
+            "Введите 'УДАЛИТЬ' в поле ниже для подтверждения:",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+        )
+        if reply2 != QMessageBox.StandardButton.Ok:
+            return
+        from PySide6.QtWidgets import QInputDialog
+        confirm, ok = QInputDialog.getText(self, "Подтверждение", "Введите 'УДАЛИТЬ' для подтверждения:")
+        if not ok or confirm.strip() != 'УДАЛИТЬ':
+            QMessageBox.warning(self, "Отмена", "Удаление отменено")
+            return
+        try:
+            data_dir = get_app_data_dir()
+            logger.warning("Deleting all app data in %s", data_dir)
+            log_audit("FACTORY_RESET", "All application data deleted")
+            import shutil
+            if os.path.exists(data_dir):
+                for entry in os.listdir(data_dir):
+                    entry_path = os.path.join(data_dir, entry)
+                    try:
+                        if os.path.isfile(entry_path) or os.path.islink(entry_path):
+                            os.remove(entry_path)
+                        elif os.path.isdir(entry_path):
+                            shutil.rmtree(entry_path)
+                    except Exception as e:
+                        logger.error("Failed to delete %s: %s", entry, e)
+            QMessageBox.information(self, "Готово", "Все данные приложения удалены.\nПриложение будет закрыто.")
+            self.close()
+        except Exception as e:
+            logger.exception("Delete all data failed")
+            safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка",
+                           f"Не удалось удалить данные: {e}")
 
     def _manual_lock(self):
         self.auto_lock.force_lock()

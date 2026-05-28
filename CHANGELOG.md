@@ -1,5 +1,37 @@
 # Changelog
 
+## v3.4.0 "Per-Program Reports & Table Fixes"
+
+### Changes (2026-05-28)
+
+1. **Table header freeze** (`tabs/employee_summary_tab.py`)
+   - `setSortingEnabled(False)` — manual sort via `sectionClicked`
+   - Header rows (0-1) are preserved during sort, only data rows (2+) sorted
+   - Sub-header row height reduced from 30px to 15px
+   - Sort state tracked via `_sort_column` and `_sort_order`
+
+2. **Export reads visible rows only** (`_export_xlsx()`)
+   - Now reads from table widget rows (row 2+) instead of `EmployeesRepo.get_all()`
+   - Deleted/filtered rows are excluded from exports
+
+3. **Toast replaced** with `safe_message_box()` for export save confirmations
+   - Fixes white-text-on-transparent-background issue on Windows
+
+4. **Per-program reports** (`_show_current_snapshot`, `_generate_plan`)
+   - Current Situation: one row per employee **per program** with per-program expiry
+   - Plan reports: same per-program approach with individual expiry date filtering
+   - Added "Название" (program name) column to PlanDialog table (10 columns)
+   - Added "Название" column to XLSX export in PlanDialog
+
+5. **Delete all app data** (`main.py`, `utils/security_dialog.py`)
+   - Menu: `Инструменты → Удалить все данные приложения`
+   - Button in Security dialog ("Безопасность")
+   - Requires typing "УДАЛИТЬ" confirmation
+   - Deletes ALL files from `%APPDATA%\Excel_to_XML`
+   - Audit event: `FACTORY_RESET`
+
+6. **Removed dead code**: `_get_program_data_for_status()` (no longer needed)
+
 ## v3.3.0 "Corporate Proxy Support"
 
 ### Corporate Proxy & SSL Inspection (2026-05-26)

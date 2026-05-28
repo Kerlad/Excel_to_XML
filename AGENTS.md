@@ -106,6 +106,14 @@ Windows DPAPI (user + machine + entropy)
 - Cache: only ciphertext (never plaintext), max 2000 items
 - Backup: PBKDF2-derived password from master key (NO hardcoded constants)
 
+### Factory Reset / Delete All Data
+- Menu: `Инструменты → Удалить все данные приложения` (`main.py:_delete_all_app_data`)
+- Button in Security dialog (`utils/security_dialog.py:_delete_all_data`)
+- Deletes ALL files in `get_app_data_dir()` (Roaming\Excel_to_XML)
+- Requires typing "УДАЛИТЬ" confirmation
+- App closes immediately after deletion
+- Audit event: `FACTORY_RESET`
+
 ## Logging Security (`utils/logger.py`)
 
 ### SensitiveDataFilter (27+ patterns)
@@ -131,7 +139,7 @@ Windows DPAPI (user + machine + entropy)
 
 ## Audit System (`utils/audit.py`)
 
-### 34 Security Events
+### 35 Security Events
 `SEND_XML`, `SEND_XML_SIGNED`, `QUERY_SETID`, `QUERY_SNILS`,
 `IMPORT_XLSX`, `IMPORT_XML`, `EXPORT_XML`, `EXPORT_XLSX`,
 `LOGIN`, `BACKUP`, `KEY_ACCESS`, `KEY_ROTATION`,
@@ -140,7 +148,7 @@ Windows DPAPI (user + machine + entropy)
 `EXPORT_PLAN`, `EXPORT_SNAPSHOT`, `EXPORT_TRAINED_REPORT`,
 `IMPORT_CANCELLED`, `SECURITY_WARNING`, `STARTUP`, `SHUTDOWN`,
 `CRASH`, `ERROR_RESPONSE_SAVED`, `PROXY_CHANGE`, `BACKEND_CHANGE`,
-`AUDIT_INTEGRITY_CHECK`
+`AUDIT_INTEGRITY_CHECK`, `FACTORY_RESET`
 
 ### HMAC Protection
 Each audit entry includes HMAC-SHA256 tag: `[hmac_tag] EVENT | detail`
@@ -188,18 +196,37 @@ parser = etree.XMLParser(
 - Counts how many employees are in each status category
 - Same logic used in `_build_table()` for per-row overall_status
 
-### FR-003: Current Snapshot Report
+### FR-003: Current Snapshot Report (Per-Program)
 - Button "Текущая ситуация" (replaces old "Обновить данные")
-- Generates a report dialog showing every employee with their current status
-- Uses PlanDialog for display
-- Status priority: Не обучен (Высокий) > Просрочено (Высокий) > Обучен (Низкий)
+- Generates a report dialog showing **every program** per employee with expiry dates
+- One row per employee **per program** with `need_training=1`
+- Uses PlanDialog for display (10 columns: includes "Название" column)
+- For each program: computes effective status and expiry date individually
+- Status priority used for sorting only: Не обучен (Высокий) > Просрочено (Высокий) > Обучен (Низкий)
 
-### FR-004: Plan Generation (Employee-level)
-- `_generate_plan()` iterates employees, determines per-employee status via `_get_employee_status()`
-- For not_trained employees → includes if "Включать не обученных" checked
-- For expired employees → includes if "Включать просроченных" checked
-- For trained employees → includes if "Истекает срок действия" and expiry year matches plan year
-- One row per employee (not one per program)
+### FR-004: Plan Generation (Per-Program)
+- `_generate_plan()` iterates employees, iterates ALL `need_training=1` programs per employee
+- Per-program rows (not one per employee):
+  - **not_trained employees**: one row per program with 60d expiry
+  - **expired employees**: one row per program with 30d expiry
+  - **trained employees**: one row per program IF `compute_expiry_date().year == plan_year`
+  - **failed results**: one row per program with `result=0`
+- Columns in PlanDialog: №, ФИО, СНИЛС, Должность, Программа, **Название**, Последняя дата обучения, Дата окончания действия, Основание, Приоритет
+
+### Export Fix: Visible Rows Only
+- `_export_xlsx()` reads data from **table widget** rows (row 2+), not from DB directly
+- Deleted/filtered-out rows are excluded from exports
+- Both filtered ("Экспорт в xlsx") and all-programs ("Экспорт (все)") modes use table data
+
+### Table Header Freeze
+- `setSortingEnabled(False)` — header rows (0-1) are NOT sorted with data
+- Manual sort via `horizontalHeader().sectionClicked` — only data rows (2+) are sorted
+- Sub-header row (row 1) height reduced from 30px to 15px
+- Sort state tracked via `_sort_column` and `_sort_order` instance variables
+
+### Save Confirmations
+- `Toast.success()` replaced with `safe_message_box()` (QMessageBox) for export save confirmations
+- Fixes Windows white-text-on-transparent-background issue with Toast
 
 ### FR-009: Training Period Toggle for Type B Programs (№6-29)
 - Programs 1-5 (Type A): always 3-year training period
@@ -238,7 +265,7 @@ parser = etree.XMLParser(
 - `api/mintrud_api.py` — MintrudClient class
 - `api/backends/` — transport backends (Requests, WinINET)
 - `utils/crypto.py` — Fernet + DPAPI encryption + production mode enforcement
-- `utils/audit.py` — 34 security events with HMAC integrity
+- `utils/audit.py` — 35 security events with HMAC integrity (incl. FACTORY_RESET)
 - `utils/logger.py` — SensitiveDataFilter (27+ patterns, recursive)
 - `utils/xml_safe.py` — defusedxml wrapper with element/depth limits
 - `utils/secure_temp.py` — isolated temp directory, secure deletion
