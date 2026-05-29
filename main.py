@@ -344,6 +344,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Отмена", "Удаление отменено")
             return
         try:
+            DatabaseManager.close_all()
             data_dir = get_app_data_dir()
             logger.warning("Deleting all app data in %s", data_dir)
             log_audit("FACTORY_RESET", "All application data deleted")
@@ -353,7 +354,7 @@ class MainWindow(QMainWindow):
                     entry_path = os.path.join(data_dir, entry)
                     try:
                         if os.path.isfile(entry_path) or os.path.islink(entry_path):
-                            os.remove(entry_path)
+                            os.unlink(entry_path)
                         elif os.path.isdir(entry_path):
                             shutil.rmtree(entry_path)
                     except Exception as e:
