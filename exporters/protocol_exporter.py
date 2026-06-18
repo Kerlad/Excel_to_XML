@@ -342,8 +342,42 @@ class ProtocolExporter:
                 if base_no not in base_nos_by_prog[prog_id]:
                     base_nos_by_prog[prog_id].append(base_no)
 
-        for i, prog_id in enumerate(sorted_ids, start=1):
-            if i > 5:  # Поддерживаем до 5 программ
+        # Check if unified type-B program mode is active
+        use_unified_b = False
+        unified_b_number = ""
+        unified_b_hours = ""
+        if programs_manager:
+            try:
+                unified_settings = programs_manager.get_unified_b_settings()
+                use_unified_b = unified_settings.get("use_unified", False)
+                unified_b_number = unified_settings.get("program_number", "")
+                unified_b_hours = unified_settings.get("hours", "")
+            except AttributeError:
+                pass
+
+        pos = 0
+        unified_b_added = False
+        for prog_id in sorted_ids:
+            is_type_b = prog_id.isdigit() and 6 <= int(prog_id) <= 29
+
+            # Для type-B программ (6-29) при активном unified режиме — одна запись
+            if use_unified_b and is_type_b:
+                if unified_b_added:
+                    continue
+                unified_b_added = True
+                pos += 1
+                if pos > 5:
+                    break
+                program_data[pos] = {
+                    'num': 'В',
+                    'title': '',
+                    'hours': f"программам обучения безопасным методам и приемам выполнения работ повышенной опасности № {unified_b_number} в объеме {unified_b_hours}",
+                    'base_no': '',
+                }
+                continue
+
+            pos += 1
+            if pos > 5:
                 break
 
             # Get program info if programs_manager is available
@@ -386,7 +420,7 @@ class ProtocolExporter:
             elif program_doc:
                 full_program = f"программе обучения {program_doc}"
             elif program_title:
-                # Всегда показываем название программы 即使 если hours/doc пустые
+                # Всегда показываем название программы
                 full_program = f"программе обучения \"{program_title}\""
             else:
                 full_program = ""
@@ -395,7 +429,7 @@ class ProtocolExporter:
             base_no_for_prog = base_nos_by_prog.get(prog_id, [])
             base_no_str = ';'.join(base_no_for_prog) if base_no_for_prog else ''
 
-            program_data[i] = {
+            program_data[pos] = {
                 'num': program_num,
                 'title': program_title,
                 'hours': full_program,
@@ -412,8 +446,8 @@ class ProtocolExporter:
         all_base_nos_str = ';'.join(all_base_nos) if all_base_nos else ''
 
         # Добавляем общий base_no в каждую позицию если пустой
-        for i in range(1, len(sorted_ids) + 1):
-            if i <= 5 and program_data[i]['base_no'] == '':
+        for i in range(1, pos + 1):
+            if i in program_data and program_data[i]['base_no'] == '':
                 program_data[i]['base_no'] = all_base_nos_str
 
         return program_data

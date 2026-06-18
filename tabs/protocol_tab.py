@@ -255,8 +255,42 @@ class ProtocolTab(QWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
+        # Unified type-B programs section
+        self._unified_b_group = QGroupBox("Объединённая программа В")
+        self._unified_b_group.setCheckable(True)
+        self._unified_b_group.setChecked(False)
+        self._unified_b_group.setToolTip(
+            "При включении вместо сбора текстовых данных по программам №6-29 "
+            "подставляется единый текст"
+        )
+        unified_layout = QFormLayout(self._unified_b_group)
+
+        self._unified_b_number_input = QLineEdit()
+        self._unified_b_number_input.setPlaceholderText("Например: 123")
+        unified_layout.addRow("Номер программы:", self._unified_b_number_input)
+
+        self._unified_b_hours_input = QLineEdit()
+        self._unified_b_hours_input.setPlaceholderText("Например: 16")
+        unified_layout.addRow("Часы:", self._unified_b_hours_input)
+
+        layout.addWidget(self._unified_b_group)
+
         self._populate_programs_table()
+        self._load_unified_b_settings()
         return w
+
+    def _load_unified_b_settings(self):
+        settings = self.programs.get_unified_b_settings()
+        self._unified_b_group.setChecked(settings["use_unified"])
+        self._unified_b_number_input.setText(settings["program_number"])
+        self._unified_b_hours_input.setText(settings["hours"])
+
+    def _save_unified_b_settings(self):
+        self.programs.set_unified_b_settings(
+            enabled=self._unified_b_group.isChecked(),
+            program_number=self._unified_b_number_input.text().strip(),
+            hours=self._unified_b_hours_input.text().strip(),
+        )
 
     def _populate_programs_table(self):
         self.programs_table.setRowCount(0)
@@ -338,6 +372,7 @@ class ProtocolTab(QWidget):
         return None
 
     def _save_programs(self):
+        self._save_unified_b_settings()
         ok, msg = self.programs.save()
         if ok:
             QMessageBox.information(self, "Успех", "Программы обучения сохранены")

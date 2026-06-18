@@ -15,7 +15,6 @@ import hmac
 import logging
 import threading
 import atexit
-import ctypes
 from pathlib import Path
 from typing import Optional, Tuple, Any, Dict, Callable
 from datetime import datetime
@@ -78,10 +77,14 @@ _CURRENT_PASSPHRASE_KEY: Optional[bytes] = None
 
 
 def _zero_memory(data: Optional[bytearray]) -> None:
+    """Best-effort memory zeroing — overwrite buffer contents.
+    NOTE: CPython may keep other references; this cannot guarantee
+    complete erasure but eliminates the plaintext from this buffer.
+    """
     if data is not None:
         try:
-            ctypes.memset(id(data) + 16, 0, len(data))
-        except (ValueError, TypeError, ctypes.ArgumentError):
+            data[:] = b"\x00" * len(data)
+        except (ValueError, TypeError, MemoryError):
             pass
 
 
@@ -89,6 +92,11 @@ def _zero_memory_bytes(data: Optional[bytes]) -> None:
     if data is not None:
         ba = bytearray(data)
         _zero_memory(ba)
+        try:
+            data_ = data  # local ref to keep alive
+            _zero_memory(bytearray(data_))
+        except (ValueError, TypeError):
+            pass
 
 
 # ============ Environment Safety Checks ============

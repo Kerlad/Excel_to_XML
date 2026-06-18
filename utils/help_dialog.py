@@ -1,3 +1,4 @@
+import os
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QGroupBox, QWidget, QSizePolicy
@@ -7,6 +8,14 @@ from utils.dialog_base import BaseDialog
 
 
 HELP_SECTIONS = [
+    {
+        "title": "Где взять API?",
+        "body": (
+            "API ключ необходимо получить на сайте Минтруда: в Профиле пользователя "
+            "выбрать Ключ работодателя."
+        ),
+        "images": ["step1.png", "step2.png"],
+    },
     {
         "title": "Начало работы",
         "body": (
@@ -304,13 +313,28 @@ class HelpDialog(BaseDialog):
         for section in HELP_SECTIONS:
             group = QGroupBox(section["title"])
             group.setObjectName("helpGroupBox")
-            label = QLabel(section["body"])
-            label.setObjectName("helpGroupLabel")
-            label.setWordWrap(True)
             group_layout = QVBoxLayout(group)
             group_layout.setContentsMargins(14, 18, 14, 14)
             group_layout.setSpacing(8)
+
+            label = QLabel(section["body"])
+            label.setObjectName("helpGroupLabel")
+            label.setWordWrap(True)
             group_layout.addWidget(label)
+
+            for img_name in section.get("images", []):
+                from utils.app_paths import get_resource_dir
+                img_path = os.path.join(get_resource_dir(), "resources", "instruction", img_name)
+                if os.path.exists(img_path):
+                    from PySide6.QtGui import QPixmap
+                    from PySide6.QtCore import Qt as QtCoreQt
+                    img_label = QLabel()
+                    pixmap = QPixmap(img_path)
+                    scaled = pixmap.scaledToWidth(580, QtCoreQt.TransformationMode.SmoothTransformation)
+                    img_label.setPixmap(scaled)
+                    img_label.setAlignment(QtCoreQt.AlignmentFlag.AlignCenter)
+                    group_layout.addWidget(img_label)
+
             content_layout.addWidget(group)
             self._section_groups.append(group)
 

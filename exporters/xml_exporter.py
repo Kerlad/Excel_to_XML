@@ -169,7 +169,8 @@ def build_xml(records, org_settings=None):
         return xml_declaration + b'\n' + pretty_str.encode('utf-8')
     except (ValueError, OSError) as e:
         logger.error("Ошибка форматирования XML: %s", e)
-        return xml_declaration + b'\n' + rough_string
+        safe_xml = _ILLEGAL_XML_CHARS.sub('', rough_string.decode('utf-8', errors='replace'))
+        return xml_declaration + b'\n' + safe_xml.encode('utf-8')
 
 
 import re as _re

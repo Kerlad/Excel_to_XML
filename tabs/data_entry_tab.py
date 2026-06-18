@@ -1068,7 +1068,7 @@ class DataEntryTab(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.Yes:
-                subprocess.Popen(f'explorer /select,"{template_path}"')
+                subprocess.Popen(['explorer', '/select,', template_path])
         except ImportError:
             QMessageBox.warning(self, "Ошибка", "Установите openpyxl: pip install openpyxl")
         except Exception as e:

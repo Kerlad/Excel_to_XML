@@ -327,6 +327,7 @@ class ExamJournalTab(QWidget):
     def _export_to_xlsx(self):
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
+        from utils.export_safe import sanitize_cell_value
 
         records = self._get_filtered_records()
         if not records:
@@ -358,10 +359,19 @@ class ExamJournalTab(QWidget):
 
             for rec in records:
                 ws.append([
-                    rec.protocol, rec.exam_date.split()[0] if rec.exam_date else "",
-                    rec.last_name, rec.first_name, rec.middle_name, rec.snils,
-                    rec.base_no, rec.program_id, rec.program_title, rec.position,
-                    rec.result, rec.set_id, rec.send_date.split()[0] if rec.send_date else "",
+                    sanitize_cell_value(rec.protocol),
+                    sanitize_cell_value(rec.exam_date.split()[0] if rec.exam_date else ""),
+                    sanitize_cell_value(rec.last_name),
+                    sanitize_cell_value(rec.first_name),
+                    sanitize_cell_value(rec.middle_name),
+                    sanitize_cell_value(rec.snils),
+                    sanitize_cell_value(rec.base_no),
+                    sanitize_cell_value(rec.program_id),
+                    sanitize_cell_value(rec.program_title),
+                    sanitize_cell_value(rec.position),
+                    sanitize_cell_value(rec.result),
+                    sanitize_cell_value(rec.set_id),
+                    sanitize_cell_value(rec.send_date.split()[0] if rec.send_date else ""),
                     "получен" if rec.status == "received" else "ожидает"
                 ])
 

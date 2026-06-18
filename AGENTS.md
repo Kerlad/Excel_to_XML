@@ -256,6 +256,13 @@ parser = etree.XMLParser(
 - Implemented in `mintrud_api.py:_save_error_response()`
 - Filtered through `filter_sensitive_text()` before saving
 
+### FR-010: Unified Type-B Program Text in Protocol Generation
+- Checkbox "Обучение по программам В ведется по единому документу" on Protocol tab → "Программы обучения" sub-tab
+- Input fields: "Номер программы" and "Часы"
+- When active, protocol generator replaces individual program data for programs №6-29 with unified text: "по программам обучения безопасным методам и приемам выполнения работ повышенной опасности № {number} в объеме {hours}"
+- Settings persisted in `programs_data.json` under `_unified_b` key
+- Affects: `exporters/protocol_exporter.py:_format_programs_for_protocol()`
+
 ## Key Files
 - `tabs/employee_summary_tab.py` — main tab for registry sync, plan, stats
 - `tabs/data_entry_tab.py` — XML/XLSX import tab
