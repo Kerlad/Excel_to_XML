@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import logging
 from datetime import datetime
@@ -12,6 +12,8 @@ from PySide6.QtGui import QColor, QFont, QBrush, QIcon
 from db.exam_journal_repo import JournalRecord
 from utils.table_models import ExamJournalTableModel, JOURNAL_FIELD_NAMES
 from utils.error_utils import safe_message_box
+
+from utils.toast import Toast
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,12 @@ class ExamJournalTab(QWidget):
         self.table.customContextMenuRequested.connect(self._show_context_menu)
 
         self.refresh_journal()
+
+    def on_theme_changed(self):
+        """Обновляет цвета ячеек журнала после смены темы."""
+        model = getattr(self, "_model", None)
+        if model is not None and hasattr(model, "refresh_colors"):
+            model.refresh_colors()
 
     # ── Persistence ───────────────────────────────────────────
 
@@ -147,24 +155,23 @@ class ExamJournalTab(QWidget):
         row.addWidget(imp)
 
         tmpl = QPushButton("Шаблон журнала")
+        tmpl.setToolTip("Скачать Excel-шаблон для ведения журнала")
         tmpl.clicked.connect(self._create_journal_template)
         row.addWidget(tmpl)
 
         prt = QPushButton("Печать протоколов")
+        prt.setToolTip("Сформировать протоколы по выбранным записям")
         prt.clicked.connect(self._print_protocol)
         row.addWidget(prt)
 
         upd = QPushButton("Обновить по SetId")
+        upd.setToolTip("Запросить статусы результатов по идентификатору отправки (SetId)")
         upd.clicked.connect(self._update_selected_by_setid)
         row.addWidget(upd)
 
         self.delete_btn = QPushButton("Удалить выбранное")
-        self.delete_btn.setStyleSheet("""
-            QPushButton { color: white; background-color: #E74C3C;
-                border: none; padding: 7px 16px;
-                border-radius: 5px; font-weight: bold}
-            QPushButton:hover { background-color: #C0392B}
-        """)
+        self.delete_btn.setProperty("danger", True)
+        self.delete_btn.setToolTip("Удалить выбранные записи из журнала")
         self.delete_btn.clicked.connect(self._delete_selected)
         row.addWidget(self.delete_btn)
 
@@ -193,13 +200,17 @@ class ExamJournalTab(QWidget):
         for col, w in enumerate([100, 100, 100, 100, 100, 120, 100, 70, 280, 100, 100, 120, 120, 90]):
             table.setColumnWidth(col, w)
 
+        from utils.ui_helpers import EmptyStateOverlay
+        table._empty_overlay = EmptyStateOverlay(table, "Журнал пуст. Здесь появятся отправленные протоколы.")
         return table
 
     # ── Refresh ───────────────────────────────────────────────
 
     def refresh_journal(self):
-        filtered = self._get_filtered_records()
-        self._model.load_records(filtered)
+        from utils.ui_helpers import busy_cursor
+        with busy_cursor():
+            filtered = self._get_filtered_records()
+            self._model.load_records(filtered)
         total = len(self.journal.get_all_records())
         shown = len(filtered)
         self.status_label.setText(
@@ -268,7 +279,7 @@ class ExamJournalTab(QWidget):
     def _update_selected_by_setid(self):
         selected = sorted(set(it.row() for it in self.table.selectedIndexes()))
         if not selected:
-            QMessageBox.information(self, "Информация", "Выберите записи для обновления")
+            Toast.info(self, "Выберите записи для обновления")
             return
 
         set_ids = set()
@@ -318,20 +329,19 @@ class ExamJournalTab(QWidget):
 
         self.refresh_journal()
         if updated_total:
-            QMessageBox.information(self, "Успех", f"Обновлено записей: {updated_total}")
+            Toast.success(self, f"Обновлено записей: {updated_total}")
         else:
-            QMessageBox.information(self, "Информация", "Нет данных для обновления")
+            Toast.info(self, "Нет данных для обновления")
 
     # ── Export XLSX ───────────────────────────────────────────
 
     def _export_to_xlsx(self):
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
-        from utils.export_safe import sanitize_cell_value
 
         records = self._get_filtered_records()
         if not records:
-            QMessageBox.information(self, "Информация", "Нет данных для экспорта")
+            Toast.info(self, "Нет данных для экспорта")
             return
 
         if self.last_save_path and os.path.exists(os.path.dirname(self.last_save_path)):
@@ -359,19 +369,10 @@ class ExamJournalTab(QWidget):
 
             for rec in records:
                 ws.append([
-                    sanitize_cell_value(rec.protocol),
-                    sanitize_cell_value(rec.exam_date.split()[0] if rec.exam_date else ""),
-                    sanitize_cell_value(rec.last_name),
-                    sanitize_cell_value(rec.first_name),
-                    sanitize_cell_value(rec.middle_name),
-                    sanitize_cell_value(rec.snils),
-                    sanitize_cell_value(rec.base_no),
-                    sanitize_cell_value(rec.program_id),
-                    sanitize_cell_value(rec.program_title),
-                    sanitize_cell_value(rec.position),
-                    sanitize_cell_value(rec.result),
-                    sanitize_cell_value(rec.set_id),
-                    sanitize_cell_value(rec.send_date.split()[0] if rec.send_date else ""),
+                    rec.protocol, rec.exam_date.split()[0] if rec.exam_date else "",
+                    rec.last_name, rec.first_name, rec.middle_name, rec.snils,
+                    rec.base_no, rec.program_id, rec.program_title, rec.position,
+                    rec.result, rec.set_id, rec.send_date.split()[0] if rec.send_date else "",
                     "получен" if rec.status == "received" else "ожидает"
                 ])
 
@@ -384,7 +385,7 @@ class ExamJournalTab(QWidget):
             logger.exception("Journal export error")
             safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка экспорта: {e}")
 
-    # ── Import from Excel ─────────────────────────────────────
+    # ── Import from Excel ───────────────────────��─────────────
 
     def _import_from_excel(self):
         from openpyxl import load_workbook
@@ -520,10 +521,10 @@ class ExamJournalTab(QWidget):
                                     "Обнаружены ошибки:\n" + "\n".join(errors[:10]) +
                                     (f"\n... и ещё {len(errors)-10}" if len(errors) > 10 else ""))
             if not records:
-                QMessageBox.information(self, "Информация", "Нет данных для импорта")
+                Toast.info(self, "Нет данных для импорта")
                 return
             self.journal.add_journal_records_directly(records)
-            QMessageBox.information(self, "Успех", f"Импортировано {len(records)} записей")
+            Toast.success(self, f"Импортировано {len(records)} записей")
             self.refresh_journal()
         except (OSError, ValueError, TypeError) as e:
             logger.error("Import failed: %s", e, exc_info=True)
@@ -567,7 +568,7 @@ class ExamJournalTab(QWidget):
 
         records = self._get_filtered_records()
         if not records:
-            QMessageBox.information(self, "Информация", "Нет данных")
+            Toast.info(self, "Нет данных")
             return
 
         protocol_numbers = sorted(set(r.protocol for r in records if r.protocol))
@@ -631,7 +632,7 @@ class ExamJournalTab(QWidget):
                 ok, _ = ProtocolExporter.export_protocol(sel, os.path.join(save_dir, f"Протокол {pn}{ed}.docx"), tmpl, data_dir)
                 if ok:
                     saved += 1
-            QMessageBox.information(self, "Успех", f"Сохранено протоколов: {saved}")
+            Toast.success(self, f"Сохранено протоколов: {saved}")
         else:
             sel = [r for r in records if r.protocol == proto_num]
             if not sel:
@@ -645,7 +646,7 @@ class ExamJournalTab(QWidget):
     def _delete_selected(self):
         rows = sorted(set(it.row() for it in self.table.selectedIndexes()))
         if not rows:
-            QMessageBox.information(self, "Информация", "Выберите записи для удаления")
+            Toast.info(self, "Выберите записи для удаления")
             return
         if QMessageBox.question(self, "Подтверждение",
                                 f"Удалить выбранные записи ({len(rows)} шт.)?\nДанные удалятся безвозвратно.",
@@ -661,7 +662,7 @@ class ExamJournalTab(QWidget):
         from db.database import DatabaseManager
         DatabaseManager.get_instance().secure_vacuum()
         self.refresh_journal()
-        QMessageBox.information(self, "Успех", "Записи удалены")
+        Toast.success(self, "Записи удалены")
 
     # ── Public API ────────────────────────────────────────────
 

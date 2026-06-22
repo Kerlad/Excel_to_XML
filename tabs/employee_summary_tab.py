@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import time
 import logging
@@ -29,6 +29,8 @@ from utils.proxy_manager import load_proxy_settings
 from utils.training_rules import get_dynamic_status, compute_expiry_date, get_training_period_years
 from utils.audit import log_audit
 from utils.logger import filter_sensitive_text
+
+from utils.toast import Toast
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +318,7 @@ class EmployeeAddDialog(BaseDialog):
         prog_row.addWidget(self.programs, 1)
         help_btn = QPushButton("Справка")
         help_btn.setObjectName("programHelpBtn")
+        help_btn.setToolTip("Открыть справочник номеров программ обучения")
         help_btn.clicked.connect(self._show_programs_help)
         prog_row.addWidget(help_btn)
         form.addRow("Программы:", prog_row)
@@ -340,11 +343,13 @@ class EmployeeAddDialog(BaseDialog):
             for pid in pids:
                 err = validate_program_id(pid)
                 if err:
-                    self.programs.setStyleSheet("border: 2px solid #E74C3C; background-color: #FFF0F0;")
+                    from utils.ui_helpers import mark_invalid
+                    mark_invalid(self.programs)
                     self.programs.setToolTip(f"Некорректная программа: {pid}")
                     self.programs.setFocus()
                     return
-        self.programs.setStyleSheet("")
+        from utils.ui_helpers import mark_invalid
+        mark_invalid(self.programs, False)
         self.accept()
 
     def _show_programs_help(self):
@@ -768,6 +773,7 @@ class EmployeeSummaryTab(QWidget):
         layout.addWidget(self.filter_position)
 
         self.problem_cb = QCheckBox("Только проблемные"); self.problem_cb.setObjectName("filterCheck")
+        self.problem_cb.setToolTip("Показывать только сотрудников с просроченным или отсутствующим обучением")
         self.problem_cb.toggled.connect(self._apply_filters)
         layout.addWidget(self.problem_cb)
 
@@ -798,10 +804,12 @@ class EmployeeSummaryTab(QWidget):
         return self.table
 
     def refresh_table(self):
-        data_map = EmployeesRepo.get_all_with_programs()
-        employees = [v['emp'] for v in data_map.values()]
-        self._build_table(employees, data_map)
-        self._update_stats(employees, data_map)
+        from utils.ui_helpers import busy_cursor
+        with busy_cursor():
+            data_map = EmployeesRepo.get_all_with_programs()
+            employees = [v['emp'] for v in data_map.values()]
+            self._build_table(employees, data_map)
+            self._update_stats(employees, data_map)
 
     def _build_table(self, employees: List[dict], progs_by_employee: dict = None):
         self.table.setSortingEnabled(False)
@@ -963,6 +971,7 @@ class EmployeeSummaryTab(QWidget):
                     it = self.table.item(row_idx, date_col)
                     if it:
                         it.setData(COLOR_ROLE, color)
+                        it.setForeground(QColor("#212529"))
 
     def _on_header_clicked(self, column):
         if column >= self.table.columnCount() - 1:
@@ -1189,7 +1198,7 @@ class EmployeeSummaryTab(QWidget):
                 EmployeeProgramsRepo.upsert(emp_id, {'program_id': int(p), 'need_training': 1})
 
             self.refresh_table()
-            QMessageBox.information(self, "Успех", "Сотрудник добавлен")
+            Toast.success(self, "Сотрудник добавлен")
 
     def _edit_employee(self, emp_id):
         emp = EmployeesRepo.get_by_id(emp_id)
@@ -1226,7 +1235,7 @@ class EmployeeSummaryTab(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             EmployeesRepo.clear()
             self.refresh_table()
-            QMessageBox.information(self, "Успех", "Все данные удалены")
+            Toast.success(self, "Все данные удалены")
 
     # ── Program selector ───────────────────────────────────
 
@@ -1412,7 +1421,7 @@ class EmployeeSummaryTab(QWidget):
             for p in programs:
                 headers.append(f"программа #{p} Потребность")
                 headers.append(f"программа #{p} Дата обучения")
-                headers.append(f"программа #{p} Протокол")
+                headers.append(f"программа #{p} Про��окол")
                 headers.append(f"программа #{p} Рег.№")
             ws.append(headers)
 
@@ -1455,7 +1464,7 @@ class EmployeeSummaryTab(QWidget):
             return
         employees = EmployeesRepo.get_all()
         if not employees:
-            QMessageBox.information(self, "Информация", "Нет сотрудников для запроса")
+            Toast.info(self, "Нет сотрудников для запроса")
             return
         proxy_settings = load_proxy_settings(self.data_dir)
 
@@ -1500,7 +1509,7 @@ class EmployeeSummaryTab(QWidget):
         rows = sorted(set(it.row() for it in self.table.selectedIndexes()))
         rows = [r for r in rows if r >= 2]
         if not rows:
-            QMessageBox.information(self, "Информация", "Выберите сотрудников для удаления")
+            Toast.info(self, "Выберите сотрудников для удаления")
             return
         hidden_col = self.table.columnCount() - 1
         emp_ids = set()
@@ -1511,7 +1520,7 @@ class EmployeeSummaryTab(QWidget):
                 if eid:
                     emp_ids.add(eid)
         if not emp_ids:
-            QMessageBox.information(self, "Информация", "Не удалось определить выбранных сотрудников")
+            Toast.warning(self, "Не удалось определить выбранных сотрудников")
             return
         if QMessageBox.question(
             self, "Подтверждение",
@@ -1523,13 +1532,13 @@ class EmployeeSummaryTab(QWidget):
             EmployeesRepo.delete(eid)
         DatabaseManager.get_instance().secure_vacuum()
         self.refresh_table()
-        QMessageBox.information(self, "Успех", "Выбранные сотрудники удалены")
+        Toast.success(self, "Выбранные сотрудники удалены")
 
     def _update_selected(self):
         rows = sorted(set(it.row() for it in self.table.selectedIndexes()))
         rows = [r for r in rows if r >= 2]
         if not rows:
-            QMessageBox.information(self, "Информация", "Выберите сотрудников для обновления")
+            Toast.info(self, "Выберите сотрудников для обновления")
             return
         api_key = load_api_key(self.data_dir)
         if not api_key:
@@ -1544,7 +1553,7 @@ class EmployeeSummaryTab(QWidget):
                 if eid:
                     emp_ids.add(eid)
         if not emp_ids:
-            QMessageBox.information(self, "Информация", "Не удалось определить выбранных сотрудников")
+            Toast.warning(self, "Не удалось определить выбранных сотрудников")
             return
         employees = [e for e in EmployeesRepo.get_all() if e['id'] in emp_ids]
         if not employees:
@@ -1669,7 +1678,7 @@ class EmployeeSummaryTab(QWidget):
             {"Высокий": 0, "Средний": 1, "Низкий": 2}.get(x['priority'], 3), x['last_name']))
 
         if not plan_data:
-            QMessageBox.information(self, "Информация", "Нет данных для отображения")
+            Toast.info(self, "Нет данных для отображения")
             return
 
         log_audit("EXPORT_SNAPSHOT", f"rows={len(plan_data)}")
@@ -1935,7 +1944,7 @@ class EmployeeSummaryTab(QWidget):
 
         if dialog.exec() == QDialog.DialogCode.Rejected or not plan_data:
             if not plan_data:
-                QMessageBox.information(self, "Информация", "Нет сотрудников для включения в план")
+                Toast.info(self, "Нет сотрудников для включения в план")
             return
 
         title = f"План обучения на {plan_year} год"

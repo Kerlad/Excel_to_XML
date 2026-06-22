@@ -708,7 +708,6 @@ def export_records_to_xlsx(records, file_path):
     """Export records to Excel file."""
     try:
         from openpyxl import Workbook
-        from utils.export_safe import sanitize_cell_value
     except ImportError:
         return False, "Установите openpyxl: pip install openpyxl"
     
@@ -727,19 +726,19 @@ def export_records_to_xlsx(records, file_path):
 
         for rec in records:
             row = [
-                sanitize_cell_value(rec.get('baseNo', '')),
-                sanitize_cell_value(rec.get('LastName', '')),
-                sanitize_cell_value(rec.get('FirstName', '')),
-                sanitize_cell_value(rec.get('MiddleName', '')),
-                sanitize_cell_value(rec.get('Snils', '')),
-                sanitize_cell_value(rec.get('Position', '')),
-                sanitize_cell_value(rec.get('EmployerInn', '')),
-                sanitize_cell_value(rec.get('EmployerTitle', '')),
-                sanitize_cell_value(rec.get('learnProgramId', '')),
-                sanitize_cell_value(rec.get('LearnProgramTitle', '')),
-                sanitize_cell_value(rec.get('ProtocolNumber', '')),
-                sanitize_cell_value(rec.get('Date', '')),
-                sanitize_cell_value(rec.get('isPassed', '')),
+                rec.get('baseNo', ''),
+                rec.get('LastName', ''),
+                rec.get('FirstName', ''),
+                rec.get('MiddleName', ''),
+                rec.get('Snils', ''),
+                rec.get('Position', ''),
+                rec.get('EmployerInn', ''),
+                rec.get('EmployerTitle', ''),
+                rec.get('learnProgramId', ''),
+                rec.get('LearnProgramTitle', ''),
+                rec.get('ProtocolNumber', ''),
+                rec.get('Date', ''),
+                rec.get('isPassed', ''),
             ]
             ws.append(row)
         

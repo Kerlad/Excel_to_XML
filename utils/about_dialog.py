@@ -24,7 +24,7 @@ from utils.crypto import (
 from utils.error_utils import safe_message_box
 
 
-VERSION = "3.4.0"
+VERSION = "3.5.0"
 
 
 class ClickableLabel(QLabel):
@@ -117,6 +117,13 @@ class AboutDialog(BaseDialog):
         repo_link.setObjectName("aboutInfoLink")
         info_layout.addWidget(repo_link)
 
+        site_link = ClickableLabel(
+            "<b>Сайт программы:</b> https://normaot.ru/",
+            "https://normaot.ru/"
+        )
+        site_link.setObjectName("aboutInfoLink")
+        info_layout.addWidget(site_link)
+
         email_link = ClickableLabel(
             "<b>Электронная почта:</b> denis.krv@yandex.ru",
             "mailto:denis.krv@yandex.ru"
@@ -128,12 +135,7 @@ class AboutDialog(BaseDialog):
 
         report_btn = QPushButton("Сообщить об ошибке")
         report_btn.setMinimumHeight(36)
-        report_btn.setStyleSheet(
-            "QPushButton { background-color: #E74C3C; color: white; border: none; "
-            "padding: 8px 20px; border-radius: 5px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #C0392B; }"
-            "QPushButton:pressed { background-color: #A93226; }"
-        )
+        report_btn.setObjectName("dialogDangerBtn")
         report_btn.clicked.connect(self._report_error)
         bl.addWidget(report_btn)
 

@@ -1,8 +1,9 @@
-﻿import os
+import os
 import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton,
     QLabel, QMessageBox, QFileDialog, QComboBox, QTabWidget, QFormLayout,
+    QCheckBox,
     QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView
 )
@@ -12,6 +13,8 @@ from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from tabs.programs_dialog import ProgramsDialog
 from utils.error_utils import safe_message_box
+
+from utils.toast import Toast
 
 logger = logging.getLogger(__name__)
 
@@ -177,9 +180,11 @@ class ProtocolTab(QWidget):
 
         btn_row = QHBoxLayout()
         self.save_commission_btn = QPushButton("Сохранить данные комиссии")
+        self.save_commission_btn.setToolTip("Сохранить введённый состав комиссии для повторного использования")
         self.save_commission_btn.setObjectName("saveCommissionBtn")
         self.save_commission_btn.clicked.connect(self._save_commission_data)
         self.load_commission_btn = QPushButton("Загрузить данные комиссии")
+        self.load_commission_btn.setToolTip("Подставить ранее сохранённый состав комиссии")
         self.load_commission_btn.setObjectName("loadCommissionBtn")
         self.load_commission_btn.clicked.connect(self._load_commission_data)
         btn_row.addWidget(self.save_commission_btn)
@@ -227,6 +232,39 @@ class ProtocolTab(QWidget):
         hint.setObjectName("programsHint")
         layout.addWidget(hint)
 
+        # Режим «обучение программам В по одной программе»
+        single_b_group = QGroupBox("Обучение программам В по одной программе")
+        single_b_group.setObjectName("singleBGroup")
+        sb_layout = QVBoxLayout(single_b_group)
+        sb_layout.setContentsMargins(10, 6, 10, 10)
+        sb_layout.setSpacing(6)
+
+        self.single_b_checkbox = QCheckBox(
+            "Сводить программы 6–29 в одну запись в протоколе"
+        )
+        self.single_b_checkbox.setToolTip(
+            "При включении вместо всех записей по программам 6–29 в протокол "
+            "вносится одна сводная запись. Регистрационные номера не меняются."
+        )
+        sb_layout.addWidget(self.single_b_checkbox)
+
+        sb_form = QFormLayout()
+        sb_form.setContentsMargins(0, 0, 0, 0)
+        sb_form.setSpacing(6)
+        self.single_b_doc_input = QLineEdit()
+        self.single_b_doc_input.setPlaceholderText("Номер документа")
+        self.single_b_hours_input = QLineEdit()
+        self.single_b_hours_input.setPlaceholderText("Часы")
+        sb_form.addRow("Номер документа:", self.single_b_doc_input)
+        sb_form.addRow("Часы:", self.single_b_hours_input)
+        sb_layout.addLayout(sb_form)
+        layout.addWidget(single_b_group)
+
+        self._load_single_b_settings()
+        self.single_b_checkbox.toggled.connect(self._on_single_b_changed)
+        self.single_b_doc_input.editingFinished.connect(self._on_single_b_changed)
+        self.single_b_hours_input.editingFinished.connect(self._on_single_b_changed)
+
         self.programs_table = QTableWidget()
         self.programs_table.setColumnCount(4)
         self.programs_table.setHorizontalHeaderLabels(["№\nпрограммы", "Название", "Номер документа", "Часы"])
@@ -249,48 +287,15 @@ class ProtocolTab(QWidget):
 
         btn_row = QHBoxLayout()
         save_prog_btn = QPushButton("Сохранить")
+        save_prog_btn.setToolTip("Сохранить список программ обучения")
         save_prog_btn.setObjectName("saveProgramsBtn")
         save_prog_btn.clicked.connect(self._save_programs)
         btn_row.addWidget(save_prog_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        # Unified type-B programs section
-        self._unified_b_group = QGroupBox("Объединённая программа В")
-        self._unified_b_group.setCheckable(True)
-        self._unified_b_group.setChecked(False)
-        self._unified_b_group.setToolTip(
-            "При включении вместо сбора текстовых данных по программам №6-29 "
-            "подставляется единый текст"
-        )
-        unified_layout = QFormLayout(self._unified_b_group)
-
-        self._unified_b_number_input = QLineEdit()
-        self._unified_b_number_input.setPlaceholderText("Например: 123")
-        unified_layout.addRow("Номер программы:", self._unified_b_number_input)
-
-        self._unified_b_hours_input = QLineEdit()
-        self._unified_b_hours_input.setPlaceholderText("Например: 16")
-        unified_layout.addRow("Часы:", self._unified_b_hours_input)
-
-        layout.addWidget(self._unified_b_group)
-
         self._populate_programs_table()
-        self._load_unified_b_settings()
         return w
-
-    def _load_unified_b_settings(self):
-        settings = self.programs.get_unified_b_settings()
-        self._unified_b_group.setChecked(settings["use_unified"])
-        self._unified_b_number_input.setText(settings["program_number"])
-        self._unified_b_hours_input.setText(settings["hours"])
-
-    def _save_unified_b_settings(self):
-        self.programs.set_unified_b_settings(
-            enabled=self._unified_b_group.isChecked(),
-            program_number=self._unified_b_number_input.text().strip(),
-            hours=self._unified_b_hours_input.text().strip(),
-        )
 
     def _populate_programs_table(self):
         self.programs_table.setRowCount(0)
@@ -371,11 +376,54 @@ class ProtocolTab(QWidget):
             return input_field.text().strip()
         return None
 
+    def _load_single_b_settings(self):
+        """Загружает сохранённое состояние режима «одна программа В»."""
+        try:
+            cfg = self.programs.get_single_b_settings()
+        except Exception:
+            cfg = {"single_b_mode": False, "single_b_doc": "", "single_b_hours": ""}
+        self.single_b_checkbox.blockSignals(True)
+        self.single_b_doc_input.blockSignals(True)
+        self.single_b_hours_input.blockSignals(True)
+        self.single_b_checkbox.setChecked(bool(cfg.get("single_b_mode")))
+        self.single_b_doc_input.setText(str(cfg.get("single_b_doc", "") or ""))
+        self.single_b_hours_input.setText(str(cfg.get("single_b_hours", "") or ""))
+        self.single_b_checkbox.blockSignals(False)
+        self.single_b_doc_input.blockSignals(False)
+        self.single_b_hours_input.blockSignals(False)
+        self._update_single_b_enabled()
+
+    def _update_single_b_enabled(self):
+        enabled = self.single_b_checkbox.isChecked()
+        self.single_b_doc_input.setEnabled(enabled)
+        self.single_b_hours_input.setEnabled(enabled)
+
+    def _on_single_b_changed(self, *args):
+        """Сохраняет настройки режима при изменении."""
+        self._update_single_b_enabled()
+        try:
+            self.programs.set_single_b_settings(
+                self.single_b_checkbox.isChecked(),
+                self.single_b_doc_input.text().strip(),
+                self.single_b_hours_input.text().strip(),
+                autosave=True,
+            )
+        except Exception:
+            logger.debug("не удалось сохранить настройки режима", exc_info=True)
+
     def _save_programs(self):
-        self._save_unified_b_settings()
         ok, msg = self.programs.save()
+        try:
+            self.programs.set_single_b_settings(
+                self.single_b_checkbox.isChecked(),
+                self.single_b_doc_input.text().strip(),
+                self.single_b_hours_input.text().strip(),
+                autosave=True,
+            )
+        except Exception:
+            logger.debug("не удалось сохранить настройки режима", exc_info=True)
         if ok:
-            QMessageBox.information(self, "Успех", "Программы обучения сохранены")
+            Toast.success(self, "Программы обучения сохранены")
         else:
             safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
@@ -472,7 +520,7 @@ class ProtocolTab(QWidget):
         self.commission.data = data
         ok, msg = self.commission.save(data)
         if ok:
-            QMessageBox.information(self, "Успех", "Данные комиссии сохранены")
+            Toast.success(self, "Данные комиссии сохранены")
         else:
             safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
@@ -580,11 +628,13 @@ class ProtocolTab(QWidget):
         if not date_for_filename and exam_date:
             date_for_filename = exam_date.replace('.', '-').replace('/', '-').split()[0]
 
+        from utils.export_safe import safe_filename_part
         if len(protocols_with_data) == 1:
+            safe_proto = safe_filename_part(protocols_with_data[0], 'протокол')
             if date_for_filename:
-                default_file = f"Протокол {protocols_with_data[0]} от {date_for_filename}.docx"
+                default_file = f"Протокол {safe_proto} от {date_for_filename}.docx"
             else:
-                default_file = f"Протокол {protocols_with_data[0]}.docx"
+                default_file = f"Протокол {safe_proto}.docx"
         else:
             default_file = "Протоколы.docx"
 
@@ -669,7 +719,7 @@ class ProtocolTab(QWidget):
                     except ValueError:
                         pass
 
-                output_file = os.path.join(save_dir, f"Протокол {protocol_number}{date_str}.docx")
+                output_file = os.path.join(save_dir, f"Протокол {safe_filename_part(protocol_number, 'протокол')}{date_str}.docx")
 
                 success, _ = ProtocolExporter.generate_from_commission(
                     commission_data=commission_data,

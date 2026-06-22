@@ -93,6 +93,20 @@ class ProtocolExporter:
                     if all_programs_text:
                         all_programs_text += ";"
                     all_programs_text += prog['hours']
+        # Режим «одна программа В»: схлопываем программы 6-29 в одну запись
+        single_b = {}
+        try:
+            if programs_manager is not None and hasattr(programs_manager, 'get_single_b_settings'):
+                single_b = programs_manager.get_single_b_settings() or {}
+        except Exception:
+            single_b = {}
+        if single_b.get('single_b_mode'):
+            sb_hours = (single_b.get('single_b_hours') or '').strip()
+            sb_doc = (single_b.get('single_b_doc') or '').strip()
+            if sb_hours or sb_doc:
+                rebuilt = ProtocolExporter._build_programs_text(worker_records, programs_manager, sb_hours, sb_doc)
+                if rebuilt:
+                    all_programs_text = rebuilt
         # Добавляем общий текст программ в all_programs для использования
         all_programs['all_programs_text'] = all_programs_text
 
@@ -342,42 +356,8 @@ class ProtocolExporter:
                 if base_no not in base_nos_by_prog[prog_id]:
                     base_nos_by_prog[prog_id].append(base_no)
 
-        # Check if unified type-B program mode is active
-        use_unified_b = False
-        unified_b_number = ""
-        unified_b_hours = ""
-        if programs_manager:
-            try:
-                unified_settings = programs_manager.get_unified_b_settings()
-                use_unified_b = unified_settings.get("use_unified", False)
-                unified_b_number = unified_settings.get("program_number", "")
-                unified_b_hours = unified_settings.get("hours", "")
-            except AttributeError:
-                pass
-
-        pos = 0
-        unified_b_added = False
-        for prog_id in sorted_ids:
-            is_type_b = prog_id.isdigit() and 6 <= int(prog_id) <= 29
-
-            # Для type-B программ (6-29) при активном unified режиме — одна запись
-            if use_unified_b and is_type_b:
-                if unified_b_added:
-                    continue
-                unified_b_added = True
-                pos += 1
-                if pos > 5:
-                    break
-                program_data[pos] = {
-                    'num': 'В',
-                    'title': '',
-                    'hours': f"программам обучения безопасным методам и приемам выполнения работ повышенной опасности № {unified_b_number} в объеме {unified_b_hours}",
-                    'base_no': '',
-                }
-                continue
-
-            pos += 1
-            if pos > 5:
+        for i, prog_id in enumerate(sorted_ids, start=1):
+            if i > 5:  # Поддерживаем до 5 программ
                 break
 
             # Get program info if programs_manager is available
@@ -420,7 +400,7 @@ class ProtocolExporter:
             elif program_doc:
                 full_program = f"программе обучения {program_doc}"
             elif program_title:
-                # Всегда показываем название программы
+                # Всегда показываем название программы, даже если hours/doc пустые
                 full_program = f"программе обучения \"{program_title}\""
             else:
                 full_program = ""
@@ -429,7 +409,7 @@ class ProtocolExporter:
             base_no_for_prog = base_nos_by_prog.get(prog_id, [])
             base_no_str = ';'.join(base_no_for_prog) if base_no_for_prog else ''
 
-            program_data[pos] = {
+            program_data[i] = {
                 'num': program_num,
                 'title': program_title,
                 'hours': full_program,
@@ -446,11 +426,85 @@ class ProtocolExporter:
         all_base_nos_str = ';'.join(all_base_nos) if all_base_nos else ''
 
         # Добавляем общий base_no в каждую позицию если пустой
-        for i in range(1, pos + 1):
-            if i in program_data and program_data[i]['base_no'] == '':
+        for i in range(1, len(sorted_ids) + 1):
+            if i <= 5 and program_data[i]['base_no'] == '':
                 program_data[i]['base_no'] = all_base_nos_str
 
         return program_data
+
+    @staticmethod
+    def _format_single_program_text(prog_id, worker_records: list, programs_manager) -> str:
+        """Текст одной программы в формате протокола."""
+        prog_info = {}
+        if programs_manager:
+            prog_info = programs_manager.get_program(prog_id) or {}
+        if not isinstance(prog_info, dict):
+            prog_info = {}
+        title = prog_info.get('name', '') or prog_info.get('title', '')
+        if not title:
+            for w in worker_records:
+                if (w.get('program_id') or '').strip() == prog_id:
+                    title = (w.get('program') or '').strip()
+                    if title:
+                        break
+        hours = prog_info.get('hours', '')
+        doc = prog_info.get('doc', '')
+        if hours and doc and title:
+            return f'{hours} -часовой программе обучения {doc} "{title}"'
+        if hours and doc:
+            return f'{hours} -часовой программе обучения {doc}'
+        if hours and title:
+            return f'{hours} -часовой программе обучения "{title}"'
+        if hours:
+            return f'{hours} -часовой программе обучения'
+        if doc:
+            return f'программе обучения {doc}'
+        if title:
+            return f'программе обучения "{title}"'
+        return ''
+
+    @staticmethod
+    def _build_programs_text(worker_records: list, programs_manager, single_b_hours: str = '', single_b_doc: str = '') -> str:
+        """Собирает текст программ со схлопыванием программ 6-29 в одну запись."""
+        ids = []
+        seen = set()
+        for w in worker_records:
+            pid = (w.get('program_id') or '').strip()
+            if pid and pid not in seen:
+                seen.add(pid)
+                ids.append(pid)
+
+        def _key(x):
+            return int(x) if x.isdigit() else 9999
+        sorted_ids = sorted(ids, key=_key)
+
+        type_a = [pp for pp in sorted_ids if pp.isdigit() and 1 <= int(pp) <= 5]
+        type_b = [pp for pp in sorted_ids if pp.isdigit() and 6 <= int(pp) <= 29]
+        other = [pp for pp in sorted_ids if not (pp.isdigit() and 1 <= int(pp) <= 29)]
+
+        entries = []
+        for pid in type_a:
+            t = ProtocolExporter._format_single_program_text(pid, worker_records, programs_manager)
+            if t:
+                entries.append(t)
+
+        if type_b:
+            hours = (single_b_hours or '').strip()
+            doc = (single_b_doc or '').strip()
+            tail = 'безопасным методам и приемам выполнения работ повышенной опасности'
+            if hours and doc:
+                entries.append(f'{hours} -часовой программе обучения № {doc} {tail}')
+            elif hours:
+                entries.append(f'{hours} -часовой программе обучения {tail}')
+            elif doc:
+                entries.append(f'программе обучения № {doc} {tail}')
+
+        for pid in other:
+            t = ProtocolExporter._format_single_program_text(pid, worker_records, programs_manager)
+            if t:
+                entries.append(t)
+
+        return ';'.join(e for e in entries if e)
 
     @staticmethod
     def _fill_worker_table(doc, grouped_workers: list, programs_manager):

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import logging
 import webbrowser
@@ -19,6 +19,8 @@ from utils.crypto import encrypt_data, decrypt_data, compute_org_settings_hmac, 
 from utils.constants import VALID_PROGRAMS_SET
 from utils.workers import ExcelImportWorker
 from utils.audit import log_audit
+
+from utils.toast import Toast
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,7 @@ class DataEntryTab(QWidget):
             QLabel { border: 2px dashed #888; border-radius: 10px;
                 color: #666; font-size: 13px;
                 background-color: transparent; padding: 8px; }
-            QLabel:hover { border-color: #4169E1; color: #4169E1; }
+            QLabel:hover { border-color: #4A90E2; color: #4A90E2; }
         """)
         scroll_layout.addWidget(self._drop_label)
         scroll_layout.addStretch()
@@ -104,15 +106,10 @@ class DataEntryTab(QWidget):
     # ── helpers ─────────────────────────────────────────────
 
     def _btn_style(self, bg="#4169E1", hover="#3151B1"):
-        return f"""
-            QPushButton {{
-                background-color: {bg};
-                color: white;
-            }}
-            QPushButton:hover {{
-                background-color: {hover};
-            }}
-        """
+        # Кнопки используют единую дизайн-систему (utils/tahoe_style.py).
+        # Акценты задаются через setProperty("primary"/"danger", True),
+        # а нейтральные кнопки наследуют глобальный стиль QPushButton.
+        return ""
 
     # ── Group 1: Данные УЦ и работодателя ──────────────────
 
@@ -179,7 +176,7 @@ class DataEntryTab(QWidget):
 
         # === row 2: кнопка ===
         self.save_org_btn = QPushButton("\U0001F4BE  Сохранить данные")
-        self.save_org_btn.setStyleSheet(self._btn_style())
+        self.save_org_btn.setProperty("primary", True)
         self.save_org_btn.setToolTip("Сохранить данные УЦ и работодателя в зашифрованном виде")
         self.save_org_btn.clicked.connect(self.save_org_settings)
 
@@ -210,7 +207,7 @@ class DataEntryTab(QWidget):
         self.xsd_file_input.setToolTip("Путь к загруженной XSD схеме")
 
         self.upload_xsd_btn = QPushButton("\U0001F4C1  Загрузить XSD")
-        self.upload_xsd_btn.setStyleSheet(self._btn_style())
+        self.upload_xsd_btn.setProperty("primary", True)
         self.upload_xsd_btn.setToolTip("Выбрать и загрузить XSD файл схемы")
         self.upload_xsd_btn.clicked.connect(self.upload_xsd)
 
@@ -232,7 +229,7 @@ class DataEntryTab(QWidget):
         self.file_path_input.setToolTip("Путь к выбранному файлу для загрузки")
 
         self.select_file_btn = QPushButton("\U0001F4C2  Выбрать файл")
-        self.select_file_btn.setStyleSheet(self._btn_style())
+        self.select_file_btn.setProperty("primary", True)
         self.select_file_btn.setToolTip("Выбрать XLSX или XML файл")
         self.select_file_btn.clicked.connect(self.select_file)
 
@@ -256,7 +253,7 @@ class DataEntryTab(QWidget):
 
         self._cancel_import_btn = QPushButton("✕ Отменить импорт")
         self._cancel_import_btn.setVisible(False)
-        self._cancel_import_btn.setStyleSheet(self._btn_style(bg="#E74C3C", hover="#C0392B"))
+        self._cancel_import_btn.setProperty("danger", True)
         self._cancel_import_btn.setToolTip("Отменить текущий импорт")
         self._cancel_import_btn.clicked.connect(self._cancel_import)
 
@@ -272,7 +269,7 @@ class DataEntryTab(QWidget):
         btn_row.setSpacing(12)
 
         self.upload_file_btn = QPushButton("\U0001F680  Загрузить файл")
-        self.upload_file_btn.setStyleSheet(self._btn_style())
+        self.upload_file_btn.setProperty("primary", True)
         self.upload_file_btn.setToolTip("Загрузить выбранный XLSX/XML файл в систему")
         self.upload_file_btn.clicked.connect(self.upload_file)
 
@@ -302,7 +299,7 @@ class DataEntryTab(QWidget):
         layout.addWidget(desc)
 
         add_btn = QPushButton("\U00002795  Добавить работника вручную")
-        add_btn.setStyleSheet(self._btn_style())
+        add_btn.setProperty("primary", True)
         add_btn.setToolTip("Открыть форму для ручного ввода данных работника")
         add_btn.clicked.connect(self._open_manual_dialog)
 
@@ -401,7 +398,7 @@ class DataEntryTab(QWidget):
         btn_row.setSpacing(12)
 
         self._save_btn = QPushButton("\U0001F4BE  Сохранить")
-        self._save_btn.setStyleSheet(self._btn_style())
+        self._save_btn.setProperty("primary", True)
         self._save_btn.setToolTip("Сохранить данные и передать в систему")
         self._save_btn.clicked.connect(lambda: self._save_manual_from_dialog(dialog))
         btn_row.addWidget(self._save_btn)
@@ -426,16 +423,15 @@ class DataEntryTab(QWidget):
         self.show_programs_help()
 
     def _set_dialog_field_error(self, widget, is_error):
-        if is_error:
-            widget.setStyleSheet("border: 2px solid #E74C3C;")
-        else:
-            widget.setStyleSheet("")
+        from utils.ui_helpers import mark_invalid
+        mark_invalid(widget, bool(is_error))
 
     def _clear_dialog_errors(self):
         for w in [self._last_name_input, self._first_name_input, self._middle_name_input,
                    self._position_input, self._snils_input, self._program_input,
                    self._protocol_input, self._result_combo, self._date_input]:
-            w.setStyleSheet("")
+            from utils.ui_helpers import mark_invalid
+            mark_invalid(w, False)
 
     def _clear_dialog_form(self):
         self._last_name_input.clear()
@@ -568,7 +564,7 @@ class DataEntryTab(QWidget):
 
         self.data_loaded.emit(records, False)
 
-        QMessageBox.information(dialog, "Успех", "Запись создана и передана в систему")
+        Toast.success(self, "Запись создана и передана в систему")
         dialog.accept()
 
     # ── сохранённая (старая) логика ────────────────────────
@@ -629,7 +625,7 @@ class DataEntryTab(QWidget):
             wrapper["hmac"] = compute_org_settings_hmac(wrapper)
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(wrapper, f, ensure_ascii=False, indent=4)
-            QMessageBox.information(self, "Успех", "Данные сохранены (зашифрованы)")
+            Toast.success(self, "Данные сохранены (зашифрованы)")
         except Exception as e:
             logger.exception("Error saving org settings")
             safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка сохранения: {e}")
@@ -643,7 +639,7 @@ class DataEntryTab(QWidget):
                 dest_path = os.path.join(self.schema_dir, os.path.basename(file_path))
                 shutil.copy(file_path, dest_path)
                 self.xsd_file_input.setText(dest_path)
-                QMessageBox.information(self, "Успех", "XSD файл успешно загружен")
+                Toast.success(self, "XSD файл успешно загружен")
             except (OSError, shutil.Error) as e:
                 logger.exception("Error uploading XSD")
                 safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", f"Ошибка загрузки XSD: {e}")
@@ -693,7 +689,7 @@ class DataEntryTab(QWidget):
             QMessageBox.warning(self, "Ошибка", "Неподдерживаемый формат файла")
 
     def _run_xml_import(self, file_path, merge_mode, existing_keys):
-        """Синхронный импорт XML (быстрый, не требует фонового потока)."""
+        """��инхронный импорт XML (быстрый, не требует фонового потока)."""
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(True)
         self._import_status_label.setText("Загрузка XML...")
@@ -712,7 +708,7 @@ class DataEntryTab(QWidget):
             if xml_xsd_errors:
                 logger.error(f"XSD validation errors: {xml_xsd_errors}")
                 safe_message_box(
-                    self, QMessageBox.Icon.Warning, "XSD-валидация",
+                    self, QMessageBox.Icon.Warning, "XSD-валид��ция",
                     "Файл не соответствует XSD-схеме:\n" + "\n".join(xml_xsd_errors[:20])
                 )
                 self.progress_bar.setVisible(False)
@@ -750,7 +746,8 @@ class DataEntryTab(QWidget):
         self._cancel_import_btn.setVisible(True)
         self.upload_file_btn.setEnabled(False)
         self.select_file_btn.setEnabled(False)
-        self.file_path_input.setStyleSheet("background-color: #FFF3CD;")
+        from utils.ui_helpers import mark_warning
+        mark_warning(self.file_path_input)
 
         self._import_thread = QThread()
         self._import_worker = ExcelImportWorker(file_path)
@@ -832,7 +829,8 @@ class DataEntryTab(QWidget):
         self._cancel_import_btn.setEnabled(True)
         self.upload_file_btn.setEnabled(True)
         self.select_file_btn.setEnabled(True)
-        self.file_path_input.setStyleSheet("")
+        from utils.ui_helpers import mark_warning
+        mark_warning(self.file_path_input, False)
 
     def _on_thread_finished(self):
         """Поток полностью остановлен — очистка ссылок на ресурсы."""
@@ -899,7 +897,7 @@ class DataEntryTab(QWidget):
         if total_errors > 0:
             self._show_upload_result_dialog(len(validated_records), len(error_rows_set), len(duplicate_map))
         else:
-            QMessageBox.information(self, "Успех", f"Успешно загружено: {len(validated_records)} записей")
+            Toast.success(self, f"Успешно загружено: {len(validated_records)} записей")
 
     def _show_merge_dialog(self):
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
@@ -1068,7 +1066,7 @@ class DataEntryTab(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.Yes:
-                subprocess.Popen(['explorer', '/select,', template_path])
+                subprocess.Popen(f'explorer /select,"{template_path}"')
         except ImportError:
             QMessageBox.warning(self, "Ошибка", "Установите openpyxl: pip install openpyxl")
         except Exception as e:

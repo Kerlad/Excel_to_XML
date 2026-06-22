@@ -1,41 +1,22 @@
 # Changelog
 
-## v3.5.0 "Security Hardening & Protocol Enhancements"
+## v3.5.0 "UX: Toasts, Unified Buttons & Hotkeys"
 
-### Security (2026-06-13)
+### Changes
 
-1. **TLS verify confirmation UI** (`tabs/data_transfer_tab.py`)
-   - Modal confirmation with custom "Отключить проверку TLS" / "Отмена" buttons
-   - Red indicator «⚠ TLS: небезопасно» shown when TLS is disabled
-   - Startup warning (one-time) logged via `log_audit("TLS_WARNING", "Startup...")`
-   - First-send-per-session warning before any API call with TLS off
+1. **Toast notifications restored & fixed** (`utils/toast.py`)
+   - Fixed the white-text-on-transparent-background bug via QPainter-based rounded background (works in light & dark themes)
+   - Success and empty-state confirmations now use non-blocking toasts instead of modal `QMessageBox`
+   - Affected tabs: `data_entry`, `data_view`, `data_transfer`, `exam_journal`, `employee_summary`, `protocol`
+   - Dialogs with file paths / detailed summaries intentionally kept modal
 
-2. **build_proxies_for_requests fix** (`utils/proxy_manager.py`)
-   - Preserve original URL scheme instead of hardcoded `http://`
-   - Fallback to `http://` if no scheme provided
+2. **Unified button styling** (design system)
+   - Buttons use design-system selectors (`primary` / `success` / `danger` properties, objectNames) instead of hardcoded inline colors
+   - Removed off-palette `#4169E1`; aligned to palette `#4A90E2`
+   - `data_entry_tab._btn_style()` neutralized; About "Сообщить об ошибке" button uses `dialogDangerBtn`
 
-3. **Subprocess security** (`tabs/data_entry_tab.py`)
-   - `subprocess.Popen(f'explorer /select,"{path}"')` → `['explorer', '/select,', path]`
-
-4. **Crypto zero-memory** (`utils/crypto.py`)
-   - Removed unsafe `ctypes.memset(id(data)+16, ...)` — replaced with `bytearray[:]` zeroing
-   - Removed `import ctypes`
-
-5. **XML exporter hardening** (`exporters/xml_exporter.py`)
-   - Control character sanitization in fallback pretty-print path
-
-6. **Formula injection protection** (`api/mintrud_api.py`, `tabs/exam_journal_tab.py`)
-   - All XLSX exports now use `sanitize_cell_value()` to prevent Excel formula injection
-
-7. **requirements-dev.txt** — created with `pytest` and `ruff`
-
-### Features
-
-8. **Unified type-B program mode** (`tabs/protocol_tab.py`, `protocol/programs_manager.py`, `exporters/protocol_exporter.py`)
-   - Checkbox «Обучение по программам В ведется по единому документу» on the «Программы обучения» tab
-   - Input fields for program number and hours
-   - When active, protocol generator uses unified text for programs №6-29 instead of individual program data
-   - Settings persisted in `programs_data.json`
+3. **Keyboard shortcuts** (`main.py`)
+   - `Ctrl+1..7` switch tabs; `Ctrl+T` template; `Ctrl+E` export; `Ctrl+L` lock; `Ctrl+D` theme; `F1` help
 
 ## v3.4.0 "Per-Program Reports & Table Fixes"
 

@@ -153,10 +153,9 @@ def build_proxies_for_requests(settings: dict) -> Optional[Dict[str, str]]:
             parsed = urlparse(url)
             host = parsed.hostname or url
             port = parsed.port or 3128
-            scheme = parsed.scheme or "http"
             proxies = {
-                "http": f"{scheme}://{host}:{port}",
-                "https": f"{scheme}://{host}:{port}",
+                "http": f"http://{host}:{port}",
+                "https": f"http://{host}:{port}",
             }
             proxies["_username"] = username
             proxies["_password"] = password

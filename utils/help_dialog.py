@@ -1,4 +1,3 @@
-import os
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QGroupBox, QWidget, QSizePolicy
@@ -9,12 +8,22 @@ from utils.dialog_base import BaseDialog
 
 HELP_SECTIONS = [
     {
-        "title": "Где взять API?",
+        "title": "Получение API-ключа",
         "body": (
-            "API ключ необходимо получить на сайте Минтруда: в Профиле пользователя "
-            "выбрать Ключ работодателя."
+            "Для отправки и запроса данных из реестра Минтруда необходим "
+            "<b>API-ключ</b>. Получить его можно только в <b>личном кабинете</b> на сайте "
+            "Минтруда России (ЕИСОТ).<br><br>"
+            "<b>1.</b> Войдите в личный кабинет и откройте раздел <b>«Профиль»</b> "
+            "(меню в правом верхнем углу).<br>"
+            "<b>2.</b> В блоке «Ключи для взаимодействия через программный интерфейс» "
+            "найдите строку <b>«Ключ работодателя»</b> и нажмите кнопку "
+            "<b>«Копировать»</b> (иконка рядом со значением ключа).<br>"
+            "<b>3.</b> В программе перейдите на вкладку <b>«Передача данных»</b>, в разделе "
+            "<b>«API-ключ»</b> нажмите <b>«Вставить»</b>, затем <b>«Сохранить»</b>.<br><br>"
+            "<b>Важно:</b> ключ работодателя является конфиденциальным — не передавайте его "
+            "третьим лицам. После сохранения ключа станут доступны отправка XML "
+            "и запросы по SetId и СНИЛС."
         ),
-        "images": ["step1.png", "step2.png"],
     },
     {
         "title": "Начало работы",
@@ -98,13 +107,19 @@ HELP_SECTIONS = [
     {
         "title": "Настройки прокси",
         "body": (
-            "На вкладке «Передача данных» в разделе «Настройки прокси» выберите режим "
-            "подключения: «Без прокси» (прямое), «Авто (системные)» — использует прокси "
-            "из настроек Windows, или «Вручную» — укажите адрес, логин и пароль прокси."
+            "Настройки прокси вынесены в <b>отдельное окно</b>. Откройте его через меню "
+            "<b>«Настройки» → «Настройки прокси»</b>.<br><br>"
+            "В окне выберите режим подключения: <b>«Без прокси»</b> (прямое соединение), "
+            "<b>«Авто (системные)»</b> — использует прокси из настроек Windows, или "
+            "<b>«Вручную»</b> — укажите адрес, при необходимости логин и пароль "
+            "(либо включите Windows-авторизацию Negotiate/Kerberos для корпоративных сетей). "
+            "Здесь же настраивается проверка TLS-сертификата и транспорт (Transport). "
+            "Нажмите <b>«Сохранить настройки прокси»</b>, а кнопкой <b>«Тест подключения»</b> "
+            "можно проверить доступность сервера."
         ),
     },
     {
-        "title": "Получение\nрегистрационных номеров",
+        "title": "Получение регистрационных номеров",
         "body": (
             "После обработки данных на сервере Минтруда используйте раздел «Запрос по SetId»"
             " — введите полученный SetId и нажмите «Запросить номера». Система сохранит "
@@ -183,7 +198,7 @@ HELP_SECTIONS = [
             "указанного времени бездействия. По умолчанию — 10 минут.<br>"
             "&bull; <b>Настройка таймаута:</b> Настройки → Таймаут блокировки... "
             "(от 1 до 120 минут).<br><br>"
-            "<b>Поведение при блокировке:</b><br>"
+            "<b>Пов��дение при блокировке:</b><br>"
             "&bull; За 30 секунд до блокировки появляется предупреждение — нажмите "
             "«Продолжить работу», чтобы предотвратить блокировку.<br>"
             "&bull; На экране блокировки введите парольную фразу и нажмите "
@@ -242,7 +257,7 @@ HELP_SECTIONS = [
 
 class HelpDialog(BaseDialog):
     def __init__(self, parent=None):
-        super().__init__(parent, title="Справка по работе с программой", min_width=680, min_height=520)
+        super().__init__(parent, title="Справка по работе с программой", min_width=780, min_height=600)
 
         bl = self.body_layout()
         bl.setContentsMargins(0, 0, 0, 0)
@@ -281,7 +296,7 @@ class HelpDialog(BaseDialog):
         self._section_widgets = []
         self._selected_index = 0
         for i, section in enumerate(HELP_SECTIONS):
-            btn = QPushButton(section["title"])
+            btn = QPushButton(f"{i + 1}. {section['title']}")
             btn.setObjectName("helpTocBtn")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFlat(True)
@@ -309,32 +324,27 @@ class HelpDialog(BaseDialog):
         content_layout.setSpacing(16)
         content_layout.setContentsMargins(16, 16, 16, 16)
 
-        self._section_groups = []
-        for section in HELP_SECTIONS:
-            group = QGroupBox(section["title"])
-            group.setObjectName("helpGroupBox")
-            group_layout = QVBoxLayout(group)
-            group_layout.setContentsMargins(14, 18, 14, 14)
-            group_layout.setSpacing(8)
+        intro = QLabel(
+            "Это руководство описывает полный цикл работы: от получения "
+            "API-ключа и ввода данных до отправки в реестр Минтруда и контроля "
+            "обучения сотрудников. Выберите раздел в списке слева."
+        )
+        intro.setObjectName("helpIntro")
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: palette(mid); font-size: 13px; padding: 2px 2px 6px 2px;")
+        content_layout.addWidget(intro)
 
+        self._section_groups = []
+        for i, section in enumerate(HELP_SECTIONS):
+            group = QGroupBox(f"{i + 1}. {section['title']}")
+            group.setObjectName("helpGroupBox")
             label = QLabel(section["body"])
             label.setObjectName("helpGroupLabel")
             label.setWordWrap(True)
+            group_layout = QVBoxLayout(group)
+            group_layout.setContentsMargins(14, 18, 14, 14)
+            group_layout.setSpacing(8)
             group_layout.addWidget(label)
-
-            for img_name in section.get("images", []):
-                from utils.app_paths import get_resource_dir
-                img_path = os.path.join(get_resource_dir(), "resources", "instruction", img_name)
-                if os.path.exists(img_path):
-                    from PySide6.QtGui import QPixmap
-                    from PySide6.QtCore import Qt as QtCoreQt
-                    img_label = QLabel()
-                    pixmap = QPixmap(img_path)
-                    scaled = pixmap.scaledToWidth(580, QtCoreQt.TransformationMode.SmoothTransformation)
-                    img_label.setPixmap(scaled)
-                    img_label.setAlignment(QtCoreQt.AlignmentFlag.AlignCenter)
-                    group_layout.addWidget(img_label)
-
             content_layout.addWidget(group)
             self._section_groups.append(group)
 
@@ -343,6 +353,16 @@ class HelpDialog(BaseDialog):
         h_layout.addWidget(self._content_scroll, 1)
 
         bl.addLayout(h_layout)
+
+        programs_btn = QPushButton("Номера программ обучения")
+        programs_btn.setObjectName("dialogPrimaryBtn")
+        programs_btn.setMinimumHeight(32)
+        programs_btn.setToolTip(
+            "Открыть отдельное окно со справочником программ обучения "
+            "(не блокирует работу с программой)"
+        )
+        programs_btn.clicked.connect(self._open_programs_reference)
+        self._button_layout.addWidget(programs_btn)
 
         donate_btn = QPushButton("Поддержать проект ❤️")
         donate_btn.setFixedHeight(32)
@@ -374,3 +394,14 @@ class HelpDialog(BaseDialog):
         from utils.donation_dialog import DonationDialog
         dialog = DonationDialog(self)
         dialog.exec()
+
+    def _open_programs_reference(self):
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "show_programs_reference"):
+            parent.show_programs_reference()
+        else:
+            from utils.programs_reference_dialog import ProgramsReferenceWindow
+            self._programs_ref_window = ProgramsReferenceWindow(self)
+            self._programs_ref_window.show()
+            self._programs_ref_window.raise_()
+            self._programs_ref_window.activateWindow()

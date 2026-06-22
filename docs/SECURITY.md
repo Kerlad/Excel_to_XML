@@ -16,8 +16,8 @@
 
 | Версия | Поддерживается | Обновления безопасности |
 |--------|---------------|------------------------|
-| 3.5.0 | ✅ Активная | Да |
-| < 3.5.0 | ❌ Снята с поддержки | Нет |
+| 3.1.0 | ✅ Активная | Да |
+| < 3.1.0 | ❌ Снята с поддержки | Нет |
 
 ## 2. Reporting Vulnerabilities
 
@@ -159,14 +159,6 @@ Master Key → Fernet → API key, proxy credentials, field encryption
 
 ## 8. Security Audit History
 
-### v3.5.0 (Июнь 2026)
-
-- **TLS-верификация**: модальное подтверждение при отключении, красный индикатор, startup-warning, first-send-warning per session
-- **Защита от formula injection** во всех XLSX-экспортах
-- **Subprocess hardening**: все `Popen` со списком аргументов (shell=False)
-- **Zero-memory**: удалён небезопасный `ctypes.memset(id()+16)`, заменён на `bytearray[:]`
-- **Proxy scheme**: сохранение исходной схемы прокси вместо hardcoded `http://`
-
 ### v3.0.0 (Май 2026)
 
 - **Полный security audit**: 18 уязвимостей исправлено (3 CRITICAL, 5 HIGH, 7 MEDIUM, 3 LOW)
@@ -193,6 +185,6 @@ Master Key → Fernet → API key, proxy credentials, field encryption
 
 ---
 
-*Документ обновлён: 13.06.2026*
-*Версия приложения: 3.5.0*
+*Документ обновлён: 21.05.2026*
+*Версия приложения: 3.1.0*
 *Гриф: ДСП (для служебного пользования)*

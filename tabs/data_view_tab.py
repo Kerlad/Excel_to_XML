@@ -1,4 +1,4 @@
-﻿from PySide6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
     QLabel, QMessageBox, QFileDialog, QTableView, QHeaderView,
     QAbstractItemView, QMenu, QFormLayout, QComboBox
@@ -17,6 +17,8 @@ from utils.crypto import decrypt_data, hash_for_search, verify_org_settings_hmac
 from utils.table_models import DataViewTableModel, MultiColumnFilterProxyModel, FIELD_KEYS, COLUMN_LABELS
 from utils.error_utils import safe_message_box
 from utils.audit import log_audit
+
+from utils.toast import Toast
 
 logger = logging.getLogger(__name__)
 
@@ -50,24 +52,16 @@ class DataViewTab(QWidget):
         self.clear_btn = QPushButton("Очистить")
         self.export_btn = QPushButton("Экспорт XLSX")
 
-        self.fill_org_btn.setStyleSheet("""
-            QPushButton { color: white; background-color: #2E86C1;
-                border: none; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold}
-            QPushButton:hover { background-color: #2471A3}
-        """)
-        self.convert_btn.setStyleSheet("""
-            QPushButton { color: white; background-color: #27AE60;
-                border: none; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold}
-            QPushButton:hover { background-color: #219A52}
-        """)
-        self.clear_btn.setStyleSheet("""
-            QPushButton { color: white; background-color: #E74C3C;
-                border: none; padding: 8px 16px;
-                border-radius: 5px; font-weight: bold}
-            QPushButton:hover { background-color: #C0392B}
-        """)
+        self.fill_org_btn.setProperty("primary", True)
+        self.convert_btn.setProperty("success", True)
+        self.clear_btn.setProperty("danger", True)
+
+        self.refresh_btn.setToolTip("Перезагрузить данные из базы")
+        self.fill_org_btn.setToolTip("Автозаполнить ИНН и наименование УЦ и заказчика")
+        self.convert_btn.setToolTip("Сформировать XML для реестра Минтруда")
+        self.clear_btn.setToolTip("Удалить все записи (действие необратимо)")
+        self.export_btn.setToolTip("Выгрузить данные в файл Excel (XLSX)")
+        self.search_edit.setToolTip("Поиск по всем колонкам таблицы")
 
         toolbar.addWidget(self.refresh_btn)
         toolbar.addWidget(self.fill_org_btn)
@@ -92,6 +86,8 @@ class DataViewTab(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        from utils.ui_helpers import EmptyStateOverlay
+        self._empty_overlay = EmptyStateOverlay(self.table, "Нет записей. Импортируйте данные на вкладке «Ввод данных».")
 
         self.status_label = QLabel("Записей: 0 | Выбрано: 0")
 
@@ -134,9 +130,11 @@ class DataViewTab(QWidget):
                 'protocol': r['protocol'],
                 'id': r['id'],
             })
-        self._model.load_records(records)
-        self._model.set_cell_color(9, QColor("#FFF0F0"))
-        self._update_status()
+        from utils.ui_helpers import busy_cursor
+        with busy_cursor():
+            self._model.load_records(records)
+            self._model.set_cell_color(9, QColor("#FFF0F0"))
+            self._update_status()
         if records:
             log_audit("VIEW_PD", f"records_count={len(records)}")
 
@@ -454,6 +452,9 @@ class DataViewTab(QWidget):
 
         from utils.export_safe import sanitize_cell_value
 
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QCursor
+        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
         row_num = 2
         for src_row in range(total_count):
             rec = self._model.get_row_data(src_row)
@@ -475,8 +476,10 @@ class DataViewTab(QWidget):
             ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = min(max_len + 3, 50)
 
         wb.save(file_path)
+        from PySide6.QtWidgets import QApplication
+        QApplication.restoreOverrideCursor()
         log_audit("EXPORT_PD", f"format=xlsx, records={exported}")
-        QMessageBox.information(self, "Успех", f"Экспортировано записей: {exported}")
+        Toast.success(self, f"Экспортировано записей: {exported}")
 
 
 class EditDialog(BaseDialog):
@@ -566,7 +569,8 @@ class EditDialog(BaseDialog):
             if hasattr(w, 'set_invalid'):
                 w.set_invalid("Проверьте значение")
             else:
-                w.setStyleSheet("border: 2px solid #E74C3C;")
+                from utils.ui_helpers import mark_invalid
+                mark_invalid(w)
 
     def _clear_errors(self):
         for info in self.field_widgets.values():

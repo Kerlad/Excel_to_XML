@@ -99,6 +99,140 @@ class TahoeColorsDark:
     HIGHLIGHT_SELECTED = "rgba(94, 158, 214, 0.3)"
 
 
+class DraculaColors:
+    """Тёмная тема Dracula (https://draculatheme.com)."""
+    LAVENDER_CORAL = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #bd93f9, stop:1 #ff79c6)"
+    CORAL_LAVENDER = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff79c6, stop:1 #bd93f9)"
+    PRIMARY = "#bd93f9"
+    SECONDARY = "#ff79c6"
+    ACCENT = "#8be9fd"
+
+    GLASS_LIGHT = "#343746"
+    GLASS_DARK = "#21222c"
+    GLASS_SUBTLE = "#191a21"
+
+    TEXT_PRIMARY = "#f8f8f2"
+    TEXT_SECONDARY = "#bcc0d8"
+    TEXT_ON_ACCENT = "#282a36"
+    TEXT_DISABLED = "#6272a4"
+    TEXT_PLACEHOLDER = "#6272a4"
+
+    SUCCESS = "#50fa7b"
+    WARNING = "#f1fa8c"
+    ERROR = "#ff5555"
+
+    BORDER_LIGHT = "rgba(248, 248, 242, 0.08)"
+    BORDER_SUBTLE = "rgba(189, 147, 249, 0.3)"
+    BORDER_INPUT = "#44475a"
+
+    WINDOW_BG = "#282a36"
+    SURFACE_BG = "#343746"
+    TABLE_ALTERNATE = "#2f3142"
+    INPUT_BG = "#21222c"
+
+    SCROLLBAR_HANDLE = "rgba(189, 147, 249, 0.3)"
+    SCROLLBAR_HOVER = "rgba(189, 147, 249, 0.5)"
+    MENU_BG = "#21222c"
+
+    HIGHLIGHT_BG = "rgba(189, 147, 249, 0.15)"
+    HIGHLIGHT_SELECTED = "rgba(189, 147, 249, 0.35)"
+
+
+class MonokaiProColors:
+    """Светлая тема в палитре Monokai Pro (Light Sun)."""
+    LAVENDER_CORAL = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6851a2, stop:1 #ce4770)"
+    CORAL_LAVENDER = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ce4770, stop:1 #6851a2)"
+    PRIMARY = "#6851a2"
+    SECONDARY = "#ce4770"
+    ACCENT = "#2473b6"
+
+    GLASS_LIGHT = "rgba(255, 252, 250, 0.8)"
+    GLASS_DARK = "rgba(44, 35, 46, 0.2)"
+    GLASS_SUBTLE = "rgba(255, 252, 250, 0.5)"
+
+    TEXT_PRIMARY = "#2c232e"
+    TEXT_SECONDARY = "#72696f"
+    TEXT_ON_ACCENT = "#FFFFFF"
+    TEXT_DISABLED = "#b8aeb4"
+    TEXT_PLACEHOLDER = "#a89fa4"
+
+    SUCCESS = "#1f8053"
+    WARNING = "#b16803"
+    ERROR = "#d6336c"
+
+    BORDER_LIGHT = "rgba(44, 35, 46, 0.12)"
+    BORDER_SUBTLE = "rgba(104, 81, 162, 0.25)"
+    BORDER_INPUT = "#d8cfd2"
+
+    WINDOW_BG = "#faf4f2"
+    SURFACE_BG = "#fffdfb"
+    TABLE_ALTERNATE = "rgba(104, 81, 162, 0.06)"
+    INPUT_BG = "#fffdfb"
+
+    SCROLLBAR_HANDLE = "rgba(104, 81, 162, 0.25)"
+    SCROLLBAR_HOVER = "rgba(104, 81, 162, 0.45)"
+    MENU_BG = "#fffdfb"
+
+    HIGHLIGHT_BG = "rgba(104, 81, 162, 0.15)"
+    HIGHLIGHT_SELECTED = "rgba(104, 81, 162, 0.3)"
+
+
+# ============ РЕЕСТР ТЕМ ============
+
+THEME_ORDER = ["light", "dark", "dracula", "monokai"]
+
+THEME_LABELS = {
+    "light": "Светлая (Tahoe)",
+    "dark": "Тёмная (Tahoe)",
+    "dracula": "Тёмная (Dracula)",
+    "monokai": "Светлая (Monokai Pro)",
+}
+
+_DARK_THEMES = {"dark", "dracula"}
+
+_THEME_COLORS = {
+    "light": TahoeColorsLight,
+    "dark": TahoeColorsDark,
+    "dracula": DraculaColors,
+    "monokai": MonokaiProColors,
+}
+
+
+def is_dark_theme(theme: str) -> bool:
+    """Темная ли это тема (влияет на рамки/фоны)."""
+    return theme in _DARK_THEMES
+
+
+def get_colors(theme: str):
+    """Возвращает объект цветов для темы."""
+    cls = _THEME_COLORS.get(theme, TahoeColorsLight)
+    return cls()
+
+
+_CURRENT_THEME = "light"
+
+
+def set_current_theme(theme: str) -> None:
+    """Запоминает активную тему (для тема-зависимых цветов моделей)."""
+    global _CURRENT_THEME
+    _CURRENT_THEME = theme or "light"
+
+
+def get_current_theme() -> str:
+    return _CURRENT_THEME
+
+
+def get_journal_status_colors(status: str):
+    """Цвета (фон, текст) ячеек журнала с учётом текущей темы."""
+    if is_dark_theme(_CURRENT_THEME):
+        if status == "pending":
+            return QColor("#4d4424"), QColor("#f1e7c2")
+        return QColor("#26432c"), QColor("#cdeacf")
+    if status == "pending":
+        return QColor(255, 248, 225), QColor("#212529")
+    return QColor(230, 255, 230), QColor("#212529")
+
+
 # ============ QPALETTE ============
 
 def create_palette(theme: str = "light") -> QPalette:
@@ -106,9 +240,11 @@ def create_palette(theme: str = "light") -> QPalette:
     Создаёт QPalette с полным набором ColorRole.
     Включает Normal, Disabled, Inactive группы для корректной работы Fusion style.
     """
+    if theme == "light":
+        return _build_light_palette()
     if theme == "dark":
         return _build_dark_palette()
-    return _build_light_palette()
+    return _build_palette_from_colors(get_colors(theme), is_dark_theme(theme))
 
 
 def _build_light_palette() -> QPalette:
@@ -177,14 +313,61 @@ def _build_dark_palette() -> QPalette:
     return p
 
 
+
+def _build_palette_from_colors(c, dark: bool) -> QPalette:
+    """Строит QPalette из объекта цветов темы."""
+    p = QPalette()
+    window = QColor(c.WINDOW_BG)
+    base = QColor(c.INPUT_BG)
+    surface = QColor(c.SURFACE_BG)
+    text = QColor(c.TEXT_PRIMARY)
+    primary = QColor(c.PRIMARY)
+    on_accent = QColor(c.TEXT_ON_ACCENT)
+    placeholder = QColor(c.TEXT_PLACEHOLDER)
+    alt = surface.lighter(112) if dark else surface.darker(104)
+    disabled = QColor("#777777") if dark else QColor("#A0A0AA")
+    disabled_hl = surface.lighter(120) if dark else surface.darker(110)
+    disabled_base = window.darker(112) if dark else window.darker(105)
+
+    # Normal
+    p.setColor(QPalette.ColorRole.Window,          window)
+    p.setColor(QPalette.ColorRole.WindowText,      text)
+    p.setColor(QPalette.ColorRole.Base,            base)
+    p.setColor(QPalette.ColorRole.AlternateBase,   alt)
+    p.setColor(QPalette.ColorRole.Text,            text)
+    p.setColor(QPalette.ColorRole.Button,          surface)
+    p.setColor(QPalette.ColorRole.ButtonText,      text)
+    p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 255, 255))
+    p.setColor(QPalette.ColorRole.Highlight,       primary)
+    p.setColor(QPalette.ColorRole.HighlightedText, on_accent)
+    p.setColor(QPalette.ColorRole.Link,            primary)
+    p.setColor(QPalette.ColorRole.LinkVisited,     primary)
+    p.setColor(QPalette.ColorRole.PlaceholderText, placeholder)
+
+    # Disabled
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText,      disabled)
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,            disabled)
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText,      disabled)
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Highlight,       disabled_hl)
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.HighlightedText, disabled)
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base,            disabled_base)
+
+    # Inactive
+    inactive_hl = QColor(primary)
+    inactive_hl.setAlpha(100)
+    p.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.Highlight,       inactive_hl)
+    p.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.HighlightedText, on_accent)
+
+    return p
+
+
 # ============ ГЛОБАЛЬНЫЙ STYLESHEET ============
 
 def get_global_stylesheet(theme: str = "light") -> str:
-    """Глобальная QSS-stylesheet. theme: 'light' или 'dark'."""
-    if theme == "dark":
-        c = TahoeColorsDark()
-    else:
-        c = TahoeColorsLight()
+    """Глобальная QSS-stylesheet. theme: ключ темы из THEME_ORDER."""
+    set_current_theme(theme)
+    c = get_colors(theme)
+    dark = is_dark_theme(theme)
 
     primary_hex = c.PRIMARY
     highlight_bg = c.HIGHLIGHT_BG
@@ -224,7 +407,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         QPushButton {{
             background-color: {c.SURFACE_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
             padding: 7px 18px;
             font-weight: bold;
@@ -240,7 +423,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
             padding-bottom: 6px;
         }}
         QPushButton:disabled {{
-            color: {c.TEXT_DISABLED if theme == "dark" else "#AAA"} !important;
+            color: {c.TEXT_DISABLED if dark else "#AAA"} !important;
             background-color: {c.SURFACE_BG};
             border-color: {c.BORDER_LIGHT};
         }}
@@ -288,7 +471,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         /* ============ ProtocolTab member cards ============ */
         #memberCard {{
             background-color: {c.SURFACE_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
         }}
         #memberRemoveBtn {{
@@ -308,7 +491,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         #addMemberBtn {{
             background-color: transparent;
             color: {c.PRIMARY};
-            border: 1px dashed {c.BORDER_INPUT if theme == "dark" else "#AAA"};
+            border: 1px dashed {c.BORDER_INPUT if dark else "#AAA"};
             border-radius: 6px;
             padding: 6px 14px;
             font-weight: normal;
@@ -338,7 +521,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         #loadCommissionBtn {{
             background-color: {c.SURFACE_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
         }}
         #loadCommissionBtn:hover {{
             background-color: {highlight_bg};
@@ -366,7 +549,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         /* ============ SingleWorkerProtocolTab ============ */
         #workerFormCard {{
             background-color: {c.SURFACE_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 10px;
         }}
         #programHelpBtn {{
@@ -397,9 +580,9 @@ def get_global_stylesheet(theme: str = "light") -> str:
         #programsTable {{
             background-color: {c.INPUT_BG};
             alternate-background-color: {c.TABLE_ALTERNATE};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
-            gridline-color: {c.BORDER_INPUT if theme == "dark" else "rgba(0,0,0,0.08)"};
+            gridline-color: {c.BORDER_INPUT if dark else "rgba(0,0,0,0.08)"};
         }}
         #programsTable::item {{
             padding: 6px 8px;
@@ -502,7 +685,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         #toolbarBtn {{
             background-color: {c.SURFACE_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 6px;
             padding: 7px 14px;
         }}
@@ -550,7 +733,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         /* Filter panel */
         #filterContainer {{
             background-color: {c.SURFACE_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
         }}
         #filterContainer QLabel {{
@@ -560,7 +743,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         }}
         #filterCombo {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCCCCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCCCCC"};
             border-radius: 6px;
             padding: 4px 10px;
             color: {c.TEXT_PRIMARY};
@@ -568,7 +751,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         }}
         #filterInput {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCCCCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCCCCC"};
             border-radius: 6px;
             padding: 4px 10px;
             color: {c.TEXT_PRIMARY};
@@ -616,9 +799,9 @@ def get_global_stylesheet(theme: str = "light") -> str:
         #summaryTable {{
             background-color: {c.INPUT_BG};
             alternate-background-color: {c.TABLE_ALTERNATE};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
-            gridline-color: {c.BORDER_INPUT if theme == "dark" else "rgba(0,0,0,0.08)"};
+            gridline-color: {c.BORDER_INPUT if dark else "rgba(0,0,0,0.08)"};
         }}
         #summaryTable::item {{
             padding: 4px 6px;
@@ -675,7 +858,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         /* Context menu */
         #summaryCtxMenu {{
             background-color: {c.MENU_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 6px;
             padding: 4px;
         }}
@@ -691,7 +874,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         /* ============ QLineEdit ============ */
         QLineEdit {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCCCCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCCCCC"};
             border-radius: 6px;
             padding: 7px 12px;
             color: {c.TEXT_PRIMARY};
@@ -699,7 +882,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
             selection-color: #FFFFFF;
         }}
         QLineEdit:hover {{
-            border-color: {c.BORDER_INPUT if theme == "dark" else "#999"};
+            border-color: {c.BORDER_INPUT if dark else "#999"};
         }}
         QLineEdit:focus {{
             border-color: {c.PRIMARY};
@@ -711,14 +894,14 @@ def get_global_stylesheet(theme: str = "light") -> str:
         }}
         QLineEdit:disabled {{
             background-color: {c.SURFACE_BG};
-            color: {c.TEXT_DISABLED if theme == "dark" else "#999"};
+            color: {c.TEXT_DISABLED if dark else "#999"};
             border-color: {c.BORDER_LIGHT};
         }}
 
         /* ============ QComboBox ============ */
         QComboBox {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCCCCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCCCCC"};
             border-radius: 6px;
             padding: 6px 12px;
             color: {c.TEXT_PRIMARY};
@@ -737,7 +920,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         }}
         QComboBox QAbstractItemView {{
             background-color: {c.SURFACE_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCCCCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCCCCC"};
             border-radius: 6px;
             selection-background-color: {highlight_bg};
             selection-color: {c.TEXT_PRIMARY};
@@ -757,14 +940,14 @@ def get_global_stylesheet(theme: str = "light") -> str:
         /* ============ QDateEdit ============ */
         QDateEdit {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCCCCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCCCCC"};
             border-radius: 6px;
             padding: 6px 12px;
             color: {c.TEXT_PRIMARY};
             min-height: 20px;
         }}
         QDateEdit:hover {{
-            border-color: {c.BORDER_INPUT if theme == "dark" else "#999"};
+            border-color: {c.BORDER_INPUT if dark else "#999"};
         }}
         QDateEdit:focus {{
             border-color: {c.PRIMARY};
@@ -781,14 +964,14 @@ def get_global_stylesheet(theme: str = "light") -> str:
         /* ============ QSpinBox ============ */
         QSpinBox {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCCCCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCCCCC"};
             border-radius: 6px;
             padding: 6px 12px;
             color: {c.TEXT_PRIMARY};
             min-height: 20px;
         }}
         QSpinBox:hover {{
-            border-color: {c.BORDER_INPUT if theme == "dark" else "#999"};
+            border-color: {c.BORDER_INPUT if dark else "#999"};
         }}
         QSpinBox:focus {{
             border-color: {c.PRIMARY};
@@ -801,7 +984,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
             spacing: 6px;
         }}
         QCheckBox::indicator, QRadioButton::indicator {{
-            border: 2px solid {c.BORDER_INPUT if theme == "dark" else "#888"};
+            border: 2px solid {c.BORDER_INPUT if dark else "#888"};
             border-radius: 3px;
             width: 16px;
             height: 16px;
@@ -826,9 +1009,9 @@ def get_global_stylesheet(theme: str = "light") -> str:
         QTableWidget {{
             background-color: {c.INPUT_BG};
             alternate-background-color: {c.TABLE_ALTERNATE};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
-            gridline-color: {c.BORDER_INPUT if theme == "dark" else "rgba(0,0,0,0.08)"};
+            gridline-color: {c.BORDER_INPUT if dark else "rgba(0,0,0,0.08)"};
             color: {c.TEXT_PRIMARY};
             selection-background-color: {highlight_sel};
             selection-color: {c.TEXT_PRIMARY};
@@ -847,7 +1030,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
             color: {c.PRIMARY};
             padding: 8px 10px;
             border: none;
-            border-bottom: 1px solid {c.BORDER_INPUT if theme == "dark" else "rgba(0,0,0,0.08)"};
+            border-bottom: 1px solid {c.BORDER_INPUT if dark else "rgba(0,0,0,0.08)"};
             border-right: 1px solid {c.BORDER_LIGHT};
             font-weight: bold;
             font-size: 12px;
@@ -890,14 +1073,14 @@ def get_global_stylesheet(theme: str = "light") -> str:
         }}
         QTabBar::tab:hover:!selected {{
             color: {c.TEXT_PRIMARY};
-            border-bottom: 2px solid {c.BORDER_INPUT if theme == "dark" else "transparent"};
-            background-color: {c.GLASS_DARK if theme == "dark" else "rgba(0,0,0,0.03)"};
+            border-bottom: 2px solid {c.BORDER_INPUT if dark else "transparent"};
+            background-color: {c.GLASS_DARK if dark else "rgba(0,0,0,0.03)"};
         }}
 
         /* ============ QListWidget ============ */
         QListWidget {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
             color: {c.TEXT_PRIMARY};
         }}
@@ -917,7 +1100,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         /* ============ QTextEdit / QPlainTextEdit ============ */
         QTextEdit, QPlainTextEdit {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
             padding: 10px;
             color: {c.TEXT_PRIMARY};
@@ -977,7 +1160,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         }}
         QMenu {{
             background-color: {c.MENU_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else c.BORDER_LIGHT};
+            border: 1px solid {c.BORDER_INPUT if dark else c.BORDER_LIGHT};
             border-radius: 8px;
             padding: 6px;
             color: {c.TEXT_PRIMARY};
@@ -991,11 +1174,11 @@ def get_global_stylesheet(theme: str = "light") -> str:
             background-color: {highlight_bg};
         }}
         QMenu::item:disabled {{
-            color: {c.TEXT_DISABLED if theme == "dark" else "#999"};
+            color: {c.TEXT_DISABLED if dark else "#999"};
         }}
         QMenu::separator {{
             height: 1px;
-            background-color: {c.BORDER_INPUT if theme == "dark" else "rgba(0,0,0,0.08)"};
+            background-color: {c.BORDER_INPUT if dark else "rgba(0,0,0,0.08)"};
             margin: 4px 8px;
         }}
 
@@ -1003,13 +1186,13 @@ def get_global_stylesheet(theme: str = "light") -> str:
         QToolTip {{
             background-color: {c.SURFACE_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 4px;
             padding: 4px 8px;
         }}
         QProgressBar {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 4px;
             text-align: center;
             color: {c.TEXT_PRIMARY};
@@ -1039,7 +1222,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         }}
         QCalendarWidget QSpinBox {{
             background-color: {c.INPUT_BG};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 4px;
             padding: 2px 6px;
             color: {c.TEXT_PRIMARY};
@@ -1061,7 +1244,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         QInputDialog QPushButton {{
             background-color: {c.SURFACE_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 8px;
             padding: 6px 18px;
             font-weight: bold;
@@ -1268,7 +1451,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         QFileDialog QTreeView {{
             background-color: {c.INPUT_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 6px;
         }}
 
@@ -1286,9 +1469,9 @@ def get_global_stylesheet(theme: str = "light") -> str:
             background-color: {c.INPUT_BG};
             alternate-background-color: {c.TABLE_ALTERNATE};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 8px;
-            gridline-color: {c.BORDER_INPUT if theme == "dark" else "rgba(0,0,0,0.08)"};
+            gridline-color: {c.BORDER_INPUT if dark else "rgba(0,0,0,0.08)"};
         }}
         QDialog QTableWidget::item {{
             background-color: transparent;
@@ -1301,7 +1484,7 @@ def get_global_stylesheet(theme: str = "light") -> str:
         QDialog QListWidget {{
             background-color: {c.INPUT_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 8px;
         }}
         QDialog QListWidget::item {{
@@ -1315,20 +1498,60 @@ def get_global_stylesheet(theme: str = "light") -> str:
         QDialog QLineEdit {{
             background-color: {c.INPUT_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 6px;
             padding: 7px 12px;
         }}
         QDialog QLineEdit:hover,
         QDialog QComboBox:hover {{
-            border-color: {c.BORDER_INPUT if theme == "dark" else "#999"};
+            border-color: {c.BORDER_INPUT if dark else "#999"};
         }}
         QDialog QComboBox {{
             background-color: {c.INPUT_BG};
             color: {c.TEXT_PRIMARY};
-            border: 1px solid {c.BORDER_INPUT if theme == "dark" else "#CCC"};
+            border: 1px solid {c.BORDER_INPUT if dark else "#CCC"};
             border-radius: 6px;
             padding: 6px 12px;
+        }}
+
+        /* ============ Tables: hover, header, sorting polish ============ */
+        QTableView, QTableWidget {{
+            gridline-color: {c.BORDER_LIGHT};
+            selection-background-color: {c.HIGHLIGHT_SELECTED};
+            selection-color: {c.TEXT_PRIMARY};
+        }}
+        QTableView::item, QTableWidget::item {{
+            padding: 2px 6px;
+        }}
+        QTableView::item:hover, QTableWidget::item:hover {{
+            background-color: {c.HIGHLIGHT_BG};
+        }}
+        QHeaderView::section {{
+            background-color: {c.SURFACE_BG};
+            color: {c.TEXT_SECONDARY};
+            padding: 6px 10px;
+            border: none;
+            border-bottom: 2px solid {c.BORDER_LIGHT};
+            border-right: 1px solid {c.BORDER_LIGHT};
+            font-weight: bold;
+        }}
+        QHeaderView::section:hover {{
+            color: {c.PRIMARY};
+        }}
+        /* ============ Empty-state placeholder ============ */
+        QLabel#tableEmptyState {{
+            color: {c.TEXT_SECONDARY};
+            font-size: 14px;
+            background: transparent;
+        }}
+        /* ============ Field state markers (theme-aware) ============ */
+        QLineEdit[fieldState="invalid"], QComboBox[fieldState="invalid"],
+        QPlainTextEdit[fieldState="invalid"], QTextEdit[fieldState="invalid"],
+        QListWidget[fieldState="invalid"] {{
+            border: 2px solid {c.ERROR};
+        }}
+        QLineEdit[fieldState="warning"], QComboBox[fieldState="warning"] {{
+            border: 2px solid {c.WARNING};
         }}
 
         /* ============ QStatusBar ============ */

@@ -32,10 +32,12 @@ class ProgramsDialog(BaseDialog):
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("Сохранить")
         save_btn.setObjectName("dialogPrimaryBtn")
+        save_btn.setToolTip("Сохранить изменения в программах обучения")
         save_btn.clicked.connect(self._save_and_close)
 
         cancel_btn = QPushButton("Отмена")
         cancel_btn.setObjectName("dialogDangerBtn")
+        cancel_btn.setToolTip("Закрыть без сохранения")
         cancel_btn.clicked.connect(self.reject)
 
         btn_layout.addWidget(save_btn)

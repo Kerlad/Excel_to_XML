@@ -49,10 +49,9 @@ class ProgramsManager:
         self.data_dir = data_dir
         os.makedirs(self.data_dir, exist_ok=True)
         self.programs_file = os.path.join(self.data_dir, "programs_data.json")
-        self._unified_b_enabled = False
-        self._unified_b_program_number = ""
-        self._unified_b_hours = ""
         self.programs = self._load()
+        self.settings_file = os.path.join(self.data_dir, "programs_settings.json")
+        self.settings = self._load_settings()
 
     def _load(self) -> dict:
         """Загрузка данных программ."""
@@ -60,16 +59,9 @@ class ProgramsManager:
             try:
                 with open(self.programs_file, 'r', encoding='utf-8') as f:
                     saved = json.load(f)
-                # Load unified B program settings
-                unified = saved.get("_unified_b", {})
-                self._unified_b_enabled = unified.get("enabled", False)
-                self._unified_b_program_number = unified.get("program_number", "")
-                self._unified_b_hours = unified.get("hours", "")
-                # Объединяем с базовым справочником (skip meta keys)
+                # Объединяем с базовым справочником
                 merged = BASE_PROGRAMS.copy()
                 for prog_id, prog_data in saved.items():
-                    if prog_id.startswith("_"):
-                        continue
                     if prog_id in merged:
                         merged[prog_id].update(prog_data)
                 return merged
@@ -80,14 +72,8 @@ class ProgramsManager:
     def save(self) -> tuple[bool, str]:
         """Сохранение данных программ."""
         try:
-            merged = self.programs.copy()
-            merged["_unified_b"] = {
-                "enabled": self._unified_b_enabled,
-                "program_number": self._unified_b_program_number,
-                "hours": self._unified_b_hours,
-            }
             with open(self.programs_file, 'w', encoding='utf-8') as f:
-                json.dump(merged, f, ensure_ascii=False, indent=2)
+                json.dump(self.programs, f, ensure_ascii=False, indent=2)
             return True, "Данные программ сохранены"
         except OSError as e:
             logger.error("Ошибка сохранения данных программ: %s", e, exc_info=True)
@@ -100,34 +86,6 @@ class ProgramsManager:
     def get_all_programs(self) -> dict:
         """Получение всех программ."""
         return self.programs.copy()
-
-    # Unified type-B program settings
-    def get_unified_b_settings(self) -> dict:
-        """Get unified type-B program settings from saved data."""
-        first_b_prog = None
-        for pid in ("6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
-                     "16", "17", "18", "19", "20", "21", "22", "23", "24",
-                     "25", "26", "27", "28", "29"):
-            if pid in self.programs:
-                first_b_prog = self.programs[pid]
-                break
-        if first_b_prog is None:
-            for pid, prog in self.programs.items():
-                if pid.isdigit() and int(pid) >= 6:
-                    first_b_prog = prog
-                    break
-        return {
-            "use_unified": self._unified_b_enabled,
-            "program_number": self._unified_b_program_number,
-            "hours": self._unified_b_hours,
-        }
-
-    def set_unified_b_settings(self, enabled: bool, program_number: str = "", hours: str = ""):
-        """Save unified type-B program settings."""
-        self._unified_b_enabled = enabled
-        self._unified_b_program_number = program_number
-        self._unified_b_hours = hours
-        self.save()
 
     def update_program(self, program_id: str, doc: str = None, hours: str = None, autosave: bool = True):
         """
@@ -144,3 +102,45 @@ class ProgramsManager:
             self.programs[program_id]["hours"] = hours
         if autosave:
             self.save()
+
+    # ---- Режим «обучение программам В по одной программе» ----
+    def _default_settings(self) -> dict:
+        return {"single_b_mode": False, "single_b_doc": "", "single_b_hours": ""}
+
+    def _load_settings(self) -> dict:
+        """Загрузка настроек режима «одна программа В»."""
+        defaults = self._default_settings()
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    defaults["single_b_mode"] = bool(data.get("single_b_mode", False))
+                    defaults["single_b_doc"] = str(data.get("single_b_doc", "") or "")
+                    defaults["single_b_hours"] = str(data.get("single_b_hours", "") or "")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.error("Ошибка загрузки настроек программ: %s", e, exc_info=True)
+        return defaults
+
+    def get_single_b_settings(self) -> dict:
+        """Возвращает копию настроек режима."""
+        return dict(self.settings)
+
+    def set_single_b_settings(self, mode: bool, doc: str = "", hours: str = "", autosave: bool = True):
+        """Устанавливает настройки режима «одна программа В»."""
+        self.settings["single_b_mode"] = bool(mode)
+        self.settings["single_b_doc"] = str(doc or "")
+        self.settings["single_b_hours"] = str(hours or "")
+        if autosave:
+            return self.save_settings()
+        return True, "ok"
+
+    def save_settings(self) -> tuple:
+        """Сохранение настроек режима."""
+        try:
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+            return True, "Настройки сохранены"
+        except OSError as e:
+            logger.error("Ошибка сохранения настроек: %s", e, exc_info=True)
+            return False, f"Ошибка сохранения: {e}"

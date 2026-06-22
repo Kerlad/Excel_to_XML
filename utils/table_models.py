@@ -91,6 +91,9 @@ class DataViewTableModel(QAbstractTableModel):
                 return self._highlight_colors[col]
             if col == self._highlight_col:
                 return QColor("#FFF0F0")
+        if role == Qt.ItemDataRole.ForegroundRole:
+            if col in self._highlight_colors or col == self._highlight_col:
+                return QColor("#212529")
         if role == Qt.ItemDataRole.UserRole:
             return self._raw_records[row].get('id') if row < len(self._raw_records) else None
         return None
@@ -183,12 +186,13 @@ class ExamJournalTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.ForegroundRole and col == 13:
             from PySide6.QtGui import QColor
             return QColor("#28A745") if rec.status == "received" else QColor("#E67E22")
+        if role in (Qt.ItemDataRole.ForegroundRole, Qt.ItemDataRole.BackgroundRole) and col < 13:
+            from utils.tahoe_style import get_journal_status_colors
+            bg, fg = get_journal_status_colors(rec.status)
+            return fg if role == Qt.ItemDataRole.ForegroundRole else bg
         if role == Qt.ItemDataRole.FontRole and col == 13:
             f = self._bold_font()
             return f
-        if role == Qt.ItemDataRole.BackgroundRole and col < 13:
-            from PySide6.QtGui import QColor
-            return QColor(255, 248, 225) if rec.status == "pending" else QColor(230, 255, 230)
         if role == Qt.ItemDataRole.UserRole:
             return rec.uuid
         return None
@@ -229,6 +233,14 @@ class ExamJournalTableModel(QAbstractTableModel):
 
     def get_records(self) -> List:
         return self._records
+
+    def refresh_colors(self) -> None:
+        """Перерисовывает ячейки при смене темы (без перезагрузки данных)."""
+        if not self._records:
+            return
+        top = self.index(0, 0)
+        bottom = self.index(len(self._records) - 1, self.columnCount() - 1)
+        self.dataChanged.emit(top, bottom, [Qt.ItemDataRole.BackgroundRole, Qt.ItemDataRole.ForegroundRole])
 
 
 class EmployeeSummaryTableModel(QAbstractTableModel):

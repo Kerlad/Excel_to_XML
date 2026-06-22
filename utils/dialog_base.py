@@ -36,11 +36,13 @@ class BaseDialog(QDialog):
             if validator_fn:
                 error = validator_fn(field.text())
                 if error:
-                    field.setStyleSheet("border: 2px solid #E74C3C; background-color: #FFF0F0;")
+                    from utils.ui_helpers import mark_invalid
+                    mark_invalid(field)
                     field.setToolTip(error)
                     field.setFocus()
                     return False
-                field.setStyleSheet("")
+                from utils.ui_helpers import mark_invalid
+                mark_invalid(field, False)
                 field.setToolTip("")
         return True
 
@@ -65,6 +67,7 @@ class BaseDialog(QDialog):
 
     @staticmethod
     def show_validation_error(parent: QWidget, field: QLineEdit, message: str) -> None:
-        field.setStyleSheet("border: 2px solid #E74C3C; background-color: #FFF0F0;")
+        from utils.ui_helpers import mark_invalid
+        mark_invalid(field)
         field.setToolTip(message)
         field.setFocus()

@@ -1,9 +1,12 @@
 import os
+import sys
+import shutil
 import logging
 from PySide6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QDialog, QMessageBox
+    QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QDialog,
+    QMessageBox, QInputDialog
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QProcess
 from PySide6.QtGui import QPixmap, QIcon
 from utils.crypto import verify_passphrase, CryptoPassphraseRequiredError
 from utils.app_paths import get_resource_dir
@@ -83,6 +86,20 @@ class PassphraseDialog(QDialog):
         layout.addWidget(self.pwd_input)
 
         btn_row = QHBoxLayout()
+
+        forgot_btn = QPushButton("Не помню парольную фразу…")
+        forgot_btn.setFlat(True)
+        forgot_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        forgot_btn.setStyleSheet(
+            "QPushButton { color: #C0392B; border: none; background: transparent; "
+            "text-decoration: underline; font-size: 12px; padding: 4px 2px; }"
+            "QPushButton:hover { color: #E74C3C; }"
+        )
+        forgot_btn.setToolTip(
+            "Удалить все данные приложения, чтобы войти без парольной фразы"
+        )
+        forgot_btn.clicked.connect(self._reset_all_data)
+        btn_row.addWidget(forgot_btn)
         btn_row.addStretch()
 
         cancel_btn = QPushButton("Отмена")
@@ -176,3 +193,96 @@ class PassphraseDialog(QDialog):
             "Программа будет закрыта."
         )
         self.reject()
+
+    def _reset_all_data(self):
+        """Аварийный сброс при забытой парольной фразе.
+
+        Парольную фразу невозможно восстановить, а без неё расшифровать данные
+        нельзя. Единственный способ снова войти в программу — удалить все данные
+        приложения (включая мастер-ключ и саму парольную фразу) и запустить
+        программу с чистого состояния.
+        """
+        reply = QMessageBox.critical(
+            self, "Сброс данных для входа",
+            "⚠️ Вы забыли парольную фразу?\n\n"
+            "Восстановить её или расшифровать ранее сохранённые данные без неё "
+            "НЕВОЗМОЖНО.\n\n"
+            "Единственный способ войти в программу — удалить все данные приложения "
+            "и начать с чистого состояния. Будут удалены:\n\n"
+            "• Все сотрудники и программы обучения\n"
+            "• Журнал проверки знаний\n"
+            "• API-ключ и настройки прокси\n"
+            "• Мастер-ключ шифрования и парольная фраза\n"
+            "• Все настройки и логи\n\n"
+            "Действие необратимо. Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        confirm, ok = QInputDialog.getText(
+            self, "Подтверждение сброса",
+            "Введите 'УДАЛИТЬ' для подтверждения удаления всех данных:"
+        )
+        if not ok or confirm.strip() != "УДАЛИТЬ":
+            QMessageBox.information(self, "Отмена", "Сброс отменён.")
+            return
+
+        if not self._perform_reset():
+            return
+
+        QMessageBox.information(
+            self, "Данные удалены",
+            "Все данные приложения удалены. Программа будет перезапущена "
+            "и откроется без парольной фразы."
+        )
+        self._restart_application()
+
+    def _perform_reset(self) -> bool:
+        try:
+            from utils.app_paths import get_app_data_dir
+            try:
+                from db import DatabaseManager
+                DatabaseManager.close_all()
+            except Exception:
+                logger.debug("DatabaseManager.close_all() skipped during reset", exc_info=True)
+            log_audit(
+                "FACTORY_RESET",
+                "All application data deleted from unlock screen (forgotten passphrase)"
+            )
+            data_dir = get_app_data_dir()
+            logger.warning("Resetting all app data from unlock screen: %s", data_dir)
+            if os.path.exists(data_dir):
+                for entry in os.listdir(data_dir):
+                    entry_path = os.path.join(data_dir, entry)
+                    try:
+                        if os.path.isfile(entry_path) or os.path.islink(entry_path):
+                            os.remove(entry_path)
+                        elif os.path.isdir(entry_path):
+                            shutil.rmtree(entry_path)
+                    except Exception as e:
+                        logger.error("Failed to delete %s: %s", entry, e)
+            return True
+        except Exception as e:
+            logger.exception("Reset from unlock screen failed")
+            QMessageBox.critical(
+                self, "Ошибка", f"Не удалось удалить данные:\n{e}"
+            )
+            return False
+
+    def _restart_application(self):
+        from PySide6.QtWidgets import QApplication
+        try:
+            program = sys.executable
+            if getattr(sys, "frozen", False):
+                args = sys.argv[1:]
+            else:
+                args = sys.argv
+            QProcess.startDetached(program, args)
+        except Exception:
+            logger.exception("Failed to schedule application restart")
+        self.reject()
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()

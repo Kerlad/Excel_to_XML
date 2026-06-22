@@ -7,8 +7,8 @@ from PySide6.QtWidgets import (
     QRadioButton, QButtonGroup, QApplication, QComboBox, QProgressBar,
     QSizePolicy, QSpacerItem
 )
-from PySide6.QtCore import Qt, QCoreApplication, QThread, QObject, Signal, QTimer
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtCore import Qt, QCoreApplication, QThread, QObject, Signal
+from PySide6.QtGui import QFont
 from lxml import etree
 from api.mintrud_api import (
     load_api_key, save_api_key, push_xml, push_xml_signed,
@@ -22,6 +22,8 @@ from utils.audit import log_audit
 from network.client import (
     get_network_diagnostics, test_external_access, NetworkStatus
 )
+
+from utils.toast import Toast
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +104,8 @@ class DataTransferTab(QWidget):
         self._journal_update_callback = None
         self._snils_thread = None
         self._snils_worker = None
-        self._tls_warned_this_session = False
-        self._tls_startup_warning_shown = False
+        self._proxy_thread = None
+        self._proxy_worker = None
 
         self._setup_ui()
         self._connect_signals()
@@ -133,7 +135,7 @@ class DataTransferTab(QWidget):
         self._scroll_layout.setContentsMargins(0, 0, 0, 0)
 
         self._scroll_layout.addWidget(self._create_api_key_group())
-        self._scroll_layout.addWidget(self._create_proxy_group())
+        self._proxy_group_widget = self._create_proxy_group()
         self._scroll_layout.addWidget(self._create_sig_group())
         self._scroll_layout.addWidget(self._create_send_xml_group())
         self._scroll_layout.addWidget(self._create_query_setid_group())
@@ -148,6 +150,7 @@ class DataTransferTab(QWidget):
         self.proxy_save_btn.clicked.connect(self.save_proxy_settings_ui)
         self.proxy_test_btn.clicked.connect(self.test_proxy)
         self.select_sig_btn.clicked.connect(self.select_sig_file)
+        self.send_xml_signed_btn.setToolTip("Подписать XML электронной подписью и отправить на сервер")
         self.send_xml_signed_btn.clicked.connect(self.send_xml_signed)
         self.tls_checkbox.toggled.connect(self._on_tls_verify_toggled)
 
@@ -199,11 +202,15 @@ class DataTransferTab(QWidget):
     # Group: Proxy Settings
     # ============================================================
 
-    def scroll_to_proxy(self):
-        proxy = getattr(self, '_proxy_group', None)
-        area = getattr(self, '_scroll_area', None)
-        if proxy and area:
-            area.ensureWidgetVisible(proxy)
+    def open_proxy_settings_window(self):
+        from utils.proxy_settings_dialog import ProxySettingsDialog
+        if getattr(self, "_proxy_window", None) is None:
+            self._proxy_window = ProxySettingsDialog(
+                self._proxy_group_widget, parent=self.window()
+            )
+        self._proxy_window.show()
+        self._proxy_window.raise_()
+        self._proxy_window.activateWindow()
 
     def _create_proxy_group(self):
         group = QGroupBox("Настройки прокси")
@@ -294,14 +301,6 @@ class DataTransferTab(QWidget):
         self.tls_checkbox.setChecked(True)
         extra_row.addWidget(self.tls_checkbox)
 
-        self.tls_warning_label = QLabel("⚠ TLS: небезопасно")
-        self.tls_warning_label.setStyleSheet(
-            "color: #CC0000; font-weight: bold; padding: 2px 8px; "
-            "border: 1px solid #CC0000; border-radius: 3px;"
-        )
-        self.tls_warning_label.setVisible(False)
-        extra_row.addWidget(self.tls_warning_label)
-
         extra_row.addSpacing(20)
         extra_row.addWidget(QLabel("Transport:"))
         from api.mintrud_api import get_available_backends
@@ -331,38 +330,6 @@ class DataTransferTab(QWidget):
         settings['tls_verify'] = checked
         save_proxy_settings(self.data_dir, settings)
 
-    def _show_tls_startup_warning(self):
-        w = QMessageBox(self)
-        w.setWindowTitle("TLS отключён")
-        w.setIcon(QMessageBox.Icon.Warning)
-        w.setText(
-            "Проверка TLS-сертификата отключена в настройках.\n\n"
-            "Соединение не защищено — возможен перехват ПДн "
-            "(ФИО, СНИЛС, ИНН, реестры).\n\n"
-            "Включите TLS верификацию в настройках прокси, "
-            "если вы не используете корпоративную SSL-инспекцию."
-        )
-        w.setWindowFlags(w.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-        w.exec()
-
-    def _warn_tls_if_needed(self) -> bool:
-        if self._tls_warned_this_session:
-            return True
-        if not self.tls_checkbox.isChecked():
-            reply = QMessageBox.warning(
-                self,
-                "Соединение небезопасно",
-                "TLS-верификация отключена. Данные (ФИО, СНИЛС, ИНН) "
-                "могут быть перехвачены.\n\n"
-                "Продолжить отправку?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return False
-            self._tls_warned_this_session = True
-        return True
-
     def _get_proxy_settings_from_ui(self):
         mode_id = self.proxy_mode_group.checkedId()
         mode_map = {0: 'off', 1: 'auto', 2: 'manual'}
@@ -378,28 +345,23 @@ class DataTransferTab(QWidget):
 
     def _on_tls_verify_toggled(self, checked: bool):
         if not checked:
+            from PySide6.QtWidgets import QMessageBox
             reply = QMessageBox.warning(
                 self,
                 "Предупреждение безопасности",
-                "Вы отключаете проверку TLS-сертификата. Это позволяет атакующему "
-                "перехватить или подменить данные (ФИО/СНИЛС/ИНН/реестры).\n\n"
-                "Используйте только если вы понимаете риск "
-                "(например, корпоративная SSL-инспекция).\n\n"
-                "Это действие будет зафиксировано в журнале аудита.",
-                QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
+                "Отключение проверки TLS-сертификата создаёт риск перехвата "
+                "персональных данных (атака MITM).\n\n"
+                "Это действие будет зафиксировано в журнале аудита.\n\n"
+                "Вы уверены, что хотите отключить проверку TLS?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
             )
-            disable_btn = QPushButton("Отключить проверку TLS")
-            reply.addButton(disable_btn, QMessageBox.ButtonRole.AcceptRole)
-            reply.exec()
-            if reply.clickedButton() != disable_btn:
+            if reply != QMessageBox.Yes:
                 self.tls_checkbox.setChecked(True)
                 return
-            self.tls_warning_label.setVisible(True)
             self._save_tls_setting(False)
             log_audit("TLS_WARNING", "TLS verification disabled by user")
         else:
-            self.tls_warning_label.setVisible(False)
             log_audit("TLS_WARNING", "TLS verification enabled by user")
 
     def _on_proxy_mode_changed(self, button):
@@ -491,6 +453,7 @@ class DataTransferTab(QWidget):
             QPushButton:disabled { background-color: #95A5A6}
         """)
         self.send_xml_btn.setMinimumHeight(44)
+        self.send_xml_btn.setToolTip("Отправить XML на сервер Минтруда без подписи")
         self.send_xml_btn.clicked.connect(self.send_xml)
         send_row.addWidget(self.send_xml_btn)
 
@@ -540,6 +503,7 @@ class DataTransferTab(QWidget):
         self.query_setid_input.setPlaceholderText("SetId из ответа сервера")
 
         query_btn = QPushButton("Запросить номера")
+        query_btn.setToolTip("Запросить регистрационные номера по идентификатору отправки (SetId)")
         query_btn.clicked.connect(self.query_by_setid)
 
         row.addWidget(QLabel("Введите номер набора:"))
@@ -561,6 +525,7 @@ class DataTransferTab(QWidget):
         self.query_snils_input.setPlaceholderText("123-456-789 00 или 12345678900")
 
         self.query_snils_btn = QPushButton("Отправить запрос")
+        self.query_snils_btn.setToolTip("Проверить наличие результатов обучения по СНИЛС")
         self.query_snils_btn.clicked.connect(self.query_by_snils)
 
         row.addWidget(QLabel("Введите СНИЛС:"))
@@ -614,15 +579,8 @@ class DataTransferTab(QWidget):
         self.proxy_url_input.setText(settings.get('url', ''))
         self.proxy_user_input.setText(settings.get('username', ''))
         self.proxy_pass_input.setText(settings.get('password', ''))
-        tls_verify = settings.get('tls_verify', True)
-        self.tls_checkbox.setChecked(tls_verify)
-        self.tls_warning_label.setVisible(not tls_verify)
+        self.tls_checkbox.setChecked(settings.get('tls_verify', True))
         self.proxy_negotiate_cb.setChecked(settings.get('use_negotiate', False))
-
-        if not tls_verify and not self._tls_startup_warning_shown:
-            self._tls_startup_warning_shown = True
-            log_audit("TLS_WARNING", "Startup with tls_verify=False")
-            QTimer.singleShot(500, lambda: self._show_tls_startup_warning())
         backend_val = settings.get('backend', 'auto')
         idx = self.backend_combo.findData(backend_val)
         if idx >= 0:
@@ -659,6 +617,8 @@ class DataTransferTab(QWidget):
             safe_message_box(self, QMessageBox.Icon.Warning, "Ошибка", msg)
 
     def test_proxy(self):
+        if getattr(self, "_proxy_thread", None) is not None and self._proxy_thread.isRunning():
+            return
         self.proxy_test_btn.setEnabled(False)
         self.proxy_test_btn.setText("Тестирование...")
         QCoreApplication.processEvents()
@@ -682,6 +642,19 @@ class DataTransferTab(QWidget):
             safe_message_box(self, QMessageBox.Icon.Warning, "Проблема с доступом", result_text)
         self.proxy_test_btn.setEnabled(True)
         self.proxy_test_btn.setText("Тест подключения")
+
+    def cleanup_threads(self):
+        """Корректно останавливает фоновые потоки перед закрытием приложения."""
+        for attr in ("_proxy_thread", "_snils_thread"):
+            th = getattr(self, attr, None)
+            if th is None:
+                continue
+            try:
+                if th.isRunning():
+                    th.quit()
+                    th.wait(3000)
+            except RuntimeError:
+                pass
 
     def _on_backend_change(self, index):
         backend_name = self.backend_combo.currentData()
@@ -772,9 +745,6 @@ class DataTransferTab(QWidget):
             QMessageBox.warning(self, "Ошибка", "Выберите XML файл")
             return
 
-        if not self._warn_tls_if_needed():
-            return
-
         xml_records_data = self._parse_xml_for_journal(xml_file)
         proxy_settings = self._get_proxy_settings()
 
@@ -853,9 +823,6 @@ class DataTransferTab(QWidget):
 
         if not sig_file or not os.path.exists(sig_file):
             QMessageBox.warning(self, "Ошибка", "Выберите файл подписи .sig")
-            return
-
-        if not self._warn_tls_if_needed():
             return
 
         reply = QMessageBox.question(
@@ -961,7 +928,7 @@ class DataTransferTab(QWidget):
 
         records = result.get("records", [])
         if not records:
-            QMessageBox.information(self, "Информация", "Записей не найдено")
+            Toast.info(self, "Записей не найдено")
             return
 
         if self._journal_update_callback:
@@ -1044,7 +1011,7 @@ class DataTransferTab(QWidget):
 
         records = result.get("records", [])
         if not records:
-            QMessageBox.information(self, "Информация", "Записей не найдено")
+            Toast.info(self, "Записей не найдено")
             return
 
         first = records[0]

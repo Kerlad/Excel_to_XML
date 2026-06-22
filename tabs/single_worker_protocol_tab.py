@@ -112,6 +112,7 @@ class SingleWorkerProtocolTab(QWidget):
 
         load_btn = QPushButton("Загрузить комиссию")
         load_btn.setObjectName("loadCommissionBtn")
+        load_btn.setToolTip("Загрузить сохранённые данные комиссии")
         load_btn.clicked.connect(self._load_commission)
         row1.addWidget(load_btn)
         bar.addLayout(row1)
@@ -134,7 +135,8 @@ class SingleWorkerProtocolTab(QWidget):
     def _update_preview(self):
         last = self.last_name_input.text().strip() or "одиночный"
         proto = self.protocol_input.text().strip() or "1"
-        name = f"Протокол_{last}_№{proto}.docx"
+        from utils.export_safe import safe_filename_part
+        name = f"Протокол_{safe_filename_part(last, 'одиночный')}_№{safe_filename_part(proto, '1')}.docx"
         self.preview_label.setText(f"Файл: {name}")
 
     def _load_commission(self):
@@ -275,7 +277,8 @@ class SingleWorkerProtocolTab(QWidget):
             })
 
         proto_num = protocol or "1"
-        default_file = f"Протокол_{last or 'одиночный'}_№{proto_num}.docx"
+        from utils.export_safe import safe_filename_part
+        default_file = f"Протокол_{safe_filename_part(last, 'одиночный')}_№{safe_filename_part(proto_num, '1')}.docx"
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить протокол", default_file, "Word Files (*.docx)"
         )

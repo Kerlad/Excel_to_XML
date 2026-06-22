@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMenu, QMessageBox, QVBoxLayout, QDialog, QLabel, QWidget, QStatusBar, QProgressBar
 from PySide6.QtCore import Qt, QTimer, QByteArray
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut, QActionGroup
 from tabs.data_entry_tab import DataEntryTab
 from tabs.data_view_tab import DataViewTab
 from tabs.data_transfer_tab import DataTransferTab
@@ -22,10 +22,11 @@ from protocol.commission_manager import CommissionManager
 from protocol.programs_manager import ProgramsManager
 from utils.logger import setup_logging, filter_sensitive_text
 from utils.audit import setup_audit_log, log_audit
-from utils.tahoe_style import get_global_stylesheet, create_palette, apply_mica, load_theme, save_theme
+from utils.tahoe_style import get_global_stylesheet, create_palette, apply_mica, load_theme, save_theme, THEME_ORDER, THEME_LABELS
 from utils.app_paths import get_app_data_dir, get_app_log_dir, get_resource_dir
 from utils.about_dialog import AboutDialog, VERSION
 from utils.help_dialog import HelpDialog
+from utils.programs_reference_dialog import ProgramsReferenceWindow
 from utils.log_viewer_dialog import LogViewerDialog
 from utils.crypto import check_master_key_security, check_environment
 from utils.clipboard_guard import ClipboardGuard
@@ -87,6 +88,7 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         self.setCentralWidget(self.tabs)
+        self._setup_shortcuts()
 
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(10000)
@@ -117,6 +119,12 @@ class MainWindow(QMainWindow):
         for tab, title, pixmap in tab_data:
             self.tabs.addTab(tab, style.standardIcon(pixmap), title)
 
+    def _setup_shortcuts(self):
+        """Горячие клавиши: Ctrl+1..7 — переключение вкладок."""
+        for i in range(min(9, self.tabs.count())):
+            shortcut = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
+            shortcut.activated.connect(lambda idx=i: self.tabs.setCurrentIndex(idx))
+
     def _create_status_bar(self):
         sb = self.statusBar()
         self._sb_employees = QLabel("Сотрудников: --")
@@ -144,7 +152,7 @@ class MainWindow(QMainWindow):
         self._sb_progress.setStyleSheet("""
             QProgressBar { border: 1px solid #ccc; border-radius: 4px;
                 text-align: center; font-size: 10px; }
-            QProgressBar::chunk { background-color: #4169E1; border-radius: 3px; }
+            QProgressBar::chunk { background-color: #4A90E2; border-radius: 3px; }
         """)
         sb.addPermanentWidget(self._sb_progress)
 
@@ -224,12 +232,7 @@ class MainWindow(QMainWindow):
         self.data_view_tab._export_xlsx()
 
     def _open_proxy_settings(self):
-        for i in range(self.tabs.count()):
-            text = self.tabs.tabText(i).replace("\n", " ")
-            if "Передача данных" in text:
-                self.tabs.setCurrentIndex(i)
-                break
-        self.data_transfer_tab.scroll_to_proxy()
+        self.data_transfer_tab.open_proxy_settings_window()
 
     def _open_security(self):
         from utils.security_dialog import SecurityDialog
@@ -240,10 +243,19 @@ class MainWindow(QMainWindow):
     def _apply_theme(self, theme: str):
         self.current_theme = theme
         save_theme(get_app_data_dir(), theme)
+        actions = getattr(self, "_theme_actions", None)
+        if actions and theme in actions and not actions[theme].isChecked():
+            actions[theme].setChecked(True)
         if self.app:
             self.app.setPalette(create_palette(theme))
             self.app.setStyleSheet(get_global_stylesheet(theme))
             self._refresh_styles()
+        jt = getattr(self, "exam_journal_tab", None)
+        if jt is not None and hasattr(jt, "on_theme_changed"):
+            try:
+                jt.on_theme_changed()
+            except Exception:
+                logging.getLogger(__name__).debug("journal theme refresh failed", exc_info=True)
 
     def _refresh_styles(self):
         for w in self.findChildren(QWidget):
@@ -256,8 +268,10 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
         file_menu = menubar.addMenu("Файл")
         template_action = file_menu.addAction("Создать шаблон XLSX")
+        template_action.setShortcut("Ctrl+T")
         template_action.triggered.connect(self._create_template)
         export_action = file_menu.addAction("Экспорт всех данных XLSX")
+        export_action.setShortcut("Ctrl+E")
         export_action.triggered.connect(self._export_all)
         file_menu.addSeparator()
         exit_action = file_menu.addAction("Выход")
@@ -265,10 +279,8 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
 
         settings_menu = menubar.addMenu("Настройки")
-        self._theme_action = settings_menu.addAction("Светлая тема" if self.current_theme == "dark" else "Тёмная тема")
-        self._theme_action.triggered.connect(self._toggle_theme)
-        settings_menu.addSeparator()
         lock_action = settings_menu.addAction("Заблокировать сессию")
+        lock_action.setShortcut("Ctrl+L")
         lock_action.triggered.connect(self._manual_lock)
         timeout_action = settings_menu.addAction("Таймаут блокировки...")
         timeout_action.triggered.connect(self._configure_lock_timeout)
@@ -279,9 +291,28 @@ class MainWindow(QMainWindow):
         proxy_action = settings_menu.addAction("Настройки прокси")
         proxy_action.triggered.connect(self._open_proxy_settings)
 
+        theme_menu = menubar.addMenu("Темы")
+        self._theme_group = QActionGroup(self)
+        self._theme_group.setExclusive(True)
+        self._theme_actions = {}
+        for key in THEME_ORDER:
+            theme_act = theme_menu.addAction(THEME_LABELS.get(key, key))
+            theme_act.setCheckable(True)
+            theme_act.setChecked(key == self.current_theme)
+            self._theme_group.addAction(theme_act)
+            theme_act.triggered.connect(lambda checked=False, k=key: self._select_theme(k))
+            self._theme_actions[key] = theme_act
+        theme_menu.addSeparator()
+        next_theme_action = theme_menu.addAction("Следующая тема")
+        next_theme_action.setShortcut("Ctrl+D")
+        next_theme_action.triggered.connect(self._cycle_theme)
+
         help_menu = menubar.addMenu("Справка")
         help_action = help_menu.addAction("Справка по работе с программой")
+        help_action.setShortcut("F1")
         help_action.triggered.connect(self.show_help)
+        programs_ref_action = help_menu.addAction("Номера программ обучения")
+        programs_ref_action.triggered.connect(self.show_programs_reference)
         help_menu.addSeparator()
         about_action = help_menu.addAction("О программе")
         about_action.triggered.connect(self.show_about)
@@ -293,18 +324,39 @@ class MainWindow(QMainWindow):
         delete_data_action = tools_menu.addAction("Удалить все данные приложения")
         delete_data_action.triggered.connect(self._delete_all_app_data)
 
-    def _toggle_theme(self):
-        new_theme = "light" if self.current_theme == "dark" else "dark"
+    def _select_theme(self, theme: str):
+        if theme == self.current_theme:
+            return
+        self._apply_theme(theme)
+
+    def _cycle_theme(self):
         try:
-            theme_action = self._theme_action
-            theme_action.setText("Светлая тема" if new_theme == "dark" else "Тёмная тема")
-        except (RuntimeError, AttributeError):
-            pass
-        self._apply_theme(new_theme)
+            idx = THEME_ORDER.index(self.current_theme)
+        except ValueError:
+            idx = 0
+        self._select_theme(THEME_ORDER[(idx + 1) % len(THEME_ORDER)])
 
     def show_help(self):
         dialog = HelpDialog(self)
         dialog.exec()
+
+    def show_programs_reference(self):
+        from PySide6.QtWidgets import QApplication
+        anchor = (
+            QApplication.activeModalWidget()
+            or QApplication.activeWindow()
+            or self
+        )
+        existing = getattr(self, "_programs_ref_window", None)
+        if existing is not None and existing.parent() is not anchor:
+            existing.close()
+            existing.deleteLater()
+            self._programs_ref_window = None
+        if getattr(self, "_programs_ref_window", None) is None:
+            self._programs_ref_window = ProgramsReferenceWindow(anchor)
+        self._programs_ref_window.show()
+        self._programs_ref_window.raise_()
+        self._programs_ref_window.activateWindow()
 
     def show_about(self):
         dialog = AboutDialog(self)
@@ -409,8 +461,18 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._save_window_geometry()
+        self._stop_background_threads()
         log_audit("SHUTDOWN", "Application shutdown")
         super().closeEvent(event)
+
+    def _stop_background_threads(self):
+        """Останавливает фоновые потоки вкладок, чтобы ни один QThread не был уничтожен во время работы."""
+        tab = getattr(self, "data_transfer_tab", None)
+        if tab is not None and hasattr(tab, "cleanup_threads"):
+            try:
+                tab.cleanup_threads()
+            except Exception:
+                logging.getLogger(__name__).debug("thread cleanup failed", exc_info=True)
 
 
 def global_exception_handler(exc_type, exc_value, exc_tb):
