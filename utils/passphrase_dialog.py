@@ -47,7 +47,7 @@ class PassphraseDialog(QDialog):
 
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
-        app_name = QLabel("Excel-XML для передачи\nданных в Минтруд")
+        app_name = QLabel("Норма ОТ:\nРеестр обучения")
         app_name.setStyleSheet("font-size: 16px; font-weight: bold;")
         header.addWidget(app_name)
 

@@ -1,4 +1,4 @@
-# Security Assessment — Excel_to_XML
+# Security Assessment — Норма ОТ: Реестр обучения
 # Промпт для OpenCode: устранение блокирующих проблем перед продом
 
 ---

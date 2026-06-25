@@ -1,8 +1,8 @@
-# Security Fix Prompt — Excel_to_XML (OpenCode / Claude Code)
+# Security Fix Prompt — Норма ОТ: Реестр обучения (OpenCode / Claude Code)
 
 ## Контекст задачи
 
-Ты — security engineer, работающий над Python-приложением **Excel_to_XML** (PySide6, SQLite, cryptography/Fernet, pywin32).
+Ты — security engineer, работающий над Python-приложением **Норма ОТ: Реестр обучения** (PySide6, SQLite, cryptography/Fernet, pywin32).
 Приложение обрабатывает персональные данные сотрудников (ФИО, СНИЛС) согласно ФЗ-152 и передаёт их в API Минтруда РФ.
 Перед тобой — шесть конкретных уязвимостей. Твоя задача: исправить каждую, не сломав существующие тесты и не нарушив архитектурные правила из `AGENTS.md`.
 

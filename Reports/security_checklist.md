@@ -1,6 +1,6 @@
 # Чеклисты безопасности ИСПДн
 
-**Проект:** Excel_to_XML
+**Проект:** Норма ОТ: Реестр обучения
 **Версия приложения:** 3.1.0
 **Дата:** 21.05.2026
 **Назначение:** Чеклисты для администратора и оператора ИСПДн при развёртывании, эксплуатации и реагировании на инциденты
@@ -260,8 +260,8 @@ $env:EXCEL_XML_PROD = "1"
 python main.py
 
 # Сборка EXE
-Remove-Item -Recurse -Force dist\ExcelXML-Mintrud -ErrorAction SilentlyContinue
-py -m PyInstaller ExcelXML-Mintrud.spec
+Remove-Item -Recurse -Force dist\NormaOT_Reestr -ErrorAction SilentlyContinue
+py -m PyInstaller NormaOT_Reestr.spec
 
 # Запуск тестов
 py -m pytest tests -v

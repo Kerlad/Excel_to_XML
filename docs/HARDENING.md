@@ -1,6 +1,6 @@
 # Руководство по Hardening рабочего места ИСПДн
 
-**Проект:** Excel_to_XML
+**Проект:** Норма ОТ: Реестр обучения
 **Версия:** 3.1.0
 **Дата:** 21.05.2026
 
@@ -42,7 +42,7 @@ Enable-BitLocker -MountPoint "C:" -TpmProtector -Pin "1234"
 
 ### 2.4. Firewall
 - Windows Defender Firewall включён
-- Правило: разрешить `python.exe` (или `ExcelXML-Mintrud.exe`) только на `edu.rosmintrud.ru`
+- Правило: разрешить `python.exe` (или `NormaOT_Reestr.exe`) только на `edu.rosmintrud.ru`
 - Блокировать все входящие соединения
 
 ```powershell
@@ -50,7 +50,7 @@ Enable-BitLocker -MountPoint "C:" -TpmProtector -Pin "1234"
 Set-NetFirewallProfile -Profile Domain,Public,Private -DefaultInboundAction Block
 
 # Разрешить приложению исходящие на Минтруд
-New-NetFirewallRule -DisplayName "ExcelXML-Mintrud" -Direction Outbound -Program "%ProgramFiles%\ExcelXML-Mintrud\ExcelXML-Mintrud.exe" -RemoteAddress "edu.rosmintrud.ru" -Action Allow
+New-NetFirewallRule -DisplayName "NormaOT_Reestr" -Direction Outbound -Program "%ProgramFiles%\NormaOT_Reestr\NormaOT_Reestr.exe" -RemoteAddress "edu.rosmintrud.ru" -Action Allow
 ```
 
 ### 2.5. User Account Control (UAC)
@@ -156,7 +156,7 @@ Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR" -Name "
 
 ## 6. Software Restrictions
 
-- На ПК оператора установлено ТОЛЬКО: ОС, антивирус, ExcelXML-Mintrud
+- На ПК оператора установлено ТОЛЬКО: ОС, антивирус, NormaOT_Reestr
 - Запрещено: сторонние браузеры, мессенджеры, торренты, игры
 - Запрещено: установка ПО без разрешения администратора
 - Разрешено: Microsoft Office (для просмотра XLSX-экспортов)

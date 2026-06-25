@@ -59,7 +59,7 @@ class AboutDialog(BaseDialog):
 
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
-        title_label = QLabel("Excel-XML для передачи данных в Минтруд")
+        title_label = QLabel("Норма ОТ: Реестр обучения")
         title_label.setObjectName("aboutTitleLabel")
         title_label.setWordWrap(True)
         title_col.addWidget(title_label)
@@ -295,7 +295,7 @@ class AboutDialog(BaseDialog):
             outlook = win32com.client.Dispatch("Outlook.Application")
             mail = outlook.CreateItem(0)
             mail.To = "denis.krv@yandex.ru"
-            mail.Subject = f"Excel-XML v{VERSION}: сообщение об ошибке"
+            mail.Subject = f"Норма ОТ v{VERSION}: сообщение об ошибке"
             body_parts = []
             if user_text:
                 body_parts.append(user_text)
@@ -314,7 +314,7 @@ class AboutDialog(BaseDialog):
             logging.getLogger(__name__).warning(f"Outlook COM failed: {e}")
 
         if not sent:
-            subject = f"Excel-XML v{VERSION}: сообщение об ошибке"
+            subject = f"Норма ОТ v{VERSION}: сообщение об ошибке"
             body = ""
             if user_text:
                 body += user_text + "\n\n"

@@ -43,7 +43,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.app = app
         self.current_theme = load_theme(get_app_data_dir())
-        self.setWindowTitle("Excel-XML для передачи данных в Минтруд")
+        self.setWindowTitle("Норма ОТ: Реестр обучения")
         self.setMinimumSize(800, 600)
         self.resize(1000, 700)
         self._restore_window_geometry()

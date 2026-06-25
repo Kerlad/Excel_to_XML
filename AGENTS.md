@@ -10,10 +10,10 @@
 - Production mode: `set EXCEL_XML_PROD=1` before running (blocks plaintext keys)
 
 ### EXE Build & Release
-1. Remove old build: `Remove-Item -Path "dist\ExcelXML-Mintrud" -Recurse -Force`
-2. Build EXE: `py -m PyInstaller ExcelXML-Mintrud.spec`
-3. Create zip: `Compress-Archive -Path "dist\ExcelXML-Mintrud\*" -DestinationPath "dist\ExcelXML-Mintrud.zip" -Force`
-4. Update README.md download link to point to the new zip (raw URL: `https://github.com/Kerlad/Excel_to_XML/raw/main/dist/ExcelXML-Mintrud.zip`)
+1. Remove old build: `Remove-Item -Path "dist\NormaOT_Reestr" -Recurse -Force`
+2. Build EXE: `py -m PyInstaller NormaOT_Reestr.spec`
+3. Create zip: `Compress-Archive -Path "dist\NormaOT_Reestr\*" -DestinationPath "dist\NormaOT-Reestr.zip" -Force`
+4. Update README.md download link to point to the new zip (raw URL: `https://github.com/Kerlad/Excel_to_XML/raw/main/dist/NormaOT-Reestr.zip`)
 5. Commit all changes including the new zip, README link, and any deleted old zips
 
 ## SECURITY: Critical Rules

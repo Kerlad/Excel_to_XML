@@ -1,6 +1,6 @@
 # Руководство по развёртыванию ИСПДн
 
-**Проект:** Excel_to_XML
+**Проект:** Норма ОТ: Реестр обучения
 **Версия:** 3.1.0
 **Дата:** 22.05.2026
 
@@ -45,8 +45,8 @@
 
 ```powershell
 # 1. Скачать архив
-# 2. Распаковать в C:\Program Files\ExcelXML-Mintrud\
-# 3. Запустить ExcelXML-Mintrud.exe
+# 2. Распаковать в C:\Program Files\NormaOT_Reestr\
+# 3. Запустить NormaOT_Reestr.exe
 ```
 
 ### 2.2. Из исходников
@@ -70,12 +70,12 @@ python main.py
 
 ```powershell
 # Удалить предыдущую сборку
-Remove-Item -Recurse -Force dist\ExcelXML-Mintrud
+Remove-Item -Recurse -Force dist\NormaOT_Reestr
 
 # Собрать
-py -m PyInstaller ExcelXML-Mintrud.spec
+py -m PyInstaller NormaOT_Reestr.spec
 
-# Результат: dist\ExcelXML-Mintrud\ExcelXML-Mintrud.exe
+# Результат: dist\NormaOT_Reestr\NormaOT_Reestr.exe
 ```
 
 ---

@@ -1,4 +1,4 @@
-# SECURITY AUDIT REPORT — Excel_to_XML (ИСПДн)
+# SECURITY AUDIT REPORT — Норма ОТ: Реестр обучения (ИСПДн)
 
 **Дата:** 22.05.2026
 **Версия приложения:** 3.1.0

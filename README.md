@@ -1,8 +1,8 @@
 <div align="center">
-<img src="resources/icon.png" width="80" alt="Excel-XML for Mintrud"/>
+<img src="resources/icon.png" width="80" alt="Норма ОТ: Реестр обучения"/>
 </div>
 
-# Excel-XML для передачи данных в Минтруд
+# Норма ОТ: Реестр обучения
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue)](https://www.python.org/downloads/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.5+-green)](https://wiki.qt.io/PySide6_Getting_Started)
@@ -10,7 +10,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)](https://www.microsoft.com/windows)
 [![Build](https://img.shields.io/badge/Build-PyInstaller-purple)](#сборка)
 
-**Автоматизация контроля и передачи данных об обученных работниках в Минтруд России**
+**Автоматизация контроля и передачи данных об обученных работниках в реестр Минтруда России**
 
 \[[Возможности](#-возможности)\] \[[Установка](#-установка)\] \[[Документация](#-документация)\] \[[Разработка](#-разработка)\] \[[Скачать](#-скачать-portable)\]
 
@@ -84,7 +84,7 @@
 
 Готовая сборка EXE без необходимости установки Python:
 
-[⬇️ **Скачать ExcelXML-Mintrud.zip**](https://github.com/Kerlad/Excel_to_XML/raw/main/dist/ExcelXML-Mintrud.zip)
+[⬇️ **Скачать NormaOT-Reestr.zip**](https://github.com/Kerlad/Excel_to_XML/raw/main/dist/NormaOT-Reestr.zip)
 
 Portable-версия не требует установки Python и зависимостей.
 
@@ -103,10 +103,10 @@ python main.py
 
 ### Сборка EXE
 ```bash
-py -m PyInstaller ExcelXML-Mintrud.spec
+py -m PyInstaller NormaOT_Reestr.spec
 ```
 
-Готовый EXE: `dist/ExcelXML-Mintrud/ExcelXML-Mintrud.exe`
+Готовый EXE: `dist/NormaOT_Reestr/NormaOT_Reestr.exe`
 
 ---
 
@@ -232,7 +232,7 @@ Excel_to_XML/
 ├── AGENTS.md                  # Инструкция для AI
 ├── CHANGELOG.md               # История версий
 ├── requirements.txt           # Зависимости
-└── ExcelXML-Mintrud.spec      # PyInstaller
+└── NormaOT_Reestr.spec      # PyInstaller
 ```
 
 ---
@@ -246,7 +246,7 @@ py -m pytest tests -v
 
 ### Сборка
 ```bash
-py -m PyInstaller ExcelXML-Mintrud.spec
+py -m PyInstaller NormaOT_Reestr.spec
 ```
 
 ---
@@ -279,7 +279,7 @@ MIT — подробнее в файле [LICENSE](LICENSE).
 
 ## ❤️ Поддержать проект
 
-Excel-XML — полностью бесплатное приложение с открытым исходным кодом.
+Норма ОТ — полностью бесплатное приложение с открытым исходным кодом.
 
 **Как помочь:**
 - Откройте «Справка → О программе» или «Справка → Справка по работе с программой»
